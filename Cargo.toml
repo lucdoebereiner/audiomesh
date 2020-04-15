@@ -1,0 +1,15 @@
+[package]
+name = "gengraph"
+version = "0.1.0"
+authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+petgraph = "0.5.0"
+jack = "*"
+
+[dependencies.rand]
+version = "0.7"
+features = ["small_rng"]
