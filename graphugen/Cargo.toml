@@ -1,0 +1,15 @@
+[package]
+name = "graphugen"
+version = "0.1.0"
+authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
+edition = "2018"
+
+
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+petgraph = "0.5.0"
+processgraph = { path = "../processgraph" }

@@ -1,0 +1,20 @@
+[package]
+name = "graphwasm"
+version = "0.1.0"
+authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
+edition = "2018"
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C", "link-args=-z stack-size=5000000",
+]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+processgraph = { path = "../processgraph" }
+petgraph = "0.5.0"
+lazy_static = "*"
+wasm-bindgen = "*"
+

@@ -1,15 +1,39 @@
-[package]
-name = "gengraph"
-version = "0.1.0"
-authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = [
+    "processgraph",
+    "graphugen",
+    "audiomesh",
+    "graphwasm",
+]
 
-[dependencies]
-petgraph = "0.5.0"
-jack = "*"
+# [package]
+# name = "audiomesh"
+# version = "0.1.0"
+# authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
+# edition = "2018"
 
-[dependencies.rand]
-version = "0.7"
-features = ["small_rng"]
+
+# [[bin]]
+# name = "audiomesh"
+# path = "src/main.rs"
+
+# [lib]
+# name = "meshlib"
+# crate-type = ["cdylib", "staticlib"]
+# path = "src/lib.rs"
+
+# [lib]
+# name = "meshwasm"
+# crate-type = ["cdylib"]
+# path = "src/libwasm.rs"
+
+
+# [dependencies]
+# lazy_static = "1.2.0"
+# petgraph = "0.5.0"
+# jack = "*"
+
+# [dependencies.rand]
+# version = "0.7"
+# features = ["small_rng"]

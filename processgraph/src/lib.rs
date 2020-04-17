@@ -214,7 +214,7 @@ fn fb_delay() -> UGen {
 pub type UGenGraph = StableGraph<UGen, u32, Directed, DefaultIx>;
 
 pub fn new_graph() -> UGenGraph {
-    StableGraph::with_capacity(10000, 10000)
+    StableGraph::with_capacity(100, 100)
 }
 
 pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, NodeIndex) {

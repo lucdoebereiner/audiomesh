@@ -1,9 +1,8 @@
 use jack;
 //use petgraph::dot::{Config, Dot};
 //use petgraph::stable_graph::next_node;
+use processgraph::*;
 use std::{f32, thread, time};
-mod ugens;
-use ugens::*;
 
 fn main() {
     let mut g = new_graph();
