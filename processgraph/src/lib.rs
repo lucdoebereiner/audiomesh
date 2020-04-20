@@ -7,23 +7,94 @@ use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 use std::f64;
 use std::fmt;
+pub mod numerical;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 const PI: f64 = f64::consts::PI;
 const SR: f64 = 44100f64;
 static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
+// TODO
+// rms
+// outside input
+// lag
+// variable delay times
+// strength of connection (factor)
+// input indices
+
 #[derive(Debug)]
 enum Process {
-    Sin { input: f64 },
-    SinOsc { freq: f64, phase: f64 },
-    Mul { inputs: Vec<f64> },
-    Add { inputs: Vec<f64> },
-    Mem { value: f64 },
-    Map { input: f64, func: fn(f64) -> f64 },
-    Constant { value: f64 },
-    Filter { input: f64, filter: filters::Biquad },
-    Noise { rng: SmallRng },
+    Sin {
+        input: f64,
+    },
+    SinOsc {
+        freq: f64,
+        phase: f64,
+    },
+    Mul {
+        inputs: Vec<f64>,
+    },
+    Add {
+        inputs: Vec<f64>,
+    },
+    Mem {
+        input: f64,
+        last_value: f64,
+    },
+    Map {
+        input: f64,
+        func: fn(f64) -> f64,
+    },
+    Constant {
+        value: f64,
+    },
+    Filter {
+        input: f64,
+        filter: filters::Biquad,
+    },
+    Noise {
+        rng: SmallRng,
+    },
+    Wrap {
+        input: f64,
+        lo: f64,
+        hi: f64,
+    },
+    Softclip {
+        input: f64,
+    },
+    Delay {
+        input: Vec<f64>,
+        rec_idx: usize,
+    },
+    BitNeg {
+        input: f64,
+    },
+    BitOr {
+        input1: f64,
+        input2: f64,
+    },
+    BitXOr {
+        input1: f64,
+        input2: f64,
+    },
+    BitAnd {
+        input1: f64,
+        input2: f64,
+    },
+    CurveLin {
+        input: f64,
+        in_min: f64,
+        in_max: f64,
+        out_min: f64,
+        out_max: f64,
+        curve: f64,
+    },
+    Gauss {
+        input: f64,
+    },
 }
 
 fn process(process: &mut Process) -> f64 {
@@ -37,17 +108,20 @@ fn process(process: &mut Process) -> f64 {
             *phase += *freq * FREQ_FAC;
             output
         }
-        Process::Mul { inputs } => {
-            let result = inputs.iter().product();
-            inputs.clear();
-            result
-        }
-        Process::Add { inputs } => {
-            let result = inputs.iter().sum();
-            inputs.clear();
-            result
-        }
-        Process::Mem { value } => *value,
+        Process::Mul { inputs } => inputs.iter().product(),
+
+        Process::Add { inputs } => inputs.iter().sum(),
+
+        // Process::Mem {
+        //     input,
+        //     ref mut last_value,
+        // } => {
+        //     let output = *last_value;
+        //     *last_value = *input;
+        //     output
+        // }
+        Process::Mem { input, .. } => *input,
+
         Process::Constant { value } => *value,
         Process::Map { input, func } => (func)(*input),
         Process::Filter {
@@ -55,27 +129,115 @@ fn process(process: &mut Process) -> f64 {
             ref mut filter,
         } => filter.process(*input),
         Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
+        Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
+        Process::Softclip { input } => input.tanh(),
+        Process::Delay {
+            input,
+            ref mut rec_idx,
+        } => {
+            let prev_idx = ((*rec_idx - 1) + input.len()) % input.len();
+            let result = input[prev_idx];
+            *rec_idx = (*rec_idx + 1) % input.len();
+            result
+        }
+        Process::BitNeg { input } => numerical::bit_neg(*input),
+        Process::BitOr { input1, input2 } => numerical::bit_or(*input1, *input2),
+        Process::BitXOr { input1, input2 } => numerical::bit_xor(*input1, *input2),
+        Process::BitAnd { input1, input2 } => numerical::bit_and(*input1, *input2),
+        Process::CurveLin {
+            input,
+            in_min,
+            in_max,
+            out_min,
+            out_max,
+            curve,
+        } => numerical::curvelin(*input, *in_min, *in_max, *out_min, *out_max, *curve),
+        Process::Gauss { input } => numerical::gauss_curve(*input),
     }
 }
 
-fn set_input(process: &mut Process, idx: u32, input_value: f64) {
+fn set_or_add(field: &mut f64, value: f64, add: bool) {
+    if add {
+        *field += value
+    } else {
+        *field = value
+    }
+}
+
+fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
     match process {
-        Process::Sin { ref mut input } => *input = input_value,
-        Process::SinOsc { ref mut freq, .. } => *freq = input_value,
+        Process::Sin { ref mut input }
+        | Process::Gauss { ref mut input }
+        | Process::Softclip { ref mut input }
+        | Process::Mem { ref mut input, .. }
+        | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
+        Process::SinOsc { ref mut freq, .. } => set_or_add(freq, input_value, add),
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
             inputs.push(input_value)
         }
-        Process::Mem { ref mut value } => *value = input_value,
         Process::Constant { .. } | Process::Noise { .. } => (),
-        Process::Map { ref mut input, .. } => *input = input_value,
+        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
         Process::Filter {
             ref mut input,
             ref mut filter,
         } => match idx {
-            0 => *input = input_value,
+            0 => set_or_add(input, input_value, add),
             1 => filter.update_coefficients(input_value, filter.q, SR),
             2 => filter.update_coefficients(filter.freq, input_value, SR),
-            _ => panic!("wrong index into filter: {}", idx),
+            _ => panic!("wrong index into {}: {}", name(process), idx),
+        },
+        Process::Wrap {
+            // todo use idx
+            ref mut input,
+            ref mut lo,
+            ref mut hi,
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => *lo = input_value,
+            2 => *hi = input_value,
+            _ => panic!("wrong index into {}: {}", name(process), idx),
+        },
+        Process::Delay {
+            ref mut input,
+            rec_idx,
+        } => {
+            if add {
+                input[*rec_idx] += input_value
+            } else {
+                input[*rec_idx] = input_value
+            }
+        }
+        Process::BitOr {
+            ref mut input1,
+            ref mut input2,
+        }
+        | Process::BitXOr {
+            ref mut input1,
+            ref mut input2,
+        }
+        | Process::BitAnd {
+            ref mut input1,
+            ref mut input2,
+        } => match idx {
+            0 => set_or_add(input1, input_value, add),
+            1 => set_or_add(input2, input_value, add),
+            _ => panic!("wrong index into {}: {}", name(process), idx),
+        },
+        Process::CurveLin {
+            ref mut input,
+            ref mut in_min,
+            ref mut in_max,
+            ref mut out_min,
+            ref mut out_max,
+            ref mut curve,
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => *in_min = input_value,
+            2 => *in_max = input_value,
+            3 => *out_min = input_value,
+            4 => *out_max = input_value,
+            5 => *curve = input_value,
+            _ => panic!("wrong index into {}: {}", name(process), idx),
         },
     }
 }
@@ -91,21 +253,92 @@ fn name(process: &Process) -> &'static str {
         Process::Map { .. } => "map",
         Process::Filter { .. } => "filter",
         Process::Noise { .. } => "noise",
+        Process::Wrap { .. } => "wrap",
+        Process::Softclip { .. } => "softclip",
+        Process::Delay { .. } => "delay",
+        Process::BitNeg { .. } => "bitneg",
+        Process::BitOr { .. } => "bitor",
+        Process::BitXOr { .. } => "bitxor",
+        Process::BitAnd { .. } => "bitand",
+        Process::CurveLin { .. } => "curvelin",
+        Process::Gauss { .. } => "gauss",
     }
+}
+
+fn clear_inputs(process: &mut Process) {
+    match process {
+        Process::Wrap { ref mut input, .. }
+        | Process::Filter { ref mut input, .. }
+        | Process::Map { ref mut input, .. }
+        | Process::CurveLin { ref mut input, .. }
+        | Process::Sin { ref mut input }
+        | Process::Gauss { ref mut input }
+        | Process::Softclip { ref mut input }
+        | Process::Mem { ref mut input, .. }
+        | Process::BitNeg { ref mut input } => *input = 0.0,
+        Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
+        Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+        Process::Constant { .. } => (),
+        Process::Noise { .. } => (),
+        Process::Delay {
+            ref mut input,
+            rec_idx,
+        } => input[*rec_idx] = 0.0,
+        Process::BitOr {
+            ref mut input1,
+            ref mut input2,
+        }
+        | Process::BitXOr {
+            ref mut input1,
+            ref mut input2,
+        }
+        | Process::BitAnd {
+            ref mut input1,
+            ref mut input2,
+        } => {
+            *input1 = 0.0;
+            *input2 = 0.0;
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum ClipType {
+    None,
+    SoftClip,
+    Wrap,
 }
 
 pub struct UGen {
     feedback_delay: bool,
     process: Process,
     value: Option<f64>,
+    sum_inputs: bool, // TODO implement
+    clip: ClipType,
 }
 
 impl UGen {
-    fn new(process: Process) -> UGen {
+    fn new(process: Process) -> Self {
         UGen {
             feedback_delay: false,
             process,
             value: None,
+            sum_inputs: true,
+            clip: ClipType::None,
+        }
+    }
+
+    pub fn clip(self, clip_type: ClipType) -> Self {
+        UGen {
+            clip: clip_type,
+            ..self
+        }
+    }
+
+    pub fn sum_inputs(self) -> Self {
+        UGen {
+            sum_inputs: true,
+            ..self
         }
     }
 }
@@ -116,8 +349,17 @@ impl UGen {
             Some(v) => v,
             None => {
                 let v = process(&mut self.process);
-                self.value = Some(v);
-                v
+                let output = match self.clip {
+                    ClipType::None => v,
+                    ClipType::SoftClip => v.tanh(),
+                    ClipType::Wrap => numerical::wrap(v, -1., 1.),
+                };
+                if DEBUG {
+                    println!("processing: [{:?}] with result {}", self, output)
+                }
+                self.value = Some(output);
+                clear_inputs(&mut self.process);
+                output
             }
         }
     }
@@ -127,7 +369,10 @@ impl UGen {
     }
 
     fn set_input(&mut self, idx: u32, value: f64) {
-        set_input(&mut self.process, idx, value)
+        if DEBUG {
+            println!("setting input of [{:?}] to {}", self, value)
+        }
+        set_input(&mut self.process, idx, value, self.sum_inputs)
     }
 }
 
@@ -135,11 +380,13 @@ impl fmt::Debug for UGen {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "UGenData: fb_del: {}, name: {}, value: {:?}, process: {:?}",
-            self.feedback_delay,
+            "UGenData: name: {}, value: {:?}, process: {:?}, clip: {:?}, sum_inputs: {:?}",
+            //self.feedback_delay,
             name(&self.process),
             self.value,
-            self.process
+            self.process,
+            self.clip,
+            self.sum_inputs
         )
     }
 }
@@ -149,11 +396,14 @@ pub fn add() -> UGen {
 }
 
 pub fn mul() -> UGen {
-    UGen::new(Process::Add { inputs: Vec::new() })
+    UGen::new(Process::Mul { inputs: Vec::new() })
 }
 
-pub fn mem() -> UGen {
-    UGen::new(Process::Mem { value: 0.0 })
+pub fn mem(init: f64) -> UGen {
+    UGen::new(Process::Mem {
+        input: init,
+        last_value: 0.0,
+    })
 }
 
 pub fn constant(v: f64) -> UGen {
@@ -162,6 +412,10 @@ pub fn constant(v: f64) -> UGen {
 
 pub fn sin() -> UGen {
     UGen::new(Process::Sin { input: 0.0 })
+}
+
+pub fn sin_osc(freq: f64) -> UGen {
+    UGen::new(Process::SinOsc { freq, phase: 0.0 })
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
@@ -203,11 +457,49 @@ fn map_process(func: fn(f64) -> f64) -> Process {
     }
 }
 
+pub fn wrap(lo: f64, hi: f64) -> UGen {
+    UGen::new(Process::Wrap { input: 0.0, lo, hi })
+}
+
+pub fn softclip() -> UGen {
+    UGen::new(Process::Softclip { input: 0.0 })
+}
+
+pub fn bitneg() -> UGen {
+    UGen::new(Process::BitNeg { input: 0.0 })
+}
+
+pub fn gauss() -> UGen {
+    UGen::new(Process::Gauss { input: 0.0 })
+}
+
+pub fn delay(n: usize) -> UGen {
+    UGen::new(Process::Delay {
+        input: vec![0.0; n],
+        rec_idx: 0,
+    })
+}
+pub fn curvelin(in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> UGen {
+    UGen::new(Process::CurveLin {
+        input: 0.0,
+        in_min,
+        in_max,
+        out_min,
+        out_max,
+        curve: -4.,
+    })
+}
+
 fn fb_delay() -> UGen {
     UGen {
         feedback_delay: true,
-        process: Process::Mem { value: 0.0 },
+        process: Process::Mem {
+            input: 0.0,
+            last_value: 0.0,
+        },
         value: None,
+        clip: ClipType::None,
+        sum_inputs: true,
     }
 }
 
@@ -263,6 +555,24 @@ pub fn filter_bank(
         })
         .collect();
     (input_sum, outputs)
+}
+
+pub fn rnd_connections(
+    g: &mut UGenGraph,
+    nodes: &[NodeIndex],
+    n_connections: u32,
+) -> Vec<EdgeIndex> {
+    let mut rng = thread_rng();
+    let mut shuffled = nodes.to_vec();
+    shuffled.shuffle(&mut rng);
+    let mut edges = Vec::new();
+    for _i in 0..n_connections {
+        shuffled.iter().for_each(|&idx| {
+            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), 0));
+            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, 0));
+        })
+    }
+    edges
 }
 
 // /// Inserts additional nodes and edges for recursive connections
@@ -347,9 +657,6 @@ pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex) {
     match graph.node_weight_mut(idx) {
         Some(ugen) => {
             let output = ugen.process();
-            if DEBUG {
-                println!("{:?}", ugen)
-            };
             let mut neighbors = graph.neighbors_directed(idx, Outgoing).detach();
             while let Some(neighbor_idx) = neighbors.next_node(graph) {
                 graph[neighbor_idx].set_input(0, output);

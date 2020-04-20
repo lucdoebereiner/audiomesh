@@ -5,6 +5,7 @@ name = "audiomesh"
 version = "0.1.0"
 dependencies = [
  "jack",
+ "petgraph",
  "processgraph",
 ]
 
