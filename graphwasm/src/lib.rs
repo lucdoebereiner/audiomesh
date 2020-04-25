@@ -37,7 +37,7 @@ fn make_state() -> UGenState {
     let idx2 = g.add_node(lpf(300., 3.));
     let out_idx = vec![idx1, idx2];
     let flow = establish_flow(&g, &out_idx);
-    g.add_edge(idx1, idx2, 0);
+    g.add_edge(idx1, idx2, (0, 1.0));
     UGenState {
         output: vec![0.0; 2],
         output_indices: out_idx,

@@ -35,7 +35,7 @@ pub extern "C" fn set_graph(state: *mut UGenState) {
     unsafe {
         let idx1 = (*state).graph.add_node(noise(100));
         let idx2 = (*state).graph.add_node(lpf(300., 3.));
-        (*state).graph.add_edge(idx1, idx2, 0);
+        (*state).graph.add_edge(idx1, idx2, (0, 1.0));
         (*state).output_indices = vec![idx1, idx2];
         (*state).output = vec![0.0; 2];
         (*state).flow = establish_flow(&(*state).graph, &(*state).output_indices);

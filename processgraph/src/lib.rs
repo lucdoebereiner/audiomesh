@@ -17,12 +17,13 @@ static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
 // TODO
-// rms
-// outside input
-// lag
 // variable delay times
 // strength of connection (factor)
 // input indices
+// kuramoto
+// outside input
+// lag
+// zip
 
 #[derive(Debug)]
 enum Process {
@@ -95,6 +96,25 @@ enum Process {
     Gauss {
         input: f64,
     },
+    LPF1 {
+        input: f64,
+        p: f64,
+        last_out: f64,
+    },
+    // RMS {
+    //     input: f64,
+    //     chain: Vec<Process>,
+    // },
+}
+
+// index always 0, weight alway 1
+fn process_chain(chain: &mut [Process], input_value: f64, add: bool) -> f64 {
+    let mut prev_output = input_value;
+    for p in chain {
+        set_input(p, 0, prev_output, add);
+        prev_output = process(p);
+    }
+    prev_output
 }
 
 fn process(process: &mut Process) -> f64 {
@@ -109,19 +129,8 @@ fn process(process: &mut Process) -> f64 {
             output
         }
         Process::Mul { inputs } => inputs.iter().product(),
-
         Process::Add { inputs } => inputs.iter().sum(),
-
-        // Process::Mem {
-        //     input,
-        //     ref mut last_value,
-        // } => {
-        //     let output = *last_value;
-        //     *last_value = *input;
-        //     output
-        // }
         Process::Mem { input, .. } => *input,
-
         Process::Constant { value } => *value,
         Process::Map { input, func } => (func)(*input),
         Process::Filter {
@@ -153,6 +162,15 @@ fn process(process: &mut Process) -> f64 {
             curve,
         } => numerical::curvelin(*input, *in_min, *in_max, *out_min, *out_max, *curve),
         Process::Gauss { input } => numerical::gauss_curve(*input),
+        Process::LPF1 {
+            input,
+            p,
+            ref mut last_out,
+        } => {
+            let output = ((1. - *p) * *input) + (*p * *last_out);
+            *last_out = output;
+            output
+        }
     }
 }
 
@@ -239,29 +257,71 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             5 => *curve = input_value,
             _ => panic!("wrong index into {}: {}", name(process), idx),
         },
+        Process::LPF1 {
+            ref mut input,
+            ref mut p,
+            ..
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => *p = lpf1_calc_p(input_value), // freq input
+            _ => panic!("wrong index into {}: {}", name(process), idx),
+        },
     }
 }
 
-fn name(process: &Process) -> &'static str {
+fn lpf1_calc_p(freq: f64) -> f64 {
+    1. - (2. * (freq / SR).tan())
+}
+
+#[derive(Clone)]
+pub enum InputType {
+    Any,
+    Audio,
+    Frequency,
+    Q,
+    Phase,
+}
+
+pub struct ProcessSpec {
+    name: String,
+    inputs: Vec<InputType>,
+}
+
+fn procspec(name: &'static str, inputs: Vec<InputType>) -> ProcessSpec {
+    ProcessSpec {
+        name: name.to_string(),
+        inputs,
+    }
+}
+
+fn name(process: &Process) -> String {
+    spec(process).name
+}
+
+fn spec(process: &Process) -> ProcessSpec {
     match process {
-        Process::Sin { .. } => "sin",
-        Process::SinOsc { .. } => "sinosc",
-        Process::Mul { .. } => "mul",
-        Process::Add { .. } => "add",
-        Process::Mem { .. } => "mem",
-        Process::Constant { .. } => "constant",
-        Process::Map { .. } => "map",
-        Process::Filter { .. } => "filter",
-        Process::Noise { .. } => "noise",
-        Process::Wrap { .. } => "wrap",
-        Process::Softclip { .. } => "softclip",
-        Process::Delay { .. } => "delay",
-        Process::BitNeg { .. } => "bitneg",
-        Process::BitOr { .. } => "bitor",
-        Process::BitXOr { .. } => "bitxor",
-        Process::BitAnd { .. } => "bitand",
-        Process::CurveLin { .. } => "curvelin",
-        Process::Gauss { .. } => "gauss",
+        Process::Sin { .. } => procspec("sin", vec![InputType::Phase]),
+        Process::SinOsc { .. } => procspec("sinosc", vec![InputType::Frequency]),
+        Process::Mul { .. } => procspec("mul", vec![InputType::Any]),
+        Process::Add { .. } => procspec("add", vec![InputType::Any]),
+        Process::Mem { .. } => procspec("mem", vec![InputType::Any]),
+        Process::Constant { .. } => procspec("constant", vec![InputType::Any]),
+        Process::Map { .. } => procspec("map", vec![InputType::Any]),
+        Process::Filter { .. } => procspec(
+            "filter",
+            vec![InputType::Audio, InputType::Frequency, InputType::Q],
+        ),
+        Process::Noise { .. } => procspec("noise", vec![]),
+        Process::Wrap { .. } => procspec("wrap", vec![InputType::Any; 2]),
+        Process::Softclip { .. } => procspec("softclip", vec![InputType::Any]),
+        Process::Delay { .. } => procspec("delay", vec![InputType::Any]),
+        Process::BitNeg { .. } => procspec("bitneg", vec![InputType::Any]),
+        Process::BitOr { .. } => procspec("bitor", vec![InputType::Any; 2]),
+        Process::BitXOr { .. } => procspec("bitxor", vec![InputType::Any; 2]),
+        Process::BitAnd { .. } => procspec("bitand", vec![InputType::Any; 2]),
+        Process::CurveLin { .. } => procspec("curvelin", vec![InputType::Any; 6]),
+        Process::Gauss { .. } => procspec("gauss", vec![InputType::Audio]),
+        Process::LPF1 { .. } => procspec("lpf1", vec![InputType::Audio, InputType::Frequency]),
     }
 }
 
@@ -275,6 +335,7 @@ fn clear_inputs(process: &mut Process) {
         | Process::Gauss { ref mut input }
         | Process::Softclip { ref mut input }
         | Process::Mem { ref mut input, .. }
+        | Process::LPF1 { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
@@ -309,11 +370,14 @@ pub enum ClipType {
     Wrap,
 }
 
+// index and weight
+pub type Connection = (u32, f64);
+
 pub struct UGen {
     feedback_delay: bool,
     process: Process,
     value: Option<f64>,
-    sum_inputs: bool, // TODO implement
+    sum_inputs: bool,
     clip: ClipType,
 }
 
@@ -368,11 +432,19 @@ impl UGen {
         self.value = None
     }
 
-    fn set_input(&mut self, idx: u32, value: f64) {
+    // fn set_input(&mut self, idx: u32, value: f64) {
+    //     if DEBUG {
+    //         println!("setting input of [{:?}] to {}", self, value)
+    //     }
+    //     set_input(&mut self.process, idx, value, self.sum_inputs)
+    // }
+
+    fn set_input(&mut self, connection: Connection, value: f64) {
+        let (idx, weight) = connection;
         if DEBUG {
             println!("setting input of [{:?}] to {}", self, value)
         }
-        set_input(&mut self.process, idx, value, self.sum_inputs)
+        set_input(&mut self.process, idx, value * weight, self.sum_inputs)
     }
 }
 
@@ -450,11 +522,11 @@ fn sinosc(freq: f64) -> Process {
     }
 }
 
-fn map_process(func: fn(f64) -> f64) -> Process {
-    Process::Map {
+fn map_process(func: fn(f64) -> f64) -> UGen {
+    UGen::new(Process::Map {
         input: 0.0,
         func: func,
-    }
+    })
 }
 
 pub fn wrap(lo: f64, hi: f64) -> UGen {
@@ -471,6 +543,14 @@ pub fn bitneg() -> UGen {
 
 pub fn gauss() -> UGen {
     UGen::new(Process::Gauss { input: 0.0 })
+}
+
+pub fn lpf1(freq: f64) -> UGen {
+    UGen::new(Process::LPF1 {
+        input: 0.0,
+        p: lpf1_calc_p(freq),
+        last_out: 0.0,
+    })
 }
 
 pub fn delay(n: usize) -> UGen {
@@ -503,10 +583,28 @@ fn fb_delay() -> UGen {
     }
 }
 
-pub type UGenGraph = StableGraph<UGen, u32, Directed, DefaultIx>;
+pub type UGenGraph = StableGraph<UGen, Connection, Directed, DefaultIx>;
 
 pub fn new_graph() -> UGenGraph {
     StableGraph::with_capacity(100, 100)
+}
+
+// enum UGenNode {
+//     UniNode(NodeIndex),
+//     NetworkNode(NodeIndex, NodeIndex),
+// }
+
+// pub fn add_process(g: &mut UGenGraph, UGen) -> UGenNode {
+
+// }
+
+pub fn rms(g: &mut UGenGraph) -> (NodeIndex, NodeIndex) {
+    let square = g.add_node(map_process(|x| x * x));
+    let filter = g.add_node(lpf1(10.));
+    let sqrt = g.add_node(map_process(|x| x.sqrt()));
+    g.add_edge(square, filter, (0, 1.0));
+    g.add_edge(filter, sqrt, (0, 1.0));
+    (square, sqrt)
 }
 
 pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, NodeIndex) {
@@ -514,9 +612,9 @@ pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, No
     let low2 = g.add_node(lpf(f2, q));
     let high1 = g.add_node(hpf(f1, q));
     let high2 = g.add_node(hpf(f1, q));
-    g.add_edge(low1, low2, 0);
-    g.add_edge(low2, high1, 0);
-    g.add_edge(high1, high2, 0);
+    g.add_edge(low1, low2, (0, 1.0));
+    g.add_edge(low2, high1, (0, 1.0));
+    g.add_edge(high1, high2, (0, 1.0));
     (low1, high2)
 }
 
@@ -550,7 +648,7 @@ pub fn filter_bank(
     let outputs = filters
         .iter()
         .map(|(input, output)| {
-            g.add_edge(input_sum, *input, 0);
+            g.add_edge(input_sum, *input, (0, 1.0));
             *output
         })
         .collect();
@@ -568,8 +666,10 @@ pub fn rnd_connections(
     let mut edges = Vec::new();
     for _i in 0..n_connections {
         shuffled.iter().for_each(|&idx| {
-            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), 0));
-            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, 0));
+            let w1 = rng.gen_range(0.0, 1.0);
+            let w2 = rng.gen_range(0.0, 1.0);
+            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), (0, w1)));
+            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, w2)));
         })
     }
     edges
@@ -659,7 +759,14 @@ pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex) {
             let output = ugen.process();
             let mut neighbors = graph.neighbors_directed(idx, Outgoing).detach();
             while let Some(neighbor_idx) = neighbors.next_node(graph) {
-                graph[neighbor_idx].set_input(0, output);
+                let edge = graph
+                    .find_edge(idx, neighbor_idx)
+                    .and_then(|e| graph.edge_weight(e))
+                    .map(|e| *e); // deref to stop borrowing
+                match edge {
+                    Some(connection) => graph[neighbor_idx].set_input(connection, output),
+                    None => (),
+                }
             }
         }
         None => (),
