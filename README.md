@@ -10,7 +10,9 @@ There are currently three packages in this workspace:
 
 ## Requirements
 
-* rust (with target wasm32-unknown-unknown)
+
+* rust nightly (with target wasm32-unknown-unknown) 
+`rustup default nightly`
 * jack audio including dev lib
 * SuperCollider (+ source) for `graphugen`
 * python for `http.server`

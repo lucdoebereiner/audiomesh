@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
 use std::f64;
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct BiquadCoefficients {
     a0: f64,
     a1: f64,
@@ -10,14 +11,14 @@ struct BiquadCoefficients {
     b2: f64,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum FilterType {
     BLPF,
     BHPF,
     BBPF,
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct BiquadState {
     x1: f64,
     x2: f64,
@@ -49,7 +50,7 @@ impl BiquadCoefficients {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Biquad {
     coefficients: BiquadCoefficients,
     state: BiquadState,

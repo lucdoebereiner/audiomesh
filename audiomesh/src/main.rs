@@ -1,99 +1,216 @@
+#![feature(proc_macro_hygiene, decl_macro)]
+
+// TODO
+// - export/load graph descriptions
+// - return graph on update functions (?)
+// - add special delays endpoint
+// - output volume
+
+// DONE
+// - get graph via serde/api
+// - set listening outputs
+// - get output indices
+// - randomize check if nodeexists
+// - edge operations via api
+
+#[macro_use]
+extern crate rocket;
+
+use crossbeam_channel::bounded;
+use crossbeam_channel::{Receiver, Sender};
 use jack;
-use petgraph::dot::{Config, Dot};
-//use petgraph::stable_graph::next_node;
-use processgraph::numerical;
+use rocket_contrib::json::*;
+//use petgraph::dot::{Config, Dot};
+use petgraph::stable_graph::*;
+use serde_json;
+//use processgraph::numerical;
 use processgraph::*;
-use std::{f32, thread, time};
+use rocket::State;
+//use std::sync::Mutex;
+//use std::{f32, thread, time};
+use rocket::response::content;
+use std::mem;
+
+enum UpdateMessage {
+    Randomize,
+    DumpGraph,
+    DumpOutputs,
+    AddEdge(NodeIndex, NodeIndex, f64, usize),
+    RemoveNode(usize),
+    AddNode(Process),
+    RemoveEdge(usize),
+    SetOutput(NodeIndex, usize),
+}
+
+enum ReturnMessage {
+    Graph(String),
+    Outputs(String),
+}
+
+struct Globals {
+    //    graph: &'a UGenGraph,
+    sender: Sender<UpdateMessage>,
+    receiver: Receiver<ReturnMessage>,
+}
+
+#[delete("/node/<id>")]
+fn remove_node(id: usize, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::RemoveNode(id)).unwrap()
+}
+
+#[post("/node", data = "<process>")]
+fn add_node(process: Json<Process>, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::AddNode(process.into_inner()))
+        .unwrap()
+}
+
+#[put("/node/<id>/output/<output>")]
+fn node_output(id: usize, output: usize, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetOutput(NodeIndex::new(id), output))
+        .unwrap()
+}
+
+#[delete("/edge/<id>")]
+fn remove_edge(id: usize, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::RemoveEdge(id)).unwrap()
+}
+
+#[post("/edge/<id_from>/<id_to>/<weight>/<index>")]
+fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::AddEdge(
+            NodeIndex::new(id_from),
+            NodeIndex::new(id_to),
+            weight,
+            index,
+        ))
+        .unwrap()
+}
+
+#[put("/randomize")]
+fn randomize(state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::Randomize).unwrap()
+}
+
+#[get("/outputs")]
+fn get_outputs(state: State<Globals>) -> content::Json<String> {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    let receiver = &shared_data.receiver;
+    sender.send(UpdateMessage::DumpOutputs).unwrap();
+    match receiver.recv().unwrap() {
+        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) => content::Json(g),
+    }
+}
+
+#[get("/graph")]
+fn get_graph(state: State<Globals>) -> content::Json<String> {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    let receiver = &shared_data.receiver;
+    sender.send(UpdateMessage::DumpGraph).unwrap();
+    match receiver.recv().unwrap() {
+        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) => content::Json(g),
+    }
+}
+
+// #[post("/stop")]
+// fn stop(state: State<AudioEngineState>) {
+//     let shared_data: &AudioEngineState = state.inner();
+//     let mut on = shared_data.on.lock().unwrap();
+//     *on = false
+// }
+
+fn handle_messages(
+    msg: UpdateMessage,
+    graph: &mut UGenGraph,
+    //    nodes: &mut Vec<NodeIndex>,
+    flow: &mut Vec<NodeIndex>,
+    output_indices: &mut [NodeIndex],
+    sender: &Sender<ReturnMessage>,
+) {
+    match msg {
+        UpdateMessage::Randomize => {
+            graph.clear_edges();
+            let nodes: Vec<NodeIndex> = graph.node_indices().collect();
+            rnd_connections(graph, &nodes, 1);
+            let new_flow = establish_flow(graph, output_indices);
+            mem::replace(flow, new_flow);
+        }
+        UpdateMessage::DumpGraph => {
+            let j = serde_json::to_string(graph).unwrap();
+            sender.send(ReturnMessage::Graph(j)).unwrap()
+        }
+        UpdateMessage::DumpOutputs => {
+            let j = serde_json::to_string(output_indices).unwrap();
+            sender.send(ReturnMessage::Outputs(j)).unwrap()
+        }
+        UpdateMessage::RemoveNode(id) => {
+            graph.remove_node(NodeIndex::new(id));
+        }
+        UpdateMessage::RemoveEdge(id) => {
+            graph.remove_edge(EdgeIndex::new(id));
+        }
+        UpdateMessage::SetOutput(node, output) => output_indices[output] = node,
+        UpdateMessage::AddNode(node) => {
+            let _idx = graph.add_node(UGen::new(node));
+        }
+        UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
+            let _idx = graph.add_edge(node_from, node_to, (index as u32, weight));
+        }
+    }
+}
 
 fn main() {
+    let (tx, rx): (Sender<UpdateMessage>, Receiver<UpdateMessage>) = bounded(100);
+
+    let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
+
     let mut g = new_graph();
 
     let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    //    let mem1 = g.add_node(mem(0.5));
-    //    let mem2 = g.add_node(mem(-0.1).softclip());
-    let del1 = g.add_node(delay(29101).clip(ClipType::Wrap));
-    let del2 = g.add_node(delay(300).clip(ClipType::SoftClip));
-    let del3 = g.add_node(delay(82122).clip(ClipType::Wrap));
-    let sin = g.add_node(sin());
+    //    let del1 = g.add_node(delay(29101).clip(ClipType::Wrap));
+    //    let del2 = g.add_node(delay(300).clip(ClipType::SoftClip));
+    //    let del3 = g.add_node(delay(82122).clip(ClipType::Wrap));
+    let del1 = g.add_node(delay(2).clip(ClipType::Wrap));
+    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
+    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     let sum = g.add_node(add().clip(ClipType::Wrap));
     let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    let mul = g.add_node(mul().clip(ClipType::Wrap));
-    let wrap1 = g.add_node(wrap(-0.5, 0.5));
-    //    let wrap2 = g.add_node(wrap(-0.5, 0.5));
-    let filter = g.add_node(lpf(2.0, 6.0));
+    let filter = g.add_node(lpf(1.0, 6.0));
     let filter2 = g.add_node(hpf(1000.0, 3.0));
     let gauss = g.add_node(gauss());
-    let curve = g.add_node(curvelin(-1.0, 1.0, 1.0, -1.0));
-    //  let osc = g.add_node(sin_osc(300.0));
-    // let linexp = g.add_node(linexp(-1., 1., 1., -1.));
+    //    let curve = g.add_node(curvelin(-1.0, 1.0, 1.0, -1.0));
 
-    //    let nodes = vec![mem1, sin, del1, filter, sum, mul, sum2, del2];
-    let nodes = vec![
-        mem1, del1, del3, filter2, filter, sum, curve, gauss, sum2, del2,
-    ];
+    let nodes = vec![mem1, del1, del3, filter2, filter, sum, gauss, sum2, del2];
     rnd_connections(&mut g, &nodes, 1);
-    // g.add_edge(mem1, mul, 0);
-    // g.add_edge(sum, mem1, 0);
-    // g.add_edge(mul, wrap1, 0);
-    // g.add_edge(wrap1, sum, 0);
-    let output_indices = vec![sum, sum2];
+    let mut output_indices = vec![sum, sum2];
 
-    //    let noise_idx = g.add_node(noise(92));
-    //  let (fbank_input, output_indices) = filter_bank(&mut g, 100, 20., 10000., 3.);
-    //g.add_edge(noise_idx, fbank_input, 0);
-    //let out_idx = g.add_node(lpf(1300., 3.));
-
-    //    let mut g: UGenGraph = StableGraph::with_capacity(1000, 1000);
-
-    //  let noise_idx = g.add_node(UGen::new(noise(92)));
-    //    let out_idx = g.add_node(UGen::new(filter(filters::FilterType::BLPF, 1300., 3.)));
-
-    // let sinosc1_idx = g.add_node(UGen::new(sinosc(100.)));
-    // let sinosc2_idx = g.add_node(UGen::new(sinosc(100.)));
-    // let mul1_idx = g.add_node(UGen::new(map_process(|x| (x * 100.))));
-    // let add1_idx = g.add_node(UGen::new(map_process(|x| (x + 10.))));
-    // let mul2_idx = g.add_node(UGen::new(map_process(|x| (x * 120.))));
-    //let add2_idx = g.add_node(UGen::new(map_process(|x| (x + 20.))));
-    // let sum_idx = g.add_node(UGen::new(add()));
-    // let out_idx = g.add_node(UGen::new(map_process(|x| (x * 0.5))));
-
-    // g.add_edge(sinosc1_idx, mul1_idx, 0);
-    // g.add_edge(mul1_idx, add1_idx, 0);
-    // g.add_edge(add1_idx, sinosc2_idx, 0);
-
-    // g.add_edge(sinosc2_idx, mul2_idx, 0);
-    // g.add_edge(mul2_idx, add2_idx, 0);
-    // g.add_edge(add2_idx, sinosc1_idx, 0);
-
-    // g.add_edge(sinosc1_idx, sum_idx, 0);
-    // g.add_edge(sinosc2_idx, sum_idx, 0);
-    // g.add_edge(sum_idx, out_idx, 0);
-
-    // let const_idx = g.add_node(UGen::new(constant(1.0)));
-    // let map1_idx = g.add_node(UGen::new(map_process(|x| (x + 3.))));
-    // let map2_idx = g.add_node(UGen::new(map_process(|x| (x * 2.))));
-    // let map3_idx = g.add_node(UGen::new(map_process(|x| (x - 1.))));
-    // let out_idx = g.add_node(UGen::new(add()));
-    // g.add_edge(const_idx, map1_idx, 0);
-    // g.add_edge(const_idx, map2_idx, 0);
-    // g.add_edge(const_idx, map3_idx, 0);
-    // g.add_edge(map1_idx, out_idx, 0);
-    // g.add_edge(map2_idx, out_idx, 0);
-    // g.add_edge(map3_idx, out_idx, 0);
-
-    //    insert_fb_nodes(&mut g, Vec::new(), vec![out_idx]);
-
-    // let output_indices = vec![out_idx, noise_idx];
-    let flow = establish_flow(&g, &output_indices);
+    let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();
     let mut frame_buffer = vec![0.0; n_outs];
 
-    println!("flow: {:?}", flow);
-    //    println!("{:?}", Dot::with_config(&g, &[Config::EdgeNoLabel]));
-    // for _i in 0..(64 * 40) {
+    // println!("flow: {:?}", flow);
+    // println!("{:?}", Dot::with_config(&g, &[Config::EdgeNoLabel]));
+    // for i in 0..(64 * 100) {
+    //     println!("\n\n");
     //     process_graph(&mut g, &flow, &output_indices, &mut frame_buffer);
     //     println!("result: {:?}", frame_buffer);
-    //    }
+    // }
 
     let (client, _status) = jack::Client::new("gengraph", jack::ClientOptions::empty()).unwrap();
 
@@ -110,6 +227,20 @@ fn main() {
 
     let process = jack::ClosureProcessHandler::new(
         move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+            // get input messages
+            let polling = false;
+
+            while let Ok(update) = rx.try_recv() {
+                handle_messages(
+                    update,
+                    &mut g,
+                    //                    &mut nodes,
+                    &mut flow,
+                    &mut output_indices,
+                    &s_ret,
+                );
+            }
+
             // Get output buffer
             let mut outs: Vec<&mut [f32]> =
                 out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
@@ -117,7 +248,7 @@ fn main() {
             // Write output
             for i in 0..ps.n_frames() {
                 process_graph(&mut g, &flow, &output_indices, &mut frame_buffer);
-                if i == 0 {
+                if i == 0 && polling {
                     println!("{}", frame_buffer[0]);
                 }
 
@@ -131,10 +262,30 @@ fn main() {
         },
     );
 
-    // 4. activate the client
     let _active_client = client.activate_async((), process).unwrap();
 
-    loop {
-        thread::sleep(time::Duration::from_millis(500));
-    }
+    // loop {
+    //     thread::sleep(time::Duration::from_millis(500));
+    // }
+
+    rocket::ignite()
+        .manage(Globals {
+            //            graph: &g,
+            sender: tx,
+            receiver: r_ret,
+        })
+        .mount(
+            "/",
+            routes![
+                randomize,
+                get_graph,
+                remove_node,
+                remove_edge,
+                node_output,
+                add_node,
+                get_outputs,
+                add_edge
+            ],
+        )
+        .launch();
 }

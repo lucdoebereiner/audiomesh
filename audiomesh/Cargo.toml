@@ -9,4 +9,12 @@ edition = "2018"
 [dependencies]
 jack = "*"
 processgraph = { path = "../processgraph" }
-petgraph = "*"
+petgraph = { version = "*", features = ["serde-1"] }
+serde_json = { version = "1.0" }
+rocket = "0.4.4"
+crossbeam-channel = "*"
+
+[dependencies.rocket_contrib]
+version = "0.4.4"
+default-features = false
+features = ["json"]

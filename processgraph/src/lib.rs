@@ -1,5 +1,6 @@
 mod filters;
-use petgraph::stable_graph::StableGraph;
+//use petgraph::stable_graph::StableGraph;
+//use petgraph::graph::Graph;
 use petgraph::stable_graph::*;
 use petgraph::Directed;
 use petgraph::Direction::*;
@@ -10,6 +11,7 @@ use std::fmt;
 pub mod numerical;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 
 const PI: f64 = f64::consts::PI;
 const SR: f64 = 44100f64;
@@ -17,16 +19,21 @@ static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
 // TODO
+// move debug flag to main
+// softclip on filter input optional
+// process with inner chained processes (rms, filterbank etc)
 // variable delay times
-// strength of connection (factor)
 // input indices
 // kuramoto
 // outside input
 // lag
 // zip
 
-#[derive(Debug)]
-enum Process {
+// not necessary
+// remember node index in ugen
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Process {
     Sin {
         input: f64,
     },
@@ -44,10 +51,10 @@ enum Process {
         input: f64,
         last_value: f64,
     },
-    Map {
-        input: f64,
-        func: fn(f64) -> f64,
-    },
+    // Map {
+    //     input: f64,
+    //     func: fn(f64) -> f64,
+    // },
     Constant {
         value: f64,
     },
@@ -55,9 +62,9 @@ enum Process {
         input: f64,
         filter: filters::Biquad,
     },
-    Noise {
-        rng: SmallRng,
-    },
+    // Noise {
+    //     rng: SmallRng,
+    // },
     Wrap {
         input: f64,
         lo: f64,
@@ -67,6 +74,7 @@ enum Process {
         input: f64,
     },
     Delay {
+        #[serde(skip_serializing)]
         input: Vec<f64>,
         rec_idx: usize,
     },
@@ -132,12 +140,12 @@ fn process(process: &mut Process) -> f64 {
         Process::Add { inputs } => inputs.iter().sum(),
         Process::Mem { input, .. } => *input,
         Process::Constant { value } => *value,
-        Process::Map { input, func } => (func)(*input),
+        //        Process::Map { input, func } => (func)(*input),
         Process::Filter {
             input,
             ref mut filter,
-        } => filter.process(*input),
-        Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
+        } => filter.process((*input).tanh()),
+        //        Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
         Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
         Process::Softclip { input } => input.tanh(),
         Process::Delay {
@@ -193,8 +201,10 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
             inputs.push(input_value)
         }
-        Process::Constant { .. } | Process::Noise { .. } => (),
-        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
+        Process::Constant { .. }
+	//| Process::Noise { .. }
+	=> (),
+        //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
         Process::Filter {
             ref mut input,
             ref mut filter,
@@ -273,7 +283,7 @@ fn lpf1_calc_p(freq: f64) -> f64 {
     1. - (2. * (freq / SR).tan())
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum InputType {
     Any,
     Audio,
@@ -282,6 +292,7 @@ pub enum InputType {
     Phase,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProcessSpec {
     name: String,
     inputs: Vec<InputType>,
@@ -306,12 +317,12 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::Add { .. } => procspec("add", vec![InputType::Any]),
         Process::Mem { .. } => procspec("mem", vec![InputType::Any]),
         Process::Constant { .. } => procspec("constant", vec![InputType::Any]),
-        Process::Map { .. } => procspec("map", vec![InputType::Any]),
+        //        Process::Map { .. } => procspec("map", vec![InputType::Any]),
         Process::Filter { .. } => procspec(
             "filter",
             vec![InputType::Audio, InputType::Frequency, InputType::Q],
         ),
-        Process::Noise { .. } => procspec("noise", vec![]),
+        //        Process::Noise { .. } => procspec("noise", vec![]),
         Process::Wrap { .. } => procspec("wrap", vec![InputType::Any; 2]),
         Process::Softclip { .. } => procspec("softclip", vec![InputType::Any]),
         Process::Delay { .. } => procspec("delay", vec![InputType::Any]),
@@ -329,7 +340,7 @@ fn clear_inputs(process: &mut Process) {
     match process {
         Process::Wrap { ref mut input, .. }
         | Process::Filter { ref mut input, .. }
-        | Process::Map { ref mut input, .. }
+//        | Process::Map { ref mut input, .. }
         | Process::CurveLin { ref mut input, .. }
         | Process::Sin { ref mut input }
         | Process::Gauss { ref mut input }
@@ -340,7 +351,7 @@ fn clear_inputs(process: &mut Process) {
         Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
         Process::Constant { .. } => (),
-        Process::Noise { .. } => (),
+//        Process::Noise { .. } => (),
         Process::Delay {
             ref mut input,
             rec_idx,
@@ -363,7 +374,7 @@ fn clear_inputs(process: &mut Process) {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClipType {
     None,
     SoftClip,
@@ -373,6 +384,7 @@ pub enum ClipType {
 // index and weight
 pub type Connection = (u32, f64);
 
+#[derive(Serialize, Deserialize)]
 pub struct UGen {
     feedback_delay: bool,
     process: Process,
@@ -382,7 +394,7 @@ pub struct UGen {
 }
 
 impl UGen {
-    fn new(process: Process) -> Self {
+    pub fn new(process: Process) -> Self {
         UGen {
             feedback_delay: false,
             process,
@@ -509,11 +521,11 @@ pub fn bpf(freq: f64, q: f64) -> UGen {
     UGen::new(filter(filters::FilterType::BBPF, freq, q))
 }
 
-pub fn noise(seed: u64) -> UGen {
-    UGen::new(Process::Noise {
-        rng: SeedableRng::seed_from_u64(seed),
-    })
-}
+// pub fn noise(seed: u64) -> UGen {
+//     UGen::new(Process::Noise {
+//         rng: SeedableRng::seed_from_u64(seed),
+//     })
+// }
 
 fn sinosc(freq: f64) -> Process {
     Process::SinOsc {
@@ -522,12 +534,12 @@ fn sinosc(freq: f64) -> Process {
     }
 }
 
-fn map_process(func: fn(f64) -> f64) -> UGen {
-    UGen::new(Process::Map {
-        input: 0.0,
-        func: func,
-    })
-}
+// fn map_process(func: fn(f64) -> f64) -> UGen {
+//     UGen::new(Process::Map {
+//         input: 0.0,
+//         func: func,
+//     })
+// }
 
 pub fn wrap(lo: f64, hi: f64) -> UGen {
     UGen::new(Process::Wrap { input: 0.0, lo, hi })
@@ -598,14 +610,14 @@ pub fn new_graph() -> UGenGraph {
 
 // }
 
-pub fn rms(g: &mut UGenGraph) -> (NodeIndex, NodeIndex) {
-    let square = g.add_node(map_process(|x| x * x));
-    let filter = g.add_node(lpf1(10.));
-    let sqrt = g.add_node(map_process(|x| x.sqrt()));
-    g.add_edge(square, filter, (0, 1.0));
-    g.add_edge(filter, sqrt, (0, 1.0));
-    (square, sqrt)
-}
+// pub fn rms(g: &mut UGenGraph) -> (NodeIndex, NodeIndex) {
+//     let square = g.add_node(map_process(|x| x * x));
+//     let filter = g.add_node(lpf1(10.));
+//     let sqrt = g.add_node(map_process(|x| x.sqrt()));
+//     g.add_edge(square, filter, (0, 1.0));
+//     g.add_edge(filter, sqrt, (0, 1.0));
+//     (square, sqrt)
+// }
 
 pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, NodeIndex) {
     let low1 = g.add_node(lpf(f2, q));
@@ -666,8 +678,8 @@ pub fn rnd_connections(
     let mut edges = Vec::new();
     for _i in 0..n_connections {
         shuffled.iter().for_each(|&idx| {
-            let w1 = rng.gen_range(0.0, 1.0);
-            let w2 = rng.gen_range(0.0, 1.0);
+            let w1 = rng.gen_range(0.7, 1.0);
+            let w2 = rng.gen_range(0.7, 1.0);
             edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), (0, w1)));
             edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, w2)));
         })

@@ -11,6 +11,7 @@ crate-type = ["cdylib", "staticlib", "lib"]
 
 [dependencies]
 petgraph = "0.5.0"
+serde = { version = "1.0", features = ["derive"] }
 
 [dependencies.rand]
 version = "0.7"
