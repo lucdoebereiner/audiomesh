@@ -19,7 +19,11 @@ extern crate rocket;
 use crossbeam_channel::bounded;
 use crossbeam_channel::{Receiver, Sender};
 use jack;
+use rocket::http::Method;
 use rocket_contrib::json::*;
+use rocket_cors;
+use rocket_cors::{AllowedHeaders, Error};
+
 //use petgraph::dot::{Config, Dot};
 use petgraph::stable_graph::*;
 use serde_json;
@@ -48,7 +52,6 @@ enum ReturnMessage {
 }
 
 struct Globals {
-    //    graph: &'a UGenGraph,
     sender: Sender<UpdateMessage>,
     receiver: Receiver<ReturnMessage>,
 }
@@ -99,7 +102,7 @@ fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: Stat
         .unwrap()
 }
 
-#[put("/randomize")]
+#[post("/randomize")]
 fn randomize(state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
@@ -176,6 +179,19 @@ fn handle_messages(
 }
 
 fn main() {
+    // You can also deserialize this
+    let cors = rocket_cors::CorsOptions {
+        allowed_methods: vec![Method::Get, Method::Put, Method::Post, Method::Delete]
+            .into_iter()
+            .map(From::from)
+            .collect(),
+        allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
+        allow_credentials: true,
+        ..Default::default()
+    }
+    .to_cors()
+    .unwrap();
+
     let (tx, rx): (Sender<UpdateMessage>, Receiver<UpdateMessage>) = bounded(100);
 
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
@@ -287,5 +303,6 @@ fn main() {
                 add_edge
             ],
         )
+        .attach(cors)
         .launch();
 }
