@@ -32,7 +32,7 @@ main =
 
 
 type Msg
-    = GotGraph (Result Http.Error Graph)
+    = GotGraph (Result Http.Error BackendGraph)
     | GetGraph
     | Randomize
     | VoidReturn (Result Http.Error ())

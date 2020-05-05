@@ -5387,7 +5387,7 @@ var $author$project$Main$VoidReturn = function (a) {
 	return {$: 'VoidReturn', a: a};
 };
 var $author$project$Api$baseUrl = 'http://localhost:8001';
-var $author$project$ProcessGraph$Graph = F3(
+var $author$project$ProcessGraph$BackendGraph = F3(
 	function (nodes, node_holes, edges) {
 		return {edges: edges, node_holes: node_holes, nodes: nodes};
 	});
@@ -5601,7 +5601,7 @@ var $author$project$ProcessGraph$decodeGraph = A3(
 			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
 			'nodes',
 			$elm$json$Json$Decode$list($author$project$ProcessGraph$decodeUGen),
-			$elm$json$Json$Decode$succeed($author$project$ProcessGraph$Graph))));
+			$elm$json$Json$Decode$succeed($author$project$ProcessGraph$BackendGraph))));
 var $elm$json$Json$Decode$decodeString = _Json_runOnString;
 var $elm$http$Http$BadStatus_ = F2(
 	function (a, b) {
