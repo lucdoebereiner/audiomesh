@@ -9,12 +9,12 @@ import List exposing (range)
 import ProcessGraph exposing (BackendGraph, Link, UGen, defaultUGen, mkGraph, ugenLabel)
 import Scale exposing (SequentialScale)
 import Scale.Color
-import TypedSvg exposing (a, circle, ellipse, g, line, polygon, svg, text_, title)
-import TypedSvg.Attributes exposing (class, fill, fontFamily, fontSize, fontWeight, height, points, stroke, textAnchor, viewBox, width, xlinkHref)
+import TypedSvg exposing (a, circle, ellipse, g, line, polygon, polyline, rect, svg, text_, title)
+import TypedSvg.Attributes exposing (class, fill, fontFamily, fontSize, fontWeight, height, noFill, points, stroke, textAnchor, viewBox, width, xlinkHref)
 import TypedSvg.Attributes.InPx exposing (cx, cy, r, rx, ry, strokeWidth, x, x1, x2, y, y1, y2)
 import TypedSvg.Core exposing (Svg, text)
 import TypedSvg.Events exposing (onClick)
-import TypedSvg.Types exposing (AnchorAlignment(..), FontWeight(..), Length(..), Paint(..))
+import TypedSvg.Types exposing (AnchorAlignment(..), FontWeight(..), Length(..), Paint(..), px)
 
 
 
@@ -46,6 +46,7 @@ init contentGraph dist ( w, h ) =
         links =
             graph
                 |> Graph.edges
+                |> List.filter (\{ from, to, label } -> from /= to)
                 |> List.map
                     (\{ from, to, label } ->
                         { source = from
@@ -55,9 +56,8 @@ init contentGraph dist ( w, h ) =
                         }
                     )
 
-        link { from, to } =
-            ( from, to )
-
+        -- link { from, to } =
+        --     ( from, to )
         forces =
             [ Force.customLinks 1 links
 
@@ -101,16 +101,72 @@ linkElement graph edge =
 
         target =
             retrieveEntity <| Graph.get edge.to graph
+
+        link =
+            edge.label
     in
-    line
-        [ strokeWidth 1
-        , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
-        , x1 source.x
-        , y1 source.y
-        , x2 target.x
-        , y2 target.y
-        ]
-        []
+    if source == target then
+        circle
+            [ strokeWidth (3 * (edge.label.strength ^ 2))
+            , stroke (Paint Color.black)
+            , noFill
+            , cx source.x
+            , cy (source.y - 25)
+            , r 40
+            ]
+            []
+
+    else
+        let
+            ( centerX, centerY ) =
+                ( source.x * 0.35 + target.x * 0.65, source.y * 0.35 + target.y * 0.65 )
+
+            ( dx, dy ) =
+                ( source.x - target.x, source.y - target.y )
+
+            dist =
+                sqrt (dx * dx + dy * dy)
+
+            ( x3, y3 ) =
+                ( centerX + (dy / dist * 10), centerY - (dx / dist * 10) )
+
+            ( centerOffsetX, centerOffsetY ) =
+                ( centerX - (dx / dist * 30), centerY - (dy / dist * 30) )
+
+            _ =
+                Debug.log "graph" graph
+
+            _ =
+                Debug.log "" [ ( source.x, source.y ), ( target.x, target.y ), ( centerX, centerY ), ( x3, y3 ) ]
+        in
+        g []
+            [ line
+                [ strokeWidth (3 * (edge.label.strength ^ 2))
+                , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
+                , x1 source.x
+                , y1 source.y
+                , x2 target.x
+                , y2 target.y
+                ]
+                []
+            , polyline
+                [ strokeWidth 1
+                , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
+                , points [ ( centerOffsetX, centerOffsetY ), ( x3, y3 ), ( centerX, centerY ) ]
+                ]
+                []
+            ]
+
+
+
+-- polyline
+--     [ strokeWidth 1
+--     , stroke (Paint Color.black)
+--     --<| Scale.convert colorScale source.x
+--     , points
+--         [ ( source.x, source.y ), ( target.x, target.y ), ( centerX, centerY ), ( x3, y3 ) ]
+--     ]
+--     []
 
 
 hexagon ( x, y ) size attrs =
@@ -150,7 +206,7 @@ nodeElement selectedString node =
     in
     g []
         [ ellipse
-            [ rx 110
+            [ rx 90
             , ry 22
             , cx node.label.x
             , cy node.label.y
@@ -161,7 +217,7 @@ nodeElement selectedString node =
         , text_ [ textAnchor AnchorMiddle, x node.label.x, y (node.label.y + 5) ]
             [ a
                 [ xlinkHref ("#" ++ thisNode)
-                , fontSize (Em 1.2)
+                , fontSize (Em 1)
                 , fontFamily [ "Inconsolata" ]
                 , fontWeight weight
                 ]

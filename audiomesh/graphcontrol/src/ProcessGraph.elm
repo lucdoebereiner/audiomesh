@@ -30,6 +30,19 @@ filterTypeFromString s =
             BLPF
 
 
+filterTypeToString : FilterType -> String
+filterTypeToString ft =
+    case ft of
+        BLPF ->
+            "BLPF"
+
+        BHPF ->
+            "BHPF"
+
+        BBPF ->
+            "BBPF"
+
+
 type ClipType
     = None
     | Wrap
@@ -69,8 +82,12 @@ processToString p =
         Add _ ->
             "Add"
 
-        Filter _ ->
-            "Filter"
+        Filter f ->
+            filterTypeToString f.filter_type
+                ++ " freq:"
+                ++ String.fromFloat f.freq
+                ++ " q:"
+                ++ String.fromFloat f.q
 
         Gauss _ ->
             "Gauss"
@@ -142,7 +159,7 @@ decodeUGen =
                 , field "Add" decodeAdd
                 , field "Mem" decodeMem
                 , field "Gauss" decodeGauss
-                , field "Filter" decodeGauss
+                , field "Filter" (field "filter" decodeFilter)
                 ]
             )
         |> required "sum_inputs" bool
