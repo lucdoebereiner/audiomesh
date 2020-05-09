@@ -8,6 +8,9 @@ PUT http://localhost:8001/randomize
 # get graph
 GET http://localhost:8001/graph
 
+# get outputs
+GET http://localhost:8001/outputs
+
 # remove node
 DELETE http://localhost:8001/node/0
 

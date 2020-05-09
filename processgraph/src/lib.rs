@@ -6,6 +6,7 @@ use petgraph::Directed;
 use petgraph::Direction::*;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
+use serde::{Deserializer, Serializer};
 use std::f64;
 use std::fmt;
 pub mod numerical;
@@ -51,6 +52,13 @@ pub enum Process {
         input: f64,
         last_value: f64,
     },
+    Square {
+        input: f64,
+    },
+    Sqrt {
+        input: f64,
+    },
+
     // Map {
     //     input: f64,
     //     func: fn(f64) -> f64,
@@ -74,7 +82,8 @@ pub enum Process {
         input: f64,
     },
     Delay {
-        #[serde(skip_serializing)]
+        #[serde(serialize_with = "vector_serialize")]
+        #[serde(deserialize_with = "vector_deserialize")]
         input: Vec<f64>,
         rec_idx: usize,
     },
@@ -109,20 +118,41 @@ pub enum Process {
         p: f64,
         last_out: f64,
     },
-    // RMS {
-    //     input: f64,
-    //     chain: Vec<Process>,
-    // },
+    RMS {
+        input: f64,
+        chain: Vec<Process>,
+    },
 }
 
-// index always 0, weight alway 1
-fn process_chain(chain: &mut [Process], input_value: f64, add: bool) -> f64 {
+fn vector_serialize<S, T>(x: &Vec<T>, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_u32(x.len() as u32)
+}
+
+fn vector_deserialize<'de, D>(deserializer: D) -> Result<Vec<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let i: usize = <usize as Deserialize>::deserialize(deserializer)?;
+    Ok(vec![0.0f64; i])
+}
+
+// index always 0, weight always 1
+fn process_chain(chain: &mut [Process], input_value: f64) -> f64 {
     let mut prev_output = input_value;
     for p in chain {
-        set_input(p, 0, prev_output, add);
+        set_input(p, 0, prev_output, false);
         prev_output = process(p);
     }
     prev_output
+}
+
+fn clear_chain(chain: &mut [Process]) {
+    for p in chain {
+        clear_inputs(p);
+    }
 }
 
 fn process(process: &mut Process) -> f64 {
@@ -138,6 +168,8 @@ fn process(process: &mut Process) -> f64 {
         }
         Process::Mul { inputs } => inputs.iter().product(),
         Process::Add { inputs } => inputs.iter().sum(),
+        Process::Square { input } => input.powf(2.0),
+        Process::Sqrt { input } => input.sqrt(),
         Process::Mem { input, .. } => *input,
         Process::Constant { value } => *value,
         //        Process::Map { input, func } => (func)(*input),
@@ -179,6 +211,10 @@ fn process(process: &mut Process) -> f64 {
             *last_out = output;
             output
         }
+        Process::RMS {
+            input,
+            ref mut chain,
+        } => process_chain(chain, *input),
     }
 }
 
@@ -195,7 +231,10 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
         Process::Sin { ref mut input }
         | Process::Gauss { ref mut input }
         | Process::Softclip { ref mut input }
+	| Process::Square { ref mut input }
+	| Process::Sqrt { ref mut input }
         | Process::Mem { ref mut input, .. }
+	| Process::RMS { ref mut input, .. }
         | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
         Process::SinOsc { ref mut freq, .. } => set_or_add(freq, input_value, add),
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
@@ -325,6 +364,8 @@ fn spec(process: &Process) -> ProcessSpec {
         //        Process::Noise { .. } => procspec("noise", vec![]),
         Process::Wrap { .. } => procspec("wrap", vec![InputType::Any; 2]),
         Process::Softclip { .. } => procspec("softclip", vec![InputType::Any]),
+        Process::Square { .. } => procspec("square", vec![InputType::Any]),
+        Process::Sqrt { .. } => procspec("sqrt", vec![InputType::Any]),
         Process::Delay { .. } => procspec("delay", vec![InputType::Any]),
         Process::BitNeg { .. } => procspec("bitneg", vec![InputType::Any]),
         Process::BitOr { .. } => procspec("bitor", vec![InputType::Any; 2]),
@@ -332,6 +373,7 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::BitAnd { .. } => procspec("bitand", vec![InputType::Any; 2]),
         Process::CurveLin { .. } => procspec("curvelin", vec![InputType::Any; 6]),
         Process::Gauss { .. } => procspec("gauss", vec![InputType::Audio]),
+        Process::RMS { .. } => procspec("rms", vec![InputType::Audio]),
         Process::LPF1 { .. } => procspec("lpf1", vec![InputType::Audio, InputType::Frequency]),
     }
 }
@@ -343,9 +385,12 @@ fn clear_inputs(process: &mut Process) {
 //        | Process::Map { ref mut input, .. }
         | Process::CurveLin { ref mut input, .. }
         | Process::Sin { ref mut input }
+	| Process::Square { ref mut input }
+	| Process::Sqrt { ref mut input }
         | Process::Gauss { ref mut input }
         | Process::Softclip { ref mut input }
         | Process::Mem { ref mut input, .. }
+	| Process::RMS { ref mut input, .. }
         | Process::LPF1 { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
@@ -456,7 +501,10 @@ impl UGen {
         if DEBUG {
             println!("setting input of [{:?}] to {}", self, value)
         }
-        set_input(&mut self.process, idx, value * weight, self.sum_inputs)
+        set_input(&mut self.process, idx, value * weight, self.sum_inputs);
+        if DEBUG {
+            println!("having set [{:?}]", self)
+        }
     }
 }
 
@@ -481,6 +529,29 @@ pub fn add() -> UGen {
 
 pub fn mul() -> UGen {
     UGen::new(Process::Mul { inputs: Vec::new() })
+}
+
+pub fn square() -> UGen {
+    UGen::new(Process::Square { input: 0.0 })
+}
+
+pub fn sqrt() -> UGen {
+    UGen::new(Process::Sqrt { input: 0.0 })
+}
+
+pub fn rms() -> UGen {
+    UGen::new(Process::RMS {
+        input: 0.0,
+        chain: vec![
+            Process::Square { input: 0.0 },
+            Process::LPF1 {
+                input: 0.0,
+                p: lpf1_calc_p(10.),
+                last_out: 0.0,
+            },
+            Process::Sqrt { input: 0.0 },
+        ],
+    })
 }
 
 pub fn mem(init: f64) -> UGen {

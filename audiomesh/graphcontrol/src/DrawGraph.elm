@@ -6,20 +6,15 @@ import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (Html)
 import IntDict
 import List exposing (range)
-import ProcessGraph exposing (BackendGraph, Link, UGen, defaultUGen, mkGraph, ugenLabel)
+import ProcessGraph exposing (Link, UGen, UGenGraph, defaultUGen, mkGraph, ugenLabel)
 import Scale exposing (SequentialScale)
 import Scale.Color
 import TypedSvg exposing (a, circle, ellipse, g, line, polygon, polyline, rect, svg, text_, title)
-import TypedSvg.Attributes exposing (class, fill, fontFamily, fontSize, fontWeight, height, noFill, points, stroke, textAnchor, viewBox, width, xlinkHref)
+import TypedSvg.Attributes exposing (class, cursor, fill, fontFamily, fontSize, fontWeight, height, noFill, points, stroke, textAnchor, viewBox, width, xlinkHref)
 import TypedSvg.Attributes.InPx exposing (cx, cy, r, rx, ry, strokeWidth, x, x1, x2, y, y1, y2)
-import TypedSvg.Core exposing (Svg, text)
+import TypedSvg.Core exposing (Svg, attribute, text)
 import TypedSvg.Events exposing (onClick)
-import TypedSvg.Types exposing (AnchorAlignment(..), FontWeight(..), Length(..), Paint(..), px)
-
-
-
--- type alias CustomNode =
---     { rank : Int, name : String }
+import TypedSvg.Types exposing (AnchorAlignment(..), Cursor(..), FontWeight(..), Length(..), Paint(..), px)
 
 
 type alias Entity =
@@ -56,8 +51,6 @@ init contentGraph dist ( w, h ) =
                         }
                     )
 
-        -- link { from, to } =
-        --     ( from, to )
         forces =
             [ Force.customLinks 1 links
 
@@ -90,8 +83,8 @@ updateContextWithValue nodeCtx entValue =
     { nodeCtx | node = { node | label = entValue } }
 
 
-linkElement : Graph Entity Link -> Edge Link -> Svg msg
-linkElement graph edge =
+linkElement : Graph Entity Link -> (Int -> msg) -> Edge Link -> Svg msg
+linkElement graph msg edge =
     let
         retrieveEntity =
             Maybe.withDefault (Force.entity 0 defaultUGen) << Maybe.map (.node >> .label)
@@ -128,16 +121,10 @@ linkElement graph edge =
                 sqrt (dx * dx + dy * dy)
 
             ( x3, y3 ) =
-                ( centerX + (dy / dist * 10), centerY - (dx / dist * 10) )
+                ( centerX + (dy / dist * 20), centerY - (dx / dist * 20) )
 
             ( centerOffsetX, centerOffsetY ) =
                 ( centerX - (dx / dist * 30), centerY - (dy / dist * 30) )
-
-            _ =
-                Debug.log "graph" graph
-
-            _ =
-                Debug.log "" [ ( source.x, source.y ), ( target.x, target.y ), ( centerX, centerY ), ( x3, y3 ) ]
         in
         g []
             [ line
@@ -151,22 +138,17 @@ linkElement graph edge =
                 []
             , polyline
                 [ strokeWidth 1
+                , cursor CursorPointer
+                , onClick (msg link.id)
                 , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
-                , points [ ( centerOffsetX, centerOffsetY ), ( x3, y3 ), ( centerX, centerY ) ]
+                , points
+                    [ ( centerOffsetX, centerOffsetY )
+                    , ( x3, y3 )
+                    , ( centerX, centerY )
+                    ]
                 ]
                 []
             ]
-
-
-
--- polyline
---     [ strokeWidth 1
---     , stroke (Paint Color.black)
---     --<| Scale.convert colorScale source.x
---     , points
---         [ ( source.x, source.y ), ( target.x, target.y ), ( centerX, centerY ), ( x3, y3 ) ]
---     ]
---     []
 
 
 hexagon ( x, y ) size attrs =
@@ -192,13 +174,13 @@ nodeSize size node =
         [ title [] [ text node.value.name ] ]
 
 
-nodeElement selectedString node =
+nodeElement selectedId msg outputs node =
     let
         thisNode =
             ugenLabel node.label.value
 
         weight =
-            if selectedString == thisNode then
+            if selectedId == Just node.id then
                 FontWeightBolder
 
             else
@@ -206,47 +188,62 @@ nodeElement selectedString node =
     in
     g []
         [ ellipse
-            [ rx 90
-            , ry 22
-            , cx node.label.x
-            , cy node.label.y
-            , fill (Paint Color.white)
-            , stroke (Paint Color.black)
-            ]
+            ([ rx 90
+             , ry 22
+             , cx node.label.x
+             , cy node.label.y
+             , cursor CursorPointer
+             , onClick (msg node.id)
+             , stroke (Paint Color.black)
+             ]
+                ++ (if List.member node.id outputs then
+                        [ strokeWidth 3.0, fill (Paint Color.grey) ]
+
+                    else
+                        [ strokeWidth 1.0, fill (Paint Color.white) ]
+                   )
+            )
             []
         , text_ [ textAnchor AnchorMiddle, x node.label.x, y (node.label.y + 5) ]
             [ a
-                [ xlinkHref ("#" ++ thisNode)
-                , fontSize (Em 1)
+                [ fontSize (Em 1)
                 , fontFamily [ "Inconsolata" ]
                 , fontWeight weight
+                , onClick (msg node.id)
+                , cursor CursorPointer
                 ]
                 [ text thisNode ]
             ]
         ]
 
 
-viewGraph : ( Float, Float ) -> String -> ( Float, Float ) -> Graph Entity Link -> Html msg
-viewGraph ( w, h ) selectedString ( boxWidth, boxHeight ) model =
+viewGraph : ( Float, Float ) -> Maybe Int -> (Int -> msg) -> (Int -> msg) -> List Int -> ( Float, Float ) -> Graph Entity Link -> Html msg
+viewGraph ( w, h ) selectedNode nodeSelectMsg linkSelectMsg outputs ( boxWidth, boxHeight ) model =
     svg [ width (Px w), height (Px h), viewBox 0 0 boxWidth boxHeight ]
         [ g [ class [ "links" ] ] <|
-            List.map (linkElement model) <|
+            List.map (linkElement model linkSelectMsg) <|
                 Graph.edges model
         , g [ class [ "nodes" ] ] <|
-            List.map (nodeElement selectedString) <|
+            List.map (nodeElement selectedNode nodeSelectMsg outputs) <|
                 Graph.nodes model
         ]
 
 
 view :
-    BackendGraph
-    -> String
+    UGenGraph
+    -> Maybe Int
+    -> (Int -> msg)
+    -> (Int -> msg)
+    -> List Int
     -> ( Float, Float )
     -> ( Float, Float )
     -> Float
     -> Html msg
-view graph selectedString ( width, height ) ( boxWidth, boxHeight ) dist =
+view graph selectedNode nodeSelectMsg linkSelectMsg outputs ( width, height ) ( boxWidth, boxHeight ) dist =
     viewGraph ( width, height )
-        selectedString
+        selectedNode
+        nodeSelectMsg
+        linkSelectMsg
+        outputs
         ( boxWidth, boxHeight )
-        (init (mkGraph graph) dist ( boxWidth, boxHeight ))
+        (init graph dist ( boxWidth, boxHeight ))
