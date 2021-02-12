@@ -11,12 +11,12 @@ jack = "*"
 processgraph = { path = "../processgraph" }
 petgraph = { version = "*", features = ["serde-1"] }
 serde_json = { version = "1.0" }
-rocket = "0.4.4"
+rocket = "*"
 crossbeam-channel = "*"
-rocket_cors = "0.5.1"
+rocket_cors = "*"
 
 
 [dependencies.rocket_contrib]
-version = "0.4.4"
+version = "*"
 default-features = false
 features = ["json"]

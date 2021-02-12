@@ -58,6 +58,9 @@ pub enum Process {
     Sqrt {
         input: f64,
     },
+    SoundIn {
+        index: usize,
+    },
 
     // Map {
     //     input: f64,
@@ -140,11 +143,11 @@ where
 }
 
 // index always 0, weight always 1
-fn process_chain(chain: &mut [Process], input_value: f64) -> f64 {
+fn process_chain(chain: &mut [Process], input_value: f64, input: &[f64]) -> f64 {
     let mut prev_output = input_value;
     for p in chain {
         set_input(p, 0, prev_output, false);
-        prev_output = process(p);
+        prev_output = process(p, input);
     }
     prev_output
 }
@@ -155,8 +158,9 @@ fn clear_chain(chain: &mut [Process]) {
     }
 }
 
-fn process(process: &mut Process) -> f64 {
+fn process(process: &mut Process, external_input: &[f64]) -> f64 {
     match process {
+        Process::SoundIn { index } => *external_input.get(*index).unwrap_or(&0.0),
         Process::Sin { input } => input.sin(),
         Process::SinOsc {
             freq,
@@ -214,7 +218,7 @@ fn process(process: &mut Process) -> f64 {
         Process::RMS {
             input,
             ref mut chain,
-        } => process_chain(chain, *input),
+        } => process_chain(chain, *input, external_input),
     }
 }
 
@@ -240,7 +244,7 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
             inputs.push(input_value)
         }
-        Process::Constant { .. }
+        Process::Constant { .. } | Process::SoundIn { .. }
 	//| Process::Noise { .. }
 	=> (),
         //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
@@ -350,6 +354,7 @@ fn name(process: &Process) -> String {
 
 fn spec(process: &Process) -> ProcessSpec {
     match process {
+        Process::SoundIn { .. } => procspec("soundin", vec![InputType::Any]),
         Process::Sin { .. } => procspec("sin", vec![InputType::Phase]),
         Process::SinOsc { .. } => procspec("sinosc", vec![InputType::Frequency]),
         Process::Mul { .. } => procspec("mul", vec![InputType::Any]),
@@ -395,7 +400,8 @@ fn clear_inputs(process: &mut Process) {
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
-        Process::Constant { .. } => (),
+        Process::Constant { .. }  => (),
+	| Process::SoundIn { .. } => (),
 //        Process::Noise { .. } => (),
         Process::Delay {
             ref mut input,
@@ -465,11 +471,11 @@ impl UGen {
 }
 
 impl UGen {
-    fn process(&mut self) -> f64 {
+    fn process(&mut self, input: &[f64]) -> f64 {
         match self.value {
             Some(v) => v,
             None => {
-                let v = process(&mut self.process);
+                let v = process(&mut self.process, input);
                 let output = match self.clip {
                     ClipType::None => v,
                     ClipType::SoftClip => v.tanh(),
@@ -533,6 +539,10 @@ pub fn mul() -> UGen {
 
 pub fn square() -> UGen {
     UGen::new(Process::Square { input: 0.0 })
+}
+
+pub fn sound_in(index: usize) -> UGen {
+    UGen::new(Process::SoundIn { index })
 }
 
 pub fn sqrt() -> UGen {
@@ -836,10 +846,10 @@ pub fn establish_flow(graph: &UGenGraph, start_nodes: &[NodeIndex]) -> Vec<NodeI
 }
 
 /// Calls a ugen and sends result to connected ugens
-pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex) {
+pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
     match graph.node_weight_mut(idx) {
         Some(ugen) => {
-            let output = ugen.process();
+            let output = ugen.process(input);
             let mut neighbors = graph.neighbors_directed(idx, Outgoing).detach();
             while let Some(neighbor_idx) = neighbors.next_node(graph) {
                 let edge = graph
@@ -860,9 +870,11 @@ pub fn process_graph(
     graph: &mut UGenGraph,
     flow: &Vec<NodeIndex>,
     listening_nodes: &[NodeIndex],
+    input_buffer: &[f64],
     output_buffer: &mut [f64],
 ) {
-    flow.iter().for_each(|&idx| call_and_output(graph, idx));
+    flow.iter()
+        .for_each(|&idx| call_and_output(graph, idx, input_buffer));
     for (i, &listening_node) in listening_nodes.iter().enumerate() {
         let output = match graph.node_weight(listening_node) {
             Some(node) => node.value.unwrap_or(0.0),

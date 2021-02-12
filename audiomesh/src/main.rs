@@ -179,7 +179,7 @@ fn handle_messages(
 }
 
 fn main() {
-    // You can also deserialize this
+    // Cors header opetions
     let cors = rocket_cors::CorsOptions {
         allowed_methods: vec![Method::Get, Method::Put, Method::Post, Method::Delete]
             .into_iter()
@@ -192,10 +192,11 @@ fn main() {
     .to_cors()
     .unwrap();
 
+    // Channels for communication among threads
     let (tx, rx): (Sender<UpdateMessage>, Receiver<UpdateMessage>) = bounded(100);
-
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
 
+    // Create graph and init
     let mut g = new_graph();
 
     let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
@@ -207,15 +208,15 @@ fn main() {
     let sum2 = g.add_node(add().clip(ClipType::SoftClip));
     let filter = g.add_node(lpf(1.0, 6.0));
     let filter2 = g.add_node(hpf(1000.0, 3.0));
+    let in1 = g.add_node(sound_in(0));
     let gauss = g.add_node(gauss());
-    //    let curve = g.add_node(curvelin(-1.0, 1.0, 1.0, -1.0));
 
     let nodes = vec![
-        mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2,
+        mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     ];
-    //let nodes = vec![mem1, del1, filter, sum, gauss, rms];
+
     rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![sum, sum2];
+    let mut output_indices = vec![sum, in1];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();
@@ -229,15 +230,28 @@ fn main() {
     //     println!("result: {:?}", frame_buffer);
     // }
 
-    let (client, _status) = jack::Client::new("gengraph", jack::ClientOptions::empty()).unwrap();
+    // JACK
+    let (client, _status) = jack::Client::new("audiomesh", jack::ClientOptions::empty()).unwrap();
 
+    // Setting up output ports
     let mut out_ports = Vec::new();
-
     for i in 1..(n_outs + 1) {
         let name = String::from(format!("out_{}", i));
         out_ports.push(
             client
                 .register_port(&name, jack::AudioOut::default())
+                .unwrap(),
+        );
+    }
+
+    // Setting up input ports
+    const N_INS: usize = 2;
+    let mut in_ports = Vec::new();
+    for i in 1..(N_INS + 1) {
+        let name = String::from(format!("in_{}", i));
+        in_ports.push(
+            client
+                .register_port(&name, jack::AudioIn::default())
                 .unwrap(),
         );
     }
@@ -248,23 +262,27 @@ fn main() {
             let polling = false;
 
             while let Ok(update) = rx.try_recv() {
-                handle_messages(
-                    update,
-                    &mut g,
-                    //                    &mut nodes,
-                    &mut flow,
-                    &mut output_indices,
-                    &s_ret,
-                );
+                handle_messages(update, &mut g, &mut flow, &mut output_indices, &s_ret);
             }
 
-            // Get output buffer
+            // Get output buffers
             let mut outs: Vec<&mut [f32]> =
                 out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
 
+            // Get input buffers
+            let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
+
             // Write output
             for i in 0..ps.n_frames() {
-                process_graph(&mut g, &flow, &output_indices, &mut frame_buffer);
+                let input_samples: Vec<f64> =
+                    ins.iter().map(|input| input[i as usize] as f64).collect();
+                process_graph(
+                    &mut g,
+                    &flow,
+                    &output_indices,
+                    &input_samples,
+                    &mut frame_buffer,
+                );
                 if i == 0 && polling {
                     println!("{}", frame_buffer[0]);
                 }
