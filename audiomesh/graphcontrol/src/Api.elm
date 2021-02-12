@@ -1,4 +1,12 @@
-module Api exposing (NodeIndex, deleteNode, getGraph, getOutputs, randomize, setOutput)
+module Api exposing
+    ( NodeIndex
+    , deleteNode
+    , getGraph
+    , getOutputs
+    , randomize
+    , setOutput
+    , setVolume
+    )
 
 import Http
 import Json.Decode as Decode
@@ -70,6 +78,15 @@ randomize : (Result Http.Error () -> msg) -> Cmd msg
 randomize msg =
     Http.post
         { url = baseUrl ++ "/randomize"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setVolume : Float -> (Result Http.Error () -> msg) -> Cmd msg
+setVolume amp msg =
+    Http.post
+        { url = baseUrl ++ "/volume" ++ String.fromFloat amp
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }

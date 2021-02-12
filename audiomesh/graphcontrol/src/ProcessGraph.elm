@@ -72,6 +72,7 @@ type Process
     | RMS
     | Sin
     | Constant { input : Float }
+    | SoundIn { index : Int }
 
 
 processToString : Process -> String
@@ -108,6 +109,9 @@ processToString p =
         Gauss _ ->
             "Gauss"
 
+        SoundIn i ->
+            "SoundIn " ++ String.fromInt i.index
+
 
 decodeMem : Decoder Process
 decodeMem =
@@ -127,6 +131,12 @@ decodeAdd : Decoder Process
 decodeAdd =
     Decode.succeed (\inputs -> Add { inputs = inputs })
         |> required "inputs" (list float)
+
+
+decodeSoundIn : Decoder Process
+decodeSoundIn =
+    Decode.succeed (\input -> SoundIn { index = input })
+        |> required "index" int
 
 
 decodeMul : Decoder Process
@@ -202,6 +212,7 @@ decodeUGen =
                 , field "Constant" decodeConstant
                 , field "Sin" decodeSin
                 , field "Gauss" decodeGauss
+                , field "SoundIn" decodeSoundIn
                 , field "Filter" (field "filter" decodeFilter)
                 ]
             )

@@ -5725,6 +5725,18 @@ var $author$project$ProcessGraph$RMS = {$: 'RMS'};
 var $author$project$ProcessGraph$decodeRMS = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$RMS);
 var $author$project$ProcessGraph$Sin = {$: 'Sin'};
 var $author$project$ProcessGraph$decodeSin = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$Sin);
+var $author$project$ProcessGraph$SoundIn = function (a) {
+	return {$: 'SoundIn', a: a};
+};
+var $author$project$ProcessGraph$decodeSoundIn = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'index',
+	$elm$json$Json$Decode$int,
+	$elm$json$Json$Decode$succeed(
+		function (input) {
+			return $author$project$ProcessGraph$SoundIn(
+				{index: input});
+		}));
 var $author$project$ProcessGraph$decodeUGen = A3(
 	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
 	'clip',
@@ -5747,6 +5759,7 @@ var $author$project$ProcessGraph$decodeUGen = A3(
 						A2($elm$json$Json$Decode$field, 'Constant', $author$project$ProcessGraph$decodeConstant),
 						A2($elm$json$Json$Decode$field, 'Sin', $author$project$ProcessGraph$decodeSin),
 						A2($elm$json$Json$Decode$field, 'Gauss', $author$project$ProcessGraph$decodeGauss),
+						A2($elm$json$Json$Decode$field, 'SoundIn', $author$project$ProcessGraph$decodeSoundIn),
 						A2(
 						$elm$json$Json$Decode$field,
 						'Filter',
@@ -7281,8 +7294,11 @@ var $author$project$ProcessGraph$processToString = function (p) {
 		case 'Filter':
 			var f = p.a;
 			return $author$project$ProcessGraph$filterTypeToString(f.filter_type) + (' freq:' + ($elm$core$String$fromFloat(f.freq) + (' q:' + $elm$core$String$fromFloat(f.q))));
-		default:
+		case 'Gauss':
 			return 'Gauss';
+		default:
+			var i = p.a;
+			return 'SoundIn ' + $elm$core$String$fromInt(i.index);
 	}
 };
 var $author$project$ProcessGraph$ugenLabel = function (u) {

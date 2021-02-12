@@ -3,17 +3,28 @@
 # http://httpbin.org/: HTTP Request & Response Service
 
 # randomize graph
-PUT http://localhost:8001/randomize
+POST http://localhost:8008/randomize
 
 # get graph
-GET http://localhost:8001/graph
+GET http://localhost:8008/graph
 
 # get outputs
-GET http://localhost:8001/outputs
+GET http://localhost:8008/outputs
 
 # remove node
-DELETE http://localhost:8001/node/0
+DELETE http://localhost:8008/node/3
 
 # remove edge
-DELETE http://localhost:8001/edge/10
+DELETE http://localhost:8008/edge/10
 
+# set volume
+POST http://localhost:8008/volume/0.0
+
+# add node
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"SoundIn": {
+  "index": 1
+}
+}

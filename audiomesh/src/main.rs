@@ -3,8 +3,9 @@
 // TODO
 // - export/load graph descriptions
 // - return graph on update functions (?)
-// - add special delays endpoint
-// - output volume
+// - add specific endpoints for delays
+// - parameter setting (with endpoint)
+// - deal with sr for freqs etc
 
 // DONE
 // - get graph via serde/api
@@ -12,6 +13,7 @@
 // - get output indices
 // - randomize check if nodeexists
 // - edge operations via api
+// - output volume
 
 #[macro_use]
 extern crate rocket;
@@ -22,7 +24,7 @@ use jack;
 use rocket::http::Method;
 use rocket_contrib::json::*;
 use rocket_cors;
-use rocket_cors::{AllowedHeaders, Error};
+use rocket_cors::AllowedHeaders;
 
 // use petgraph::dot::{Config, Dot};
 use petgraph::stable_graph::*;
@@ -35,6 +37,8 @@ use rocket::State;
 use rocket::response::content;
 use std::mem;
 
+mod lag;
+
 enum UpdateMessage {
     Randomize,
     DumpGraph,
@@ -44,6 +48,7 @@ enum UpdateMessage {
     AddNode(Process),
     RemoveEdge(usize),
     SetOutput(NodeIndex, usize),
+    SetVolume(f64),
 }
 
 enum ReturnMessage {
@@ -54,6 +59,13 @@ enum ReturnMessage {
 struct Globals {
     sender: Sender<UpdateMessage>,
     receiver: Receiver<ReturnMessage>,
+}
+
+#[post("/volume/<amp>")]
+fn set_volume(amp: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::SetVolume(amp)).unwrap()
 }
 
 #[delete("/node/<id>")]
@@ -152,7 +164,9 @@ fn handle_messages(
             let nodes: Vec<NodeIndex> = graph.node_indices().collect();
             rnd_connections(graph, &nodes, 1);
             let new_flow = establish_flow(graph, output_indices);
-            mem::replace(flow, new_flow);
+            //            let _ = mem::replace(flow, new_flow);
+            *flow = new_flow;
+            //          return ();
         }
         UpdateMessage::DumpGraph => {
             let j = serde_json::to_string(graph).unwrap();
@@ -164,17 +178,35 @@ fn handle_messages(
         }
         UpdateMessage::RemoveNode(id) => {
             graph.remove_node(NodeIndex::new(id));
+            // TODO the following lines should be in one function
+            ensure_connectivity(graph);
+            let new_flow = establish_flow(graph, output_indices);
+            *flow = new_flow;
+            //let _ = mem::replace(flow, new_flow);
+            //            println!("{:?}", collect_components(graph));
         }
         UpdateMessage::RemoveEdge(id) => {
             graph.remove_edge(EdgeIndex::new(id));
+            ensure_connectivity(graph);
+            let new_flow = establish_flow(graph, output_indices);
+            *flow = new_flow;
+            //		let _ = mem::replace(flow, new_flow);
+
+            //          println!("{:?}", collect_components(graph));
         }
         UpdateMessage::SetOutput(node, output) => output_indices[output] = node,
         UpdateMessage::AddNode(node) => {
             let _idx = graph.add_node(UGen::new(node));
+            ensure_connectivity(graph);
+            let new_flow = establish_flow(graph, output_indices);
+            *flow = new_flow;
+            //let _ = mem::replace(flow, new_flow);
+            //        println!("{:?}", collect_components(graph));
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
             let _idx = graph.add_edge(node_from, node_to, (index as u32, weight));
         }
+        _ => (),
     }
 }
 
@@ -204,19 +236,21 @@ fn main() {
     let rms = g.add_node(rms());
     let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
     let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
-    let sum = g.add_node(add().clip(ClipType::Wrap));
-    let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    let filter = g.add_node(lpf(1.0, 6.0));
-    let filter2 = g.add_node(hpf(1000.0, 3.0));
-    let in1 = g.add_node(sound_in(0));
-    let gauss = g.add_node(gauss());
+    // let sum = g.add_node(add().clip(ClipType::Wrap));
+    // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
+    // let filter = g.add_node(lpf(1.0, 6.0));
+    // let filter2 = g.add_node(hpf(1000.0, 3.0));
+    // let in1 = g.add_node(sound_in(0));
+    // let gauss = g.add_node(gauss());
 
-    let nodes = vec![
-        mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
-    ];
+    let nodes = vec![mem1, del1, rms, del2, del3];
+
+    // let nodes = vec![
+    //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
+    // ];
 
     rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![sum, in1];
+    let mut output_indices = vec![mem1, del1];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();
@@ -256,13 +290,18 @@ fn main() {
         );
     }
 
+    let mut amplitude = lag::lag(1.0);
+
     let process = jack::ClosureProcessHandler::new(
         move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
             // get input messages
             let polling = false;
 
             while let Ok(update) = rx.try_recv() {
-                handle_messages(update, &mut g, &mut flow, &mut output_indices, &s_ret);
+                match update {
+                    UpdateMessage::SetVolume(a) => amplitude.set_target(a),
+                    _ => handle_messages(update, &mut g, &mut flow, &mut output_indices, &s_ret),
+                }
             }
 
             // Get output buffers
@@ -276,6 +315,7 @@ fn main() {
             for i in 0..ps.n_frames() {
                 let input_samples: Vec<f64> =
                     ins.iter().map(|input| input[i as usize] as f64).collect();
+                let amp = amplitude.tick();
                 process_graph(
                     &mut g,
                     &flow,
@@ -288,7 +328,7 @@ fn main() {
                 }
 
                 for (k, o) in outs.iter_mut().enumerate() {
-                    o[i as usize] = frame_buffer[k] as f32;
+                    o[i as usize] = (frame_buffer[k] * amp) as f32;
                 }
             }
 
@@ -315,7 +355,8 @@ fn main() {
                 node_output,
                 add_node,
                 get_outputs,
-                add_edge
+                add_edge,
+                set_volume
             ],
         )
         .attach(cors)

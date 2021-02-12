@@ -10,6 +10,7 @@ use serde::{Deserializer, Serializer};
 use std::f64;
 use std::fmt;
 pub mod numerical;
+use petgraph::visit::Bfs;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
@@ -766,6 +767,58 @@ pub fn rnd_connections(
         })
     }
     edges
+}
+
+fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
+    let mut sets = Vec::new();
+
+    for node in graph.node_indices() {
+        // let set_with_node = sets
+        //     .iter()
+        //     .position(|set: &Vec<NodeIndex>| -> bool { set.contains(&node) });
+
+        let mut bfs = Bfs::new(&graph, node);
+
+        let mut all_neighbors = Vec::new();
+        while let Some(nx) = bfs.next(&graph) {
+            all_neighbors.push(nx)
+        }
+
+        let intersects_with = sets.iter().position(|set: &Vec<NodeIndex>| {
+            all_neighbors.iter().any(|neighbor| set.contains(neighbor))
+        });
+
+        //        println!("node: {:?}, neighbors: {:?}", node, all_neighbors);
+
+        match intersects_with {
+            Some(idx) => {
+                sets[idx].append(&mut all_neighbors);
+            }
+            None => sets.push(all_neighbors),
+        }
+
+        for s in sets.iter_mut() {
+            s.sort();
+            s.dedup();
+        }
+    }
+
+    return sets;
+}
+
+pub fn ensure_connectivity(graph: &mut UGenGraph) {
+    let components = collect_components(graph);
+    let mut rng = thread_rng();
+    if let Some((first, rest)) = components.split_first() {
+        for disconnected_node in rest.iter() {
+            let w = rng.gen_range(0.7, 1.0);
+            graph.add_edge(
+                disconnected_node[0],
+                *first.choose(&mut rng).unwrap(),
+                (0, w),
+            );
+        }
+    }
 }
 
 // /// Inserts additional nodes and edges for recursive connections
