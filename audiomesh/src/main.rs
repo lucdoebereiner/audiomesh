@@ -35,7 +35,7 @@ use rocket::State;
 //use std::sync::Mutex;
 //use std::{f32, thread, time};
 use rocket::response::content;
-use std::mem;
+//use std::mem;
 
 mod lag;
 
@@ -49,6 +49,9 @@ enum UpdateMessage {
     RemoveEdge(usize),
     SetOutput(NodeIndex, usize),
     SetVolume(f64),
+    ConnectLeastConnected,
+    DisconnectMostConnected,
+    SetParameter(usize, u32, f64),
 }
 
 enum ReturnMessage {
@@ -93,6 +96,15 @@ fn node_output(id: usize, output: usize, state: State<Globals>) {
         .unwrap()
 }
 
+#[post("/node/<id>/parameter/<input>/<value>")]
+fn set_parameter(id: usize, input: u32, value: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetParameter(id, input, value))
+        .unwrap()
+}
+
 #[delete("/edge/<id>")]
 fn remove_edge(id: usize, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
@@ -119,6 +131,20 @@ fn randomize(state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::Randomize).unwrap()
+}
+
+#[post("/connectleastconnected")]
+fn least_connected(state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::ConnectLeastConnected).unwrap()
+}
+
+#[post("/disconnectmostconnected")]
+fn most_connected(state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::DisconnectMostConnected).unwrap()
 }
 
 #[get("/outputs")]
@@ -178,18 +204,19 @@ fn handle_messages(
         }
         UpdateMessage::RemoveNode(id) => {
             graph.remove_node(NodeIndex::new(id));
-            // TODO the following lines should be in one function
-            ensure_connectivity(graph);
-            let new_flow = establish_flow(graph, output_indices);
-            *flow = new_flow;
+            update_connections_and_flow(graph, flow, output_indices)
+            // ensure_connectivity(graph);
+            // let new_flow = establish_flow(graph, output_indices);
+            // *flow = new_flow;
             //let _ = mem::replace(flow, new_flow);
             //            println!("{:?}", collect_components(graph));
         }
         UpdateMessage::RemoveEdge(id) => {
             graph.remove_edge(EdgeIndex::new(id));
-            ensure_connectivity(graph);
-            let new_flow = establish_flow(graph, output_indices);
-            *flow = new_flow;
+            update_connections_and_flow(graph, flow, output_indices)
+            // ensure_connectivity(graph);
+            // let new_flow = establish_flow(graph, output_indices);
+            // *flow = new_flow;
             //		let _ = mem::replace(flow, new_flow);
 
             //          println!("{:?}", collect_components(graph));
@@ -197,15 +224,29 @@ fn handle_messages(
         UpdateMessage::SetOutput(node, output) => output_indices[output] = node,
         UpdateMessage::AddNode(node) => {
             let _idx = graph.add_node(UGen::new(node));
-            ensure_connectivity(graph);
-            let new_flow = establish_flow(graph, output_indices);
-            *flow = new_flow;
+            update_connections_and_flow(graph, flow, output_indices)
+            // ensure_connectivity(graph);
+            // let new_flow = establish_flow(graph, output_indices);
+            // *flow = new_flow;
             //let _ = mem::replace(flow, new_flow);
-            //        println!("{:?}", collect_components(graph));
+            //            println!("{:?}", nodes_with_neighbors(graph));
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
             let _idx = graph.add_edge(node_from, node_to, (index as u32, weight));
         }
+        UpdateMessage::ConnectLeastConnected => {
+            connect_least_connected(graph);
+            update_connections_and_flow(graph, flow, output_indices)
+        }
+        UpdateMessage::DisconnectMostConnected => {
+            disconnect_most_connected(graph);
+            update_connections_and_flow(graph, flow, output_indices)
+        }
+
+        UpdateMessage::SetParameter(node, idx, value) => {
+            processgraph::set_parameter(graph, NodeIndex::new(node), idx, value);
+        }
+
         _ => (),
     }
 }
@@ -238,12 +279,12 @@ fn main() {
     let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     // let sum = g.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    // let filter = g.add_node(lpf(1.0, 6.0));
+    let filter = g.add_node(lpf(1.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
     // let in1 = g.add_node(sound_in(0));
     // let gauss = g.add_node(gauss());
 
-    let nodes = vec![mem1, del1, rms, del2, del3];
+    let nodes = vec![mem1, del1, rms, del2, del3, filter];
 
     // let nodes = vec![
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
@@ -356,7 +397,10 @@ fn main() {
                 add_node,
                 get_outputs,
                 add_edge,
-                set_volume
+                set_volume,
+                least_connected,
+                most_connected,
+                set_parameter
             ],
         )
         .attach(cors)

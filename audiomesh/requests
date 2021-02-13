@@ -28,3 +28,12 @@ Content-Type: application/json
   "index": 1
 }
 }
+
+# connect least connected
+POST http://localhost:8008/connectleastconnected
+
+# disconnect least connected
+POST http://localhost:8008/disconnectmostconnected
+
+# set parameter
+POST http://localhost:8008/node/5/parameter/1/300.1

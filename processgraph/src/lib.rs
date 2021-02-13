@@ -16,23 +16,24 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 const PI: f64 = f64::consts::PI;
-const SR: f64 = 44100f64;
+const SR: f64 = 48000f64;
 static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
 // TODO
 // move debug flag to main
 // softclip on filter input optional
-// process with inner chained processes (rms, filterbank etc)
 // variable delay times
 // input indices
 // kuramoto
-// outside input
 // lag
 // zip
 
+// DONE
 // not necessary
 // remember node index in ugen
+// outside input
+// process with inner chained processes (rms, filterbank etc)
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Process {
@@ -231,6 +232,12 @@ fn set_or_add(field: &mut f64, value: f64, add: bool) {
     }
 }
 
+pub fn set_parameter(graph: &mut UGenGraph, node_idx: NodeIndex, idx: u32, input_value: f64) {
+    if let Some(node) = graph.node_weight_mut(node_idx) {
+        set_input(&mut node.process, idx as u32, input_value, false)
+    }
+}
+
 fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
     match process {
         Process::Sin { ref mut input }
@@ -334,6 +341,7 @@ pub enum InputType {
     Frequency,
     Q,
     Phase,
+    Index,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -503,7 +511,7 @@ impl UGen {
     //     set_input(&mut self.process, idx, value, self.sum_inputs)
     // }
 
-    fn set_input(&mut self, connection: Connection, value: f64) {
+    fn set_input_with_connection(&mut self, connection: Connection, value: f64) {
         let (idx, weight) = connection;
         if DEBUG {
             println!("setting input of [{:?}] to {}", self, value)
@@ -773,10 +781,6 @@ fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
     let mut sets = Vec::new();
 
     for node in graph.node_indices() {
-        // let set_with_node = sets
-        //     .iter()
-        //     .position(|set: &Vec<NodeIndex>| -> bool { set.contains(&node) });
-
         let mut bfs = Bfs::new(&graph, node);
 
         let mut all_neighbors = Vec::new();
@@ -787,8 +791,6 @@ fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
         let intersects_with = sets.iter().position(|set: &Vec<NodeIndex>| {
             all_neighbors.iter().any(|neighbor| set.contains(neighbor))
         });
-
-        //        println!("node: {:?}, neighbors: {:?}", node, all_neighbors);
 
         match intersects_with {
             Some(idx) => {
@@ -803,7 +805,53 @@ fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
         }
     }
 
-    return sets;
+    sets
+}
+
+fn nodes_with_neighbors(graph: &mut UGenGraph) -> Vec<(NodeIndex, Vec<NodeIndex>)> {
+    let mut result = Vec::new();
+    for node in graph.node_indices() {
+        let neighbors = graph.neighbors_undirected(node).collect();
+        result.push((node, neighbors));
+    }
+    result.sort_by(
+        |(_, a): &(NodeIndex, Vec<NodeIndex>), (_, b): &(NodeIndex, Vec<NodeIndex>)| {
+            a.len().partial_cmp(&b.len()).unwrap()
+        },
+    );
+    result
+}
+
+pub fn connect_least_connected(graph: &mut UGenGraph) {
+    let nodes = nodes_with_neighbors(graph);
+    if let Some((first, _)) = nodes.first() {
+        if let Some((future_neighbor, _)) = nodes
+            .iter()
+            .skip(1)
+            .filter(|(_, neighbors)| !(neighbors.contains(first)))
+            .next()
+        {
+            let w = thread_rng().gen_range(0.7, 1.0);
+            graph.add_edge(*first, *future_neighbor, (0, w));
+        }
+    }
+}
+
+pub fn disconnect_most_connected(graph: &mut UGenGraph) {
+    let nodes = nodes_with_neighbors(graph);
+    if let Some((last, _)) = nodes.last() {
+        if let Some((neighbor, _)) = nodes
+            .iter()
+            .rev()
+            .skip(1)
+            .filter(|(_, neighbors)| neighbors.contains(last))
+            .next()
+        {
+            if let Some((e, _)) = graph.find_edge_undirected(*last, *neighbor) {
+                graph.remove_edge(e);
+            }
+        }
+    }
 }
 
 pub fn ensure_connectivity(graph: &mut UGenGraph) {
@@ -898,6 +946,15 @@ pub fn establish_flow(graph: &UGenGraph, start_nodes: &[NodeIndex]) -> Vec<NodeI
     visited
 }
 
+pub fn update_connections_and_flow(
+    graph: &mut UGenGraph,
+    flow: &mut Vec<NodeIndex>,
+    output_indices: &mut [NodeIndex],
+) {
+    ensure_connectivity(graph);
+    *flow = establish_flow(graph, output_indices);
+}
+
 /// Calls a ugen and sends result to connected ugens
 pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
     match graph.node_weight_mut(idx) {
@@ -910,7 +967,9 @@ pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
                     .and_then(|e| graph.edge_weight(e))
                     .map(|e| *e); // deref to stop borrowing
                 match edge {
-                    Some(connection) => graph[neighbor_idx].set_input(connection, output),
+                    Some(connection) => {
+                        graph[neighbor_idx].set_input_with_connection(connection, output)
+                    }
                     None => (),
                 }
             }
