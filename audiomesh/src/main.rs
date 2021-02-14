@@ -37,7 +37,7 @@ use rocket::State;
 use rocket::response::content;
 //use std::mem;
 
-mod lag;
+use processgraph::lag;
 
 enum UpdateMessage {
     Randomize,

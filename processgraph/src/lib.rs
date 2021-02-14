@@ -1,11 +1,12 @@
 mod filters;
+pub mod lag;
 //use petgraph::stable_graph::StableGraph;
 //use petgraph::graph::Graph;
 use petgraph::stable_graph::*;
 use petgraph::Directed;
 use petgraph::Direction::*;
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
+//use rand::rngs::SmallRng;
+use rand::Rng;
 use serde::{Deserializer, Serializer};
 use std::f64;
 use std::fmt;

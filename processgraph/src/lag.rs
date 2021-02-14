@@ -1,9 +1,30 @@
 //use std::f64;
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 pub struct Lag {
     current: f64,
     target: f64,
     factor: f64,
+}
+
+impl Serialize for Lag {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_f64(self.current)
+    }
+}
+
+impl<'de> Deserialize<'de> for Lag {
+    fn deserialize<D>(deserializer: D) -> Result<Lag, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let current: f64 = <f64 as Deserialize>::deserialize(deserializer)?;
+        Ok(lag(current))
+    }
 }
 
 pub fn lag(init: f64) -> Lag {
