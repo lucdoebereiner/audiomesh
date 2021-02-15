@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::f64;
 
-#[derive(Serialize, Deserialize, Debug)]
+use crate::lag::*;
+
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct BiquadCoefficients {
     a0: f64,
     a1: f64,
@@ -18,7 +20,7 @@ pub enum FilterType {
     BBPF,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 struct BiquadState {
     x1: f64,
     x2: f64,
@@ -52,11 +54,20 @@ impl BiquadCoefficients {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Biquad {
+    #[serde(skip)]
     coefficients: BiquadCoefficients,
+    #[serde(skip)]
     state: BiquadState,
     filter_type: FilterType,
-    pub freq: f64,
-    pub q: f64,
+    #[serde(skip_serializing)]
+    #[serde(default = "sr_default")]
+    sample_rate: f64,
+    pub freq: Lag,
+    pub q: Lag,
+}
+
+pub fn sr_default() -> f64 {
+    48000f64
 }
 
 impl Biquad {
@@ -65,14 +76,27 @@ impl Biquad {
             coefficients: BiquadCoefficients::new(),
             state: BiquadState::new(),
             filter_type,
-            freq: std::f64::NAN, // init with NAN, so update is always triggered
-            q: std::f64::NAN,
+            sample_rate,
+            freq: lag(freq),
+            q: lag(q),
         };
-        filter.update_coefficients(freq, q, sample_rate);
+        filter.init();
         filter
     }
 
+    pub fn init(&mut self) {
+        self.update_coefficients(true);
+    }
+
+    pub fn set_parameters(&mut self, freq: f64, q: f64) {
+        self.freq.set_target(freq);
+        self.q.set_target(q);
+    }
+
     pub fn process(&mut self, input: f64) -> f64 {
+        self.freq.tick();
+        self.q.tick();
+        self.update_coefficients(false);
         let y = (input * self.coefficients.b0)
             + (self.state.x1 * self.coefficients.b1)
             + (self.state.x2 * self.coefficients.b2)
@@ -85,8 +109,11 @@ impl Biquad {
         y
     }
 
-    pub fn update_coefficients(&mut self, freq: f64, q: f64, sample_rate: f64) {
-        if freq != self.freq || q != self.q {
+    pub fn update_coefficients(&mut self, force: bool) {
+        if !self.freq.is_done() || !self.q.is_done() || force {
+            let sample_rate = self.sample_rate;
+            let freq = self.freq.current;
+            let q = self.q.current;
             let w = f64::consts::PI * 2. * (freq / sample_rate);
             let a = w.sin() / (q * 2.);
             let cosw = w.cos();
@@ -111,8 +138,6 @@ impl Biquad {
                     self.coefficients.b2 = (a * -1.) / a0;
                 }
             }
-            self.freq = freq;
-            self.q = q;
         }
     }
 }

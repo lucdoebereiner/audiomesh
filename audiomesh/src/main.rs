@@ -273,25 +273,28 @@ fn main() {
     let mut g = new_graph();
 
     let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
-    let rms = g.add_node(rms());
-    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
-    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
+    //let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
+    //    let rms = g.add_node(rms());
+    //    let sinph = g.add_node(sin());
+    //    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
+    //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     // let sum = g.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    let filter = g.add_node(lpf(1.0, 6.0));
+    let filter = g.add_node(lpf(100.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    // let in1 = g.add_node(sound_in(0));
+    let in1 = g.add_node(sound_in(0));
     // let gauss = g.add_node(gauss());
 
-    let nodes = vec![mem1, del1, rms, del2, del3, filter];
+    //    let nodes = vec![mem1, del1, rms, del2, del3, filter];
+
+    let nodes = vec![mem1, in1, filter];
 
     // let nodes = vec![
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     // ];
 
     rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![mem1, del1];
+    let mut output_indices = vec![mem1, in1];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();

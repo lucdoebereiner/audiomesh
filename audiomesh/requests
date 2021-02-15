@@ -20,6 +20,80 @@ DELETE http://localhost:8008/edge/10
 # set volume
 POST http://localhost:8008/volume/0.0
 
+# connect least connected
+POST http://localhost:8008/connectleastconnected
+
+# disconnect least connected
+POST http://localhost:8008/disconnectmostconnected
+
+# set parameter
+POST http://localhost:8008/node/5/parameter/1/3000.1
+
+# set parameter
+POST http://localhost:8008/node/2/parameter/1/50
+
+# testing processes SIN
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Sin": {
+  "mul": 1
+}
+}
+
+# testing processes SINOSC
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"SinOsc": {
+  "freq": 100.1
+  }
+}
+
+# testing processes Mul
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Mul": {
+  }
+}
+
+# add
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Add": {
+  }
+}
+
+# mem
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Mem": {
+       "last_value" : 0.5
+  }
+}
+
+
+# square
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Square": {
+  }
+}
+
+
+# sqrt
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Sqrt": {
+  }
+}
+
+
 # add node
 POST http://localhost:8008/node
 Content-Type: application/json
@@ -29,11 +103,95 @@ Content-Type: application/json
 }
 }
 
-# connect least connected
-POST http://localhost:8008/connectleastconnected
+# constant
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Constant": {
+    "value": 1.7 
+  }
+}
 
-# disconnect least connected
-POST http://localhost:8008/disconnectmostconnected
 
-# set parameter
-POST http://localhost:8008/node/5/parameter/1/300.1
+# filter
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Filter": {
+          "filter_type": "BHPF",
+          "freq": 600.0,
+          "q": 8.0
+        }
+
+}
+
+
+# wrap
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Wrap": {
+          "lo": 0.5,
+          "hi": 2.0
+        }
+
+}
+
+
+# softclip
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Softclip": {
+        }
+
+}
+
+# delay
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Delay": {
+ "input": 4000
+     }
+
+}
+
+# bitneg
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"BitNeg": {
+     }
+
+}
+
+# gauss
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"Gauss": {
+     }
+
+}
+
+# rms
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"RMS": {
+     }
+
+}
+
+
+# rms
+POST http://localhost:8008/node
+Content-Type: application/json
+{
+"LinCon": {
+  "lincon_a": 1,
+  "lincon_b": 10
+    }
+
+}

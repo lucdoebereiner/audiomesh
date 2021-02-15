@@ -39,26 +39,36 @@ const DEBUG: bool = false;
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Process {
     Sin {
+        #[serde(skip)]
         input: f64,
+        mul: lag::Lag,
     },
     SinOsc {
-        freq: f64,
+        #[serde(skip)]
+        input: f64,
+        freq: lag::Lag,
+        #[serde(skip)]
         phase: f64,
     },
     Mul {
+        #[serde(skip)]
         inputs: Vec<f64>,
     },
     Add {
+        #[serde(skip)]
         inputs: Vec<f64>,
     },
     Mem {
+        #[serde(skip)]
         input: f64,
         last_value: f64,
     },
     Square {
+        #[serde(skip)]
         input: f64,
     },
     Sqrt {
+        #[serde(skip)]
         input: f64,
     },
     SoundIn {
@@ -73,42 +83,55 @@ pub enum Process {
         value: f64,
     },
     Filter {
+        #[serde(skip)]
         input: f64,
+        #[serde(flatten)]
         filter: filters::Biquad,
     },
     // Noise {
     //     rng: SmallRng,
     // },
     Wrap {
+        #[serde(skip)]
         input: f64,
         lo: f64,
         hi: f64,
     },
     Softclip {
+        #[serde(skip)]
         input: f64,
     },
     Delay {
         #[serde(serialize_with = "vector_serialize")]
         #[serde(deserialize_with = "vector_deserialize")]
         input: Vec<f64>,
+        #[serde(skip)]
         rec_idx: usize,
     },
     BitNeg {
+        #[serde(skip)]
         input: f64,
     },
     BitOr {
+        #[serde(skip)]
         input1: f64,
+        #[serde(skip)]
         input2: f64,
     },
     BitXOr {
+        #[serde(skip)]
         input1: f64,
+        #[serde(skip)]
         input2: f64,
     },
     BitAnd {
+        #[serde(skip)]
         input1: f64,
+        #[serde(skip)]
         input2: f64,
     },
     CurveLin {
+        #[serde(skip)]
         input: f64,
         in_min: f64,
         in_max: f64,
@@ -117,16 +140,32 @@ pub enum Process {
         curve: f64,
     },
     Gauss {
+        #[serde(skip)]
         input: f64,
     },
     LPF1 {
+        #[serde(skip)]
         input: f64,
+        freq: lag::Lag,
+        #[serde(skip)]
         p: f64,
+        #[serde(skip)]
         last_out: f64,
     },
     RMS {
+        #[serde(skip)]
         input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "rms_chain")]
         chain: Vec<Process>,
+    },
+    LinCon {
+        #[serde(skip)]
+        input: f64,
+        lincon_a: lag::Lag,
+        lincon_b: lag::Lag,
+        #[serde(skip)]
+        last_out: f64,
     },
 }
 
@@ -143,6 +182,13 @@ where
 {
     let i: usize = <usize as Deserialize>::deserialize(deserializer)?;
     Ok(vec![0.0f64; i])
+}
+
+pub fn init_after_deserialize(process: &mut Process) {
+    match process {
+        Process::Filter { ref mut filter, .. } => filter.init(),
+        _ => (),
+    }
 }
 
 // index always 0, weight always 1
@@ -164,13 +210,14 @@ fn clear_chain(chain: &mut [Process]) {
 fn process(process: &mut Process, external_input: &[f64]) -> f64 {
     match process {
         Process::SoundIn { index } => *external_input.get(*index).unwrap_or(&0.0),
-        Process::Sin { input } => input.sin(),
+        Process::Sin { input, mul } => (*input * mul.tick()).sin(),
         Process::SinOsc {
+            input,
             freq,
             ref mut phase,
         } => {
             let output = phase.sin();
-            *phase += *freq * FREQ_FAC;
+            *phase += freq.tick() * FREQ_FAC;
             output
         }
         Process::Mul { inputs } => inputs.iter().product(),
@@ -211,9 +258,14 @@ fn process(process: &mut Process, external_input: &[f64]) -> f64 {
         Process::Gauss { input } => numerical::gauss_curve(*input),
         Process::LPF1 {
             input,
+            freq,
             p,
             ref mut last_out,
         } => {
+            if !freq.is_done() {
+                *p = lpf1_calc_p(freq.current)
+            }
+            freq.tick();
             let output = ((1. - *p) * *input) + (*p * *last_out);
             *last_out = output;
             output
@@ -222,6 +274,16 @@ fn process(process: &mut Process, external_input: &[f64]) -> f64 {
             input,
             ref mut chain,
         } => process_chain(chain, *input, external_input),
+        Process::LinCon {
+            input,
+            lincon_a,
+            lincon_b,
+            last_out,
+        } => {
+            let output = (*last_out * (*input * lincon_a.tick()) + lincon_b.tick()) % 2.0 - 1.0;
+            *last_out = output;
+            output
+        }
     }
 }
 
@@ -234,22 +296,32 @@ fn set_or_add(field: &mut f64, value: f64, add: bool) {
 }
 
 pub fn set_parameter(graph: &mut UGenGraph, node_idx: NodeIndex, idx: u32, input_value: f64) {
+    //    println!("setting input {:?} to {:?}", idx, input_value);
     if let Some(node) = graph.node_weight_mut(node_idx) {
+        //  println!("found node");
         set_input(&mut node.process, idx as u32, input_value, false)
     }
 }
 
 fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
+    //println!("setting input {:?} to {:?}", idx, input_value);
     match process {
-        Process::Sin { ref mut input }
-        | Process::Gauss { ref mut input }
+        Process::Gauss { ref mut input }
         | Process::Softclip { ref mut input }
 	| Process::Square { ref mut input }
 	| Process::Sqrt { ref mut input }
         | Process::Mem { ref mut input, .. }
 	| Process::RMS { ref mut input, .. }
         | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
-        Process::SinOsc { ref mut freq, .. } => set_or_add(freq, input_value, add),
+        Process::SinOsc { ref mut input, ref mut freq, .. } => {
+	    match idx {
+		0 => freq.set_target(freq.current + *input),
+		1 =>
+		    freq.set_target(input_value),
+		_ => panic!("wrong index into {}: {}", name(process), idx),
+	    }
+
+	}
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
             inputs.push(input_value)
         }
@@ -262,10 +334,16 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             ref mut filter,
         } => match idx {
             0 => set_or_add(input, input_value, add),
-            1 => filter.update_coefficients(input_value, filter.q, SR),
-            2 => filter.update_coefficients(filter.freq, input_value, SR),
+            1 => filter.set_parameters(input_value, filter.q.current),
+            2 => filter.set_parameters(filter.freq.current, input_value),
             _ => panic!("wrong index into {}: {}", name(process), idx),
         },
+	Process::Sin { ref mut input, ref mut mul } =>
+	    match idx {
+		0 => set_or_add(input, input_value, add),
+		1 => mul.set_target(input_value),
+		_ => panic!("wrong index into {}: {}", name(process), idx),
+	    }
         Process::Wrap {
             // todo use idx
             ref mut input,
@@ -277,7 +355,20 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             2 => *hi = input_value,
             _ => panic!("wrong index into {}: {}", name(process), idx),
         },
-        Process::Delay {
+
+        Process::LinCon {
+            ref mut input,
+            ref mut lincon_a,
+            ref mut lincon_b,
+	    ..
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => lincon_a.set_target(input_value),
+            2 => lincon_b.set_target(input_value),
+            _ => panic!("wrong index into {}: {}", name(process), idx),
+        },
+
+	Process::Delay {
             ref mut input,
             rec_idx,
         } => {
@@ -321,11 +412,12 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
         },
         Process::LPF1 {
             ref mut input,
-            ref mut p,
+            ref mut freq,
             ..
         } => match idx {
             0 => set_or_add(input, input_value, add),
-            1 => *p = lpf1_calc_p(input_value), // freq input
+	    1 => freq.set_target(input_value),
+//            1 => *p = lpf1_calc_p(input_value), // freq input
             _ => panic!("wrong index into {}: {}", name(process), idx),
         },
     }
@@ -343,6 +435,7 @@ pub enum InputType {
     Q,
     Phase,
     Index,
+    Factor,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -390,6 +483,10 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::Gauss { .. } => procspec("gauss", vec![InputType::Audio]),
         Process::RMS { .. } => procspec("rms", vec![InputType::Audio]),
         Process::LPF1 { .. } => procspec("lpf1", vec![InputType::Audio, InputType::Frequency]),
+        Process::LinCon { .. } => procspec(
+            "lincon",
+            vec![InputType::Any, InputType::Factor, InputType::Factor],
+        ),
     }
 }
 
@@ -399,7 +496,6 @@ fn clear_inputs(process: &mut Process) {
         | Process::Filter { ref mut input, .. }
 //        | Process::Map { ref mut input, .. }
         | Process::CurveLin { ref mut input, .. }
-        | Process::Sin { ref mut input }
 	| Process::Square { ref mut input }
 	| Process::Sqrt { ref mut input }
         | Process::Gauss { ref mut input }
@@ -407,9 +503,11 @@ fn clear_inputs(process: &mut Process) {
         | Process::Mem { ref mut input, .. }
 	| Process::RMS { ref mut input, .. }
         | Process::LPF1 { ref mut input, .. }
+	| Process::LinCon { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
-        Process::SinOsc { ref mut freq, .. } => *freq = 0.0,
+        Process::SinOsc { ref mut input, .. } => *input = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+	Process::Sin { ref mut input, .. } => *input = 0.0,
         Process::Constant { .. }  => (),
 	| Process::SoundIn { .. } => (),
 //        Process::Noise { .. } => (),
@@ -559,18 +657,23 @@ pub fn sqrt() -> UGen {
     UGen::new(Process::Sqrt { input: 0.0 })
 }
 
+fn rms_chain() -> Vec<Process> {
+    vec![
+        Process::Square { input: 0.0 },
+        Process::LPF1 {
+            input: 0.0,
+            freq: lag::lag(10.0),
+            p: lpf1_calc_p(10.),
+            last_out: 0.0,
+        },
+        Process::Sqrt { input: 0.0 },
+    ]
+}
+
 pub fn rms() -> UGen {
     UGen::new(Process::RMS {
         input: 0.0,
-        chain: vec![
-            Process::Square { input: 0.0 },
-            Process::LPF1 {
-                input: 0.0,
-                p: lpf1_calc_p(10.),
-                last_out: 0.0,
-            },
-            Process::Sqrt { input: 0.0 },
-        ],
+        chain: rms_chain(),
     })
 }
 
@@ -586,11 +689,18 @@ pub fn constant(v: f64) -> UGen {
 }
 
 pub fn sin() -> UGen {
-    UGen::new(Process::Sin { input: 0.0 })
+    UGen::new(Process::Sin {
+        input: 0.0,
+        mul: lag::lag(1.0),
+    })
 }
 
 pub fn sin_osc(freq: f64) -> UGen {
-    UGen::new(Process::SinOsc { freq, phase: 0.0 })
+    UGen::new(Process::SinOsc {
+        input: 0.0,
+        freq: lag::lag(freq),
+        phase: 0.0,
+    })
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
@@ -620,7 +730,8 @@ pub fn bpf(freq: f64, q: f64) -> UGen {
 
 fn sinosc(freq: f64) -> Process {
     Process::SinOsc {
-        freq: freq,
+        input: 0.0,
+        freq: lag::lag(freq),
         phase: 0.0,
     }
 }
@@ -651,6 +762,7 @@ pub fn gauss() -> UGen {
 pub fn lpf1(freq: f64) -> UGen {
     UGen::new(Process::LPF1 {
         input: 0.0,
+        freq: lag::lag(freq),
         p: lpf1_calc_p(freq),
         last_out: 0.0,
     })

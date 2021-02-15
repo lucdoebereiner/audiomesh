@@ -1,9 +1,8 @@
-//use std::f64;
-
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+#[derive(Debug)]
 pub struct Lag {
-    current: f64,
+    pub current: f64,
     target: f64,
     factor: f64,
 }
@@ -43,6 +42,10 @@ impl Lag {
             self.current = self.target + self.factor * (self.current - self.target)
         }
         self.current
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.current == self.target
     }
 
     pub fn set_target(&mut self, new_target: f64) {
