@@ -1,10 +1,14 @@
 module Api exposing
     ( NodeIndex
+    , addNode
+    , connectLeastConnected
     , deleteNode
+    , disconnectMostConnected
     , getGraph
     , getOutputs
     , randomize
     , setOutput
+    , setParameter
     , setVolume
     )
 
@@ -16,20 +20,6 @@ import ProcessGraph exposing (..)
 baseUrl : String
 baseUrl =
     "http://localhost:8008"
-
-
-
--- getGraph : (Result Http.Error Graph -> msg) -> Cmd msg
--- getGraph msg =
---     Http.request
---         { url = baseUrl ++ "/graph"
---         , method = "GET"
---         , headers = [ Http.header "Origin" "localhost" ]
---         , body = Http.emptyBody
---         , timeout = Nothing
---         , tracker = Nothing
---         , expect = Http.expectJson msg decodeGraph
---         }
 
 
 type alias NodeIndex =
@@ -57,6 +47,58 @@ deleteNode msg n =
         }
 
 
+connectLeastConnected : (Result Http.Error () -> msg) -> Cmd msg
+connectLeastConnected msg =
+    Http.post
+        { url = baseUrl ++ "/connectleastconnected"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+disconnectMostConnected : (Result Http.Error () -> msg) -> Cmd msg
+disconnectMostConnected msg =
+    Http.post
+        { url = baseUrl ++ "/disconnectmostconnected"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setParameter : (Result Http.Error () -> msg) -> Int -> Int -> Float -> Cmd msg
+setParameter msg ugenIdx parameter value =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/node/"
+                ++ String.fromInt ugenIdx
+                ++ "/parameter/"
+                ++ String.fromInt parameter
+                ++ "/"
+                ++ String.fromFloat value
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setVolume : (Result Http.Error () -> msg) -> Float -> Cmd msg
+setVolume msg amp =
+    Http.post
+        { url = baseUrl ++ "/volume/" ++ String.fromFloat amp
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+addNode : (Result Http.Error () -> msg) -> Process -> Cmd msg
+addNode msg proc =
+    Http.post
+        { url = baseUrl ++ "/node"
+        , body = Http.jsonBody (encodeProcess proc)
+        , expect = Http.expectWhatever msg
+        }
+
+
 getOutputs : (Result Http.Error (List NodeIndex) -> msg) -> Cmd msg
 getOutputs msg =
     Http.get
@@ -81,26 +123,3 @@ randomize msg =
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }
-
-
-setVolume : Float -> (Result Http.Error () -> msg) -> Cmd msg
-setVolume amp msg =
-    Http.post
-        { url = baseUrl ++ "/volume" ++ String.fromFloat amp
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever msg
-        }
-
-
-
--- randomize : (Result Http.Error () -> msg) -> Cmd msg
--- randomize msg =
---     Http.request
---         { url = baseUrl ++ "/randomize"
---         , method = "PUT"
---         , headers = []
---         , body = Http.emptyBody
---         , timeout = Nothing
---         , tracker = Nothing
---         , expect = Http.expectWhatever msg
---         }

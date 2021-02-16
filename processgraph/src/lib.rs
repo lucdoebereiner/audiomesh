@@ -972,11 +972,17 @@ pub fn ensure_connectivity(graph: &mut UGenGraph) {
     let mut rng = thread_rng();
     if let Some((first, rest)) = components.split_first() {
         for disconnected_node in rest.iter() {
-            let w = rng.gen_range(0.7, 1.0);
+            let w1 = rng.gen_range(0.7, 1.0);
+            let w2 = rng.gen_range(0.7, 1.0);
             graph.add_edge(
                 disconnected_node[0],
                 *first.choose(&mut rng).unwrap(),
-                (0, w),
+                (0, w1),
+            );
+            graph.add_edge(
+                *first.choose(&mut rng).unwrap(),
+                disconnected_node[0],
+                (0, w2),
             );
         }
     }

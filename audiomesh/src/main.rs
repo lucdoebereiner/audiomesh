@@ -253,12 +253,21 @@ fn handle_messages(
 
 fn main() {
     // Cors header opetions
+    let allowed_origins = rocket_cors::AllowedOrigins::some_exact(&[
+        // 4.
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8000",
+        "http://0.0.0.0:8000",
+    ]);
+
     let cors = rocket_cors::CorsOptions {
+        //        allowed_origins,
         allowed_methods: vec![Method::Get, Method::Put, Method::Post, Method::Delete]
             .into_iter()
             .map(From::from)
             .collect(),
-        allowed_headers: AllowedHeaders::some(&["Authorization", "Accept"]),
+        allowed_headers: rocket_cors::AllowedHeaders::All,
         allow_credentials: true,
         ..Default::default()
     }
@@ -273,11 +282,11 @@ fn main() {
     let mut g = new_graph();
 
     let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    //let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
-    //    let rms = g.add_node(rms());
+    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
+    let rms = g.add_node(rms());
     //    let sinph = g.add_node(sin());
-    //    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
-    //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
+    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
+    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     // let sum = g.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
     let filter = g.add_node(lpf(100.0, 6.0));
@@ -285,16 +294,16 @@ fn main() {
     let in1 = g.add_node(sound_in(0));
     // let gauss = g.add_node(gauss());
 
-    //    let nodes = vec![mem1, del1, rms, del2, del3, filter];
+    let nodes = vec![mem1, del1, rms, del2, del3, filter, in1];
 
-    let nodes = vec![mem1, in1, filter];
+    //let nodes = vec![mem1, in1, filter];
 
     // let nodes = vec![
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     // ];
 
     rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![mem1, in1];
+    let mut output_indices = vec![mem1, del2];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();

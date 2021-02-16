@@ -1,10 +1,38 @@
-module ProcessGraph exposing (BackendGraph, ClipType(..), Connection, FilterType(..), Link, Process(..), UGen, UGenGraph, decodeGraph, defaultUGen, mkGraph, ugenLabel)
+module ProcessGraph exposing
+    ( BackendGraph
+    , ClipType(..)
+    , Connection
+    , FilterType(..)
+    , Link
+    , Process(..)
+    , UGen
+    , UGenGraph
+    , decodeGraph
+    , defaultUGen
+    , encodeProcess
+    , mkGraph
+    , ugenLabel
+    )
 
 import Array exposing (Array)
 import Graph
 import IntDict exposing (IntDict)
-import Json.Decode as Decode exposing (Decoder, array, bool, field, float, index, int, list, nullable, oneOf, string)
+import Json.Decode as Decode
+    exposing
+        ( Decoder
+        , array
+        , bool
+        , field
+        , float
+        , index
+        , int
+        , list
+        , nullable
+        , oneOf
+        , string
+        )
 import Json.Decode.Pipeline exposing (hardcoded, required)
+import Json.Encode as JE exposing (Value)
 
 
 type FilterType
@@ -63,74 +91,200 @@ clipTypeFromString s =
 
 
 type Process
-    = Mem { input : Float, last_value : Float }
-    | Delay { length : Int, rec_idx : Int }
-    | Add { inputs : List Float }
-    | Mul { inputs : List Float }
-    | Filter { filter_type : FilterType, freq : Float, q : Float }
-    | Gauss { input : Float }
+    = Mem { lastValue : Float }
+    | Delay { length : Int }
+    | Add
+    | Mul
+    | Filter { filterType : FilterType, freq : Float, q : Float }
+    | Gauss
     | RMS
-    | Sin
-    | Constant { input : Float }
+    | Sin { mul : Float }
+    | SinOsc { freq : Float }
+    | Constant { value : Float }
     | SoundIn { index : Int }
+    | Square
+    | BitNeg
+    | BitOr
+    | BitXOr
+    | BitAnd
+    | LinCon { linconA : Float, linconB : Float }
+
+
+processName : Process -> String
+processName p =
+    case p of
+        Mem _ ->
+            "Mem"
+
+        Delay _ ->
+            "Delay"
+
+        Add ->
+            "Add"
+
+        Mul ->
+            "Mul"
+
+        Filter _ ->
+            "Filter"
+
+        Gauss ->
+            "Gauss"
+
+        RMS ->
+            "RMS"
+
+        Sin _ ->
+            "Sin"
+
+        SinOsc _ ->
+            "SinOsc"
+
+        Constant _ ->
+            "Constant"
+
+        SoundIn _ ->
+            "SoundIn"
+
+        Square ->
+            "Square"
+
+        BitNeg ->
+            "BitNeg"
+
+        BitOr ->
+            "BitOr"
+
+        BitXOr ->
+            "BitXOr"
+
+        BitAnd ->
+            "BitAnd"
+
+        LinCon _ ->
+            "LinCon"
+
+
+encodeProcess : Process -> Value
+encodeProcess p =
+    let
+        encObj proc ob =
+            JE.object [ ( processName proc, ob ) ]
+    in
+    case p of
+        Mem m ->
+            encObj p (JE.object [ ( "last_value", JE.float m.lastValue ) ])
+
+        Delay i ->
+            encObj p (JE.object [ ( "input", JE.int i.length ) ])
+
+        Add ->
+            encObj p (JE.object [])
+
+        Mul ->
+            encObj p (JE.object [])
+
+        Filter f ->
+            encObj p
+                (JE.object
+                    [ ( "filter_type", JE.string (filterTypeToString f.filterType) )
+                    , ( "freq", JE.float f.freq )
+                    , ( "q", JE.float f.q )
+                    ]
+                )
+
+        Gauss ->
+            encObj p (JE.object [])
+
+        RMS ->
+            encObj p (JE.object [])
+
+        Sin m ->
+            encObj p (JE.object [ ( "mul", JE.float m.mul ) ])
+
+        SinOsc s ->
+            encObj p (JE.object [ ( "freq", JE.float s.freq ) ])
+
+        Constant c ->
+            encObj p (JE.object [ ( "value", JE.float c.value ) ])
+
+        SoundIn s ->
+            encObj p (JE.object [ ( "index", JE.int s.index ) ])
+
+        Square ->
+            encObj p (JE.object [])
+
+        BitNeg ->
+            encObj p (JE.object [])
+
+        BitOr ->
+            encObj p (JE.object [])
+
+        BitXOr ->
+            encObj p (JE.object [])
+
+        BitAnd ->
+            encObj p (JE.object [])
+
+        LinCon l ->
+            encObj p
+                (JE.object
+                    [ ( "lincon_a", JE.float l.linconA )
+                    , ( "lincon_b", JE.float l.linconB )
+                    ]
+                )
 
 
 processToString : Process -> String
 processToString p =
     case p of
         Constant c ->
-            "Const " ++ String.fromFloat c.input
-
-        RMS ->
-            "RMS"
-
-        Sin ->
-            "Sin"
-
-        Mem _ ->
-            "Mem"
+            "Const " ++ String.fromFloat c.value
 
         Delay d ->
             "Delay length:" ++ String.fromInt d.length
 
-        Add _ ->
-            "Add"
-
-        Mul _ ->
-            "Mul"
-
         Filter f ->
-            filterTypeToString f.filter_type
+            filterTypeToString f.filterType
                 ++ " freq:"
                 ++ String.fromFloat f.freq
                 ++ " q:"
                 ++ String.fromFloat f.q
 
-        Gauss _ ->
-            "Gauss"
-
         SoundIn i ->
             "SoundIn " ++ String.fromInt i.index
+
+        SinOsc f ->
+            "SinOsc " ++ String.fromFloat f.freq
+
+        Sin s ->
+            "Sin " ++ String.fromFloat s.mul
+
+        LinCon l ->
+            "LinCon a: "
+                ++ String.fromFloat l.linconA
+                ++ " b: "
+                ++ String.fromFloat l.linconB
+
+        _ ->
+            processName p
 
 
 decodeMem : Decoder Process
 decodeMem =
-    Decode.succeed (\input last_value -> Mem { input = input, last_value = last_value })
-        |> required "input" float
+    Decode.succeed (\last_value -> Mem { lastValue = last_value })
         |> required "last_value" float
 
 
 decodeDelay : Decoder Process
 decodeDelay =
-    Decode.succeed (\l rec_idx -> Delay { length = l, rec_idx = rec_idx })
+    Decode.succeed (\l -> Delay { length = l })
         |> required "input" int
-        |> required "rec_idx" int
 
 
 decodeAdd : Decoder Process
 decodeAdd =
-    Decode.succeed (\inputs -> Add { inputs = inputs })
-        |> required "inputs" (list float)
+    Decode.succeed Add
 
 
 decodeSoundIn : Decoder Process
@@ -141,13 +295,37 @@ decodeSoundIn =
 
 decodeMul : Decoder Process
 decodeMul =
-    Decode.succeed (\inputs -> Mul { inputs = inputs })
-        |> required "inputs" (list float)
+    Decode.succeed Mul
+
+
+decodeSquare : Decoder Process
+decodeSquare =
+    Decode.succeed Square
+
+
+decodeBitAnd : Decoder Process
+decodeBitAnd =
+    Decode.succeed BitAnd
+
+
+decodeBitNeg : Decoder Process
+decodeBitNeg =
+    Decode.succeed BitNeg
+
+
+decodeBitOr : Decoder Process
+decodeBitOr =
+    Decode.succeed BitOr
+
+
+decodeBitXOr : Decoder Process
+decodeBitXOr =
+    Decode.succeed BitXOr
 
 
 decodeConstant : Decoder Process
 decodeConstant =
-    Decode.succeed (\input -> Constant { input = input })
+    Decode.succeed (\input -> Constant { value = input })
         |> required "input" float
 
 
@@ -158,13 +336,13 @@ decodeRMS =
 
 decodeSin : Decoder Process
 decodeSin =
-    Decode.succeed Sin
+    Decode.succeed (\m -> Sin { mul = m })
+        |> required "mul" float
 
 
 decodeGauss : Decoder Process
 decodeGauss =
-    Decode.succeed (\input -> Gauss { input = input })
-        |> required "input" float
+    Decode.succeed Gauss
 
 
 decodeFilter : Decoder Process
@@ -172,7 +350,7 @@ decodeFilter =
     Decode.succeed
         (\ftype freq q ->
             Filter
-                { filter_type = filterTypeFromString ftype
+                { filterType = filterTypeFromString ftype
                 , freq = freq
                 , q = q
                 }
@@ -180,6 +358,19 @@ decodeFilter =
         |> required "filter_type" string
         |> required "freq" float
         |> required "q" float
+
+
+decodeSinOsc : Decoder Process
+decodeSinOsc =
+    Decode.succeed (\f -> SinOsc { freq = f })
+        |> required "freq" float
+
+
+decodeLinCon : Decoder Process
+decodeLinCon =
+    Decode.succeed (\a b -> LinCon { linconA = a, linconB = b })
+        |> required "lincon_a" float
+        |> required "lincon_b" float
 
 
 type alias UGen =
@@ -196,7 +387,7 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen (Add { inputs = [] }) True None
+    UGen Add True None
 
 
 decodeUGen : Decoder UGen
@@ -213,7 +404,14 @@ decodeUGen =
                 , field "Sin" decodeSin
                 , field "Gauss" decodeGauss
                 , field "SoundIn" decodeSoundIn
-                , field "Filter" (field "filter" decodeFilter)
+                , field "Filter" decodeFilter
+                , field "SinOsc" decodeSinOsc
+                , field "LinCon" decodeLinCon
+                , field "Square" decodeSquare
+                , field "BitAnd" decodeBitAnd
+                , field "BitOr" decodeBitOr
+                , field "BitXOr" decodeBitXOr
+                , field "BitNeg" decodeBitNeg
                 ]
             )
         |> required "sum_inputs" bool

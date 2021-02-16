@@ -16,7 +16,8 @@
             "elm-community/graph": "6.0.0",
             "elm-community/intdict": "3.0.0",
             "elm-community/typed-svg": "6.0.0",
-            "gampleman/elm-visualization": "2.1.1"
+            "gampleman/elm-visualization": "2.1.1",
+            "mdgriffith/elm-ui": "1.1.8"
         },
         "indirect": {
             "avh4/elm-fifo": "1.0.4",
