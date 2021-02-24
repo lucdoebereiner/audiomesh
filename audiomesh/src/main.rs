@@ -24,7 +24,7 @@ use jack;
 use rocket::http::Method;
 use rocket_contrib::json::*;
 use rocket_cors;
-use rocket_cors::AllowedHeaders;
+//use rocket_cors::AllowedHeaders;
 
 // use petgraph::dot::{Config, Dot};
 use petgraph::stable_graph::*;
@@ -42,21 +42,25 @@ use processgraph::lag;
 enum UpdateMessage {
     Randomize,
     DumpGraph,
+    SetGraph(UGenGraph),
     DumpOutputs,
     AddEdge(NodeIndex, NodeIndex, f64, usize),
     RemoveNode(usize),
     AddNode(Process),
     RemoveEdge(usize),
+    SetEdgeWeight(usize, f64),
     SetOutput(NodeIndex, usize),
     SetVolume(f64),
     ConnectLeastConnected,
     DisconnectMostConnected,
     SetParameter(usize, u32, f64),
+    PollNode(NodeIndex),
 }
 
 enum ReturnMessage {
     Graph(String),
     Outputs(String),
+    PollOutput(String),
 }
 
 struct Globals {
@@ -87,6 +91,15 @@ fn add_node(process: Json<Process>, state: State<Globals>) {
         .unwrap()
 }
 
+#[post("/graph", data = "<graph>")]
+fn set_graph(graph: Json<UGenGraph>, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetGraph(graph.into_inner()))
+        .unwrap()
+}
+
 #[post("/node/<id>/output/<output>")]
 fn node_output(id: usize, output: usize, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
@@ -110,6 +123,15 @@ fn remove_edge(id: usize, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::RemoveEdge(id)).unwrap()
+}
+
+#[post("/edge/<id>/<weight>")]
+fn set_edge_weight(id: usize, weight: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetEdgeWeight(id, weight))
+        .unwrap()
 }
 
 #[post("/edge/<id_from>/<id_to>/<weight>/<index>")]
@@ -154,7 +176,9 @@ fn get_outputs(state: State<Globals>) -> content::Json<String> {
     let receiver = &shared_data.receiver;
     sender.send(UpdateMessage::DumpOutputs).unwrap();
     match receiver.recv().unwrap() {
-        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) => content::Json(g),
+        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
+            content::Json(g)
+        }
     }
 }
 
@@ -165,7 +189,24 @@ fn get_graph(state: State<Globals>) -> content::Json<String> {
     let receiver = &shared_data.receiver;
     sender.send(UpdateMessage::DumpGraph).unwrap();
     match receiver.recv().unwrap() {
-        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) => content::Json(g),
+        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
+            content::Json(g)
+        }
+    }
+}
+
+#[get("/node/<id>/poll")]
+fn poll_node(id: usize, state: State<Globals>) -> content::Json<String> {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    let receiver = &shared_data.receiver;
+    sender
+        .send(UpdateMessage::PollNode(NodeIndex::new(id)))
+        .unwrap();
+    match receiver.recv().unwrap() {
+        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
+            content::Json(g)
+        }
     }
 }
 
@@ -198,6 +239,19 @@ fn handle_messages(
             let j = serde_json::to_string(graph).unwrap();
             sender.send(ReturnMessage::Graph(j)).unwrap()
         }
+        UpdateMessage::PollNode(node) => {
+            let n = graph.node_weight(node);
+            match n {
+                Some(n) => {
+                    let j = serde_json::to_string(&n.last_value).unwrap();
+                    sender.send(ReturnMessage::PollOutput(j)).unwrap()
+                }
+                _ => sender
+                    .send(ReturnMessage::PollOutput("".to_string()))
+                    .unwrap(),
+            }
+        }
+
         UpdateMessage::DumpOutputs => {
             let j = serde_json::to_string(output_indices).unwrap();
             sender.send(ReturnMessage::Outputs(j)).unwrap()
@@ -211,6 +265,13 @@ fn handle_messages(
             //let _ = mem::replace(flow, new_flow);
             //            println!("{:?}", collect_components(graph));
         }
+        UpdateMessage::SetEdgeWeight(id, w) => {
+            if let Some(e) = graph.edge_weight_mut(EdgeIndex::new(id)) {
+                let (_, weight) = e;
+                //                *e = (*idx, w)
+                weight.set_target(w)
+            }
+        }
         UpdateMessage::RemoveEdge(id) => {
             graph.remove_edge(EdgeIndex::new(id));
             update_connections_and_flow(graph, flow, output_indices)
@@ -223,7 +284,7 @@ fn handle_messages(
         }
         UpdateMessage::SetOutput(node, output) => output_indices[output] = node,
         UpdateMessage::AddNode(node) => {
-            let _idx = graph.add_node(UGen::new(node));
+            let _idx = graph.add_node(UGen::new(node).clip(ClipType::SoftClip));
             update_connections_and_flow(graph, flow, output_indices)
             // ensure_connectivity(graph);
             // let new_flow = establish_flow(graph, output_indices);
@@ -231,8 +292,14 @@ fn handle_messages(
             //let _ = mem::replace(flow, new_flow);
             //            println!("{:?}", nodes_with_neighbors(graph));
         }
+
+        UpdateMessage::SetGraph(g) => {
+            graph.clear();
+            *graph = g;
+            update_connections_and_flow(graph, flow, output_indices)
+        }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
-            let _idx = graph.add_edge(node_from, node_to, (index as u32, weight));
+            let _idx = graph.add_edge(node_from, node_to, (index as u32, lag::lag(weight)));
         }
         UpdateMessage::ConnectLeastConnected => {
             connect_least_connected(graph);
@@ -253,13 +320,13 @@ fn handle_messages(
 
 fn main() {
     // Cors header opetions
-    let allowed_origins = rocket_cors::AllowedOrigins::some_exact(&[
-        // 4.
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:8000",
-        "http://0.0.0.0:8000",
-    ]);
+    // let allowed_origins = rocket_cors::AllowedOrigins::some_exact(&[
+    //     // 4.
+    //     "http://localhost:8080",
+    //     "http://127.0.0.1:8080",
+    //     "http://localhost:8000",
+    //     "http://0.0.0.0:8000",
+    // ]);
 
     let cors = rocket_cors::CorsOptions {
         //        allowed_origins,
@@ -281,29 +348,37 @@ fn main() {
     // Create graph and init
     let mut g = new_graph();
 
-    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
-    let rms = g.add_node(rms());
+    //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
+    //    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
+    //    let rms = g.add_node(rms());
     //    let sinph = g.add_node(sin());
-    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
-    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
+    //    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
+    //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     // let sum = g.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    let filter = g.add_node(lpf(100.0, 6.0));
+    //    let filter1 = g.add_node(lpf(100.0, 6.0));
+    //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    let in1 = g.add_node(sound_in(0));
+    //    let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
+    //    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
     // let gauss = g.add_node(gauss());
+    let ring = g.add_node(ring());
+    let c1 = g.add_node(constant(0.5));
+    let c2 = g.add_node(constant(1.0));
+    //    let s1 = g.add_node(sin_osc(100.0));
+    g.add_edge(c1, ring, (0, lag::lag(1.0)));
+    g.add_edge(c2, ring, (0, lag::lag(1.0)));
+    //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
+    //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
 
-    let nodes = vec![mem1, del1, rms, del2, del3, filter, in1];
-
-    //let nodes = vec![mem1, in1, filter];
+    //    let nodes = vec![ring, c1, c2];
 
     // let nodes = vec![
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     // ];
 
-    rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![mem1, del2];
+    //    rnd_connections(&mut g, &nodes, 1);
+    let mut output_indices = vec![ring, c1];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();
@@ -343,7 +418,7 @@ fn main() {
         );
     }
 
-    let mut amplitude = lag::lag(1.0);
+    let mut amplitude = lag::lag(0.4);
 
     let process = jack::ClosureProcessHandler::new(
         move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
@@ -412,7 +487,10 @@ fn main() {
                 set_volume,
                 least_connected,
                 most_connected,
-                set_parameter
+                set_parameter,
+                set_edge_weight,
+                poll_node,
+                set_graph
             ],
         )
         .attach(cors)

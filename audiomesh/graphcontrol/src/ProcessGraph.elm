@@ -11,7 +11,12 @@ module ProcessGraph exposing
     , defaultUGen
     , encodeProcess
     , mkGraph
+    , mulAllEdges
+    , processParameters
+    , setInput
     , ugenLabel
+    , updateEdge
+    , updateProcessParameter
     )
 
 import Array exposing (Array)
@@ -33,6 +38,8 @@ import Json.Decode as Decode
         )
 import Json.Decode.Pipeline exposing (hardcoded, required)
 import Json.Encode as JE exposing (Value)
+import Parameters exposing (Mapping(..), Parameter)
+import Utils exposing (..)
 
 
 type FilterType
@@ -95,6 +102,7 @@ type Process
     | Delay { length : Int }
     | Add
     | Mul
+    | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
     | Gauss
     | RMS
@@ -108,6 +116,82 @@ type Process
     | BitXOr
     | BitAnd
     | LinCon { linconA : Float, linconB : Float }
+
+
+
+-- type alias Parameter =
+--     { idx : Int
+--     , val : Float
+--     , name : String
+--     , min : Float
+--     , max : Float
+--     }
+
+
+processParameters : Process -> List Parameter
+processParameters p =
+    case p of
+        Mem { lastValue } ->
+            [ Parameter 1 lastValue Lin "Last" -1.0 1.0 ]
+
+        Sin { mul } ->
+            [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
+
+        SinOsc { freq } ->
+            [ Parameter 1 freq Exp "Freq" 0.001 10000.0 ]
+
+        Constant { value } ->
+            [ Parameter 1 value Lin "Value" -1.0 1.0 ]
+
+        Filter { filterType, freq, q } ->
+            [ Parameter 1 freq Exp "Freq" 5.0 4000.0, Parameter 2 q Exp "Q" 0.1 20.0 ]
+
+        LinCon { linconA, linconB } ->
+            [ Parameter 1 linconA Exp "A" 0.001 10.0, Parameter 2 linconB Exp "B" 0.001 20.0 ]
+
+        _ ->
+            []
+
+
+setInput : ( Int, Float ) -> Process -> Process
+setInput ( parIdx, val ) proc =
+    case proc of
+        Mem _ ->
+            Mem { lastValue = val }
+
+        Sin _ ->
+            Sin { mul = val }
+
+        SinOsc _ ->
+            SinOsc { freq = val }
+
+        Constant _ ->
+            Constant { value = val }
+
+        Filter f ->
+            case parIdx of
+                1 ->
+                    Filter { f | freq = val }
+
+                2 ->
+                    Filter { f | q = val }
+
+                _ ->
+                    proc
+
+        LinCon l ->
+            case parIdx of
+                1 ->
+                    LinCon { l | linconA = val }
+
+                2 ->
+                    LinCon { l | linconB = val }
+
+                _ ->
+                    proc
+
+        _ ->
+            proc
 
 
 processName : Process -> String
@@ -124,6 +208,9 @@ processName p =
 
         Mul ->
             "Mul"
+
+        Ring ->
+            "Ring"
 
         Filter _ ->
             "Filter"
@@ -184,6 +271,9 @@ encodeProcess p =
         Mul ->
             encObj p (JE.object [])
 
+        Ring ->
+            encObj p (JE.object [])
+
         Filter f ->
             encObj p
                 (JE.object
@@ -239,7 +329,7 @@ processToString : Process -> String
 processToString p =
     case p of
         Constant c ->
-            "Const " ++ String.fromFloat c.value
+            "Const " ++ floatString c.value
 
         Delay d ->
             "Delay length:" ++ String.fromInt d.length
@@ -247,24 +337,24 @@ processToString p =
         Filter f ->
             filterTypeToString f.filterType
                 ++ " freq:"
-                ++ String.fromFloat f.freq
+                ++ floatString f.freq
                 ++ " q:"
-                ++ String.fromFloat f.q
+                ++ floatString f.q
 
         SoundIn i ->
             "SoundIn " ++ String.fromInt i.index
 
         SinOsc f ->
-            "SinOsc " ++ String.fromFloat f.freq
+            "SinOsc " ++ floatString f.freq
 
         Sin s ->
-            "Sin " ++ String.fromFloat s.mul
+            "Sin " ++ floatString s.mul
 
         LinCon l ->
             "LinCon a: "
-                ++ String.fromFloat l.linconA
+                ++ floatString l.linconA
                 ++ " b: "
-                ++ String.fromFloat l.linconB
+                ++ floatString l.linconB
 
         _ ->
             processName p
@@ -298,6 +388,11 @@ decodeMul =
     Decode.succeed Mul
 
 
+decodeRing : Decoder Process
+decodeRing =
+    Decode.succeed Ring
+
+
 decodeSquare : Decoder Process
 decodeSquare =
     Decode.succeed Square
@@ -326,7 +421,7 @@ decodeBitXOr =
 decodeConstant : Decoder Process
 decodeConstant =
     Decode.succeed (\input -> Constant { value = input })
-        |> required "input" float
+        |> required "value" float
 
 
 decodeRMS : Decoder Process
@@ -399,6 +494,7 @@ decodeUGen =
                 , field "Add" decodeAdd
                 , field "Mem" decodeMem
                 , field "Mul" decodeMul
+                , field "Ring" decodeRing
                 , field "RMS" decodeRMS
                 , field "Constant" decodeConstant
                 , field "Sin" decodeSin
@@ -578,3 +674,49 @@ mkGraph gr =
     in
     Graph.fromNodesAndEdges nodes <|
         List.map (\e -> Graph.Edge e.from e.to e.link) gr.edges
+
+
+updateProcessParameter : Graph.NodeId -> ( Int, Float ) -> UGenGraph -> UGenGraph
+updateProcessParameter id ( parIdx, val ) graph =
+    Graph.update id
+        (Maybe.map
+            (\ugenCtx ->
+                let
+                    node =
+                        ugenCtx.node
+
+                    ugen =
+                        node.label
+
+                    p =
+                        setInput ( parIdx, val ) ugen.process
+
+                    newNode =
+                        { node | label = { ugen | process = p } }
+                in
+                { ugenCtx | node = newNode }
+            )
+        )
+        graph
+
+
+updateEdge : Int -> Float -> UGenGraph -> UGenGraph
+updateEdge edgeId weight graph =
+    Graph.mapEdges
+        (\e ->
+            if e.id == edgeId then
+                { e | strength = weight }
+
+            else
+                e
+        )
+        graph
+
+
+mulAllEdges : Float -> UGenGraph -> UGenGraph
+mulAllEdges f graph =
+    Graph.mapEdges
+        (\e ->
+            { e | strength = e.strength * f }
+        )
+        graph

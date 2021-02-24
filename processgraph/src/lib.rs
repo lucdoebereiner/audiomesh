@@ -17,7 +17,7 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 const PI: f64 = f64::consts::PI;
-const SR: f64 = 48000f64;
+const SR: f64 = 44100f64;
 static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
@@ -54,6 +54,13 @@ pub enum Process {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
+    Ring {
+        #[serde(skip)]
+        inputs: Vec<Process>,
+        #[serde(skip_serializing)]
+        #[serde(default)]
+        input_counter: usize,
+    },
     Add {
         #[serde(skip)]
         inputs: Vec<f64>,
@@ -72,6 +79,8 @@ pub enum Process {
         input: f64,
     },
     SoundIn {
+        #[serde(skip)]
+        input: f64,
         index: usize,
     },
 
@@ -162,6 +171,9 @@ pub enum Process {
     LinCon {
         #[serde(skip)]
         input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "rms_chain")]
+        input_proc: Vec<Process>,
         lincon_a: lag::Lag,
         lincon_b: lag::Lag,
         #[serde(skip)]
@@ -207,20 +219,23 @@ fn clear_chain(chain: &mut [Process]) {
     }
 }
 
-fn process(process: &mut Process, external_input: &[f64]) -> f64 {
-    match process {
-        Process::SoundIn { index } => *external_input.get(*index).unwrap_or(&0.0),
+fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
+    match proc {
+        Process::SoundIn { input, index } => {
+            (*input * 0.5) + *external_input.get(*index).unwrap_or(&0.0)
+        }
         Process::Sin { input, mul } => (*input * mul.tick()).sin(),
         Process::SinOsc {
             input,
             freq,
             ref mut phase,
         } => {
+            //            let freqIn = numerical::curvelin(*input, -1.0, 1.0, 1.0, 10000.0, 2.0);
             let output = phase.sin();
-            *phase += freq.tick() * FREQ_FAC;
+            *phase += freq.tick() + (*input * 5000.0) * FREQ_FAC;
             output
         }
-        Process::Mul { inputs } => inputs.iter().product(),
+        Process::Mul { inputs, .. } => inputs.iter().product(),
         Process::Add { inputs } => inputs.iter().sum(),
         Process::Square { input } => input.powf(2.0),
         Process::Sqrt { input } => input.sqrt(),
@@ -231,6 +246,24 @@ fn process(process: &mut Process, external_input: &[f64]) -> f64 {
             input,
             ref mut filter,
         } => filter.process((*input).tanh()),
+        // TODO debug the 0.0s in here
+        Process::Ring { ref mut inputs, .. } => {
+            inputs
+                .iter_mut()
+                .map(|p| process(p, external_input))
+                .product()
+            // .filter_map(|p| {
+            //     let v = process(p, external_input);
+            //     if v != 0.0 {
+            //         Some(v)
+            //     } else {
+            //         None
+            //     }
+            // })
+            //  .product()
+
+            //outputs.iter().product()
+        }
         //        Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
         Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
         Process::Softclip { input } => input.tanh(),
@@ -276,11 +309,13 @@ fn process(process: &mut Process, external_input: &[f64]) -> f64 {
         } => process_chain(chain, *input, external_input),
         Process::LinCon {
             input,
+            input_proc,
             lincon_a,
             lincon_b,
             last_out,
         } => {
-            let output = (*last_out * (*input * lincon_a.tick()) + lincon_b.tick()) % 2.0 - 1.0;
+            let rms_input = process_chain(input_proc, *input, external_input);
+            let output = (*last_out * (rms_input * lincon_a.tick()) + lincon_b.tick()) % 2.0 - 1.0;
             *last_out = output;
             output
         }
@@ -303,32 +338,50 @@ pub fn set_parameter(graph: &mut UGenGraph, node_idx: NodeIndex, idx: u32, input
     }
 }
 
-fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
+fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
     //println!("setting input {:?} to {:?}", idx, input_value);
-    match process {
+    match proc {
         Process::Gauss { ref mut input }
         | Process::Softclip { ref mut input }
-	| Process::Square { ref mut input }
-	| Process::Sqrt { ref mut input }
+        | Process::Square { ref mut input }
+        | Process::Sqrt { ref mut input }
         | Process::Mem { ref mut input, .. }
-	| Process::RMS { ref mut input, .. }
+        | Process::RMS { ref mut input, .. }
         | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
-        Process::SinOsc { ref mut input, ref mut freq, .. } => {
-	    match idx {
-		0 => freq.set_target(freq.current + *input),
-		1 =>
-		    freq.set_target(input_value),
-		_ => panic!("wrong index into {}: {}", name(process), idx),
-	    }
-
-	}
-        Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => {
+        Process::SinOsc {
+            ref mut input,
+            ref mut freq,
+            ..
+        } => match idx {
+            0 => freq.set_target(freq.current + *input),
+            1 => freq.set_target(input_value),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
+        Process::Add { ref mut inputs } | Process::Mul { ref mut inputs } => {
             inputs.push(input_value)
         }
-        Process::Constant { .. } | Process::SoundIn { .. }
-	//| Process::Noise { .. }
-	=> (),
+        Process::Ring {
+            ref mut inputs,
+            ref mut input_counter,
+        } => {
+            *input_counter = *input_counter + 1;
+            if inputs.len() < *input_counter {
+                let mut fil = lpf2000();
+                set_input(&mut fil, 0, input_value, false);
+                inputs.push(fil);
+            //                println!("c {:?}, ring inputs: {:?}", input_counter, inputs)
+            } else {
+                set_input(&mut inputs[*input_counter - 1], 0, input_value, false);
+                //  println!("inputs {:?}, ring inputs: {:?}", input_value, inputs)
+            }
+        }
+        Process::Constant { .. } => (),
         //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
+        Process::SoundIn { ref mut input, .. } => match idx {
+            0 => set_or_add(input, input_value, add),
+            //	1 => *index = input_value as usize,
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
         Process::Filter {
             ref mut input,
             ref mut filter,
@@ -336,14 +389,16 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             0 => set_or_add(input, input_value, add),
             1 => filter.set_parameters(input_value, filter.q.current),
             2 => filter.set_parameters(filter.freq.current, input_value),
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
-	Process::Sin { ref mut input, ref mut mul } =>
-	    match idx {
-		0 => set_or_add(input, input_value, add),
-		1 => mul.set_target(input_value),
-		_ => panic!("wrong index into {}: {}", name(process), idx),
-	    }
+        Process::Sin {
+            ref mut input,
+            ref mut mul,
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => mul.set_target(input_value),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
         Process::Wrap {
             // todo use idx
             ref mut input,
@@ -353,22 +408,22 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             0 => set_or_add(input, input_value, add),
             1 => *lo = input_value,
             2 => *hi = input_value,
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
 
         Process::LinCon {
             ref mut input,
             ref mut lincon_a,
             ref mut lincon_b,
-	    ..
+            ..
         } => match idx {
             0 => set_or_add(input, input_value, add),
             1 => lincon_a.set_target(input_value),
             2 => lincon_b.set_target(input_value),
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
 
-	Process::Delay {
+        Process::Delay {
             ref mut input,
             rec_idx,
         } => {
@@ -392,7 +447,7 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
         } => match idx {
             0 => set_or_add(input1, input_value, add),
             1 => set_or_add(input2, input_value, add),
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
         Process::CurveLin {
             ref mut input,
@@ -408,7 +463,7 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             3 => *out_min = input_value,
             4 => *out_max = input_value,
             5 => *curve = input_value,
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
         Process::LPF1 {
             ref mut input,
@@ -416,9 +471,9 @@ fn set_input(process: &mut Process, idx: u32, input_value: f64, add: bool) {
             ..
         } => match idx {
             0 => set_or_add(input, input_value, add),
-	    1 => freq.set_target(input_value),
-//            1 => *p = lpf1_calc_p(input_value), // freq input
-            _ => panic!("wrong index into {}: {}", name(process), idx),
+            1 => freq.set_target(input_value),
+            //            1 => *p = lpf1_calc_p(input_value), // freq input
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
     }
 }
@@ -461,6 +516,7 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::Sin { .. } => procspec("sin", vec![InputType::Phase]),
         Process::SinOsc { .. } => procspec("sinosc", vec![InputType::Frequency]),
         Process::Mul { .. } => procspec("mul", vec![InputType::Any]),
+        Process::Ring { .. } => procspec("ring", vec![InputType::Audio]),
         Process::Add { .. } => procspec("add", vec![InputType::Any]),
         Process::Mem { .. } => procspec("mem", vec![InputType::Any]),
         Process::Constant { .. } => procspec("constant", vec![InputType::Any]),
@@ -507,9 +563,15 @@ fn clear_inputs(process: &mut Process) {
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+	| Process::Ring { ref mut inputs, ref mut input_counter } => {
+	    *input_counter = 0;
+	    for i in inputs.iter_mut() {
+		clear_inputs(i);
+	    }
+	}
 	Process::Sin { ref mut input, .. } => *input = 0.0,
         Process::Constant { .. }  => (),
-	| Process::SoundIn { .. } => (),
+	| Process::SoundIn { ref mut input, .. } => *input = 0.0,
 //        Process::Noise { .. } => (),
         Process::Delay {
             ref mut input,
@@ -541,13 +603,16 @@ pub enum ClipType {
 }
 
 // index and weight
-pub type Connection = (u32, f64);
+//pub type Connection = (u32, f64);
+pub type Connection = (u32, lag::Lag);
 
 #[derive(Serialize, Deserialize)]
 pub struct UGen {
     feedback_delay: bool,
     process: Process,
     value: Option<f64>,
+    #[serde(skip)]
+    pub last_value: f64,
     sum_inputs: bool,
     clip: ClipType,
 }
@@ -559,6 +624,7 @@ impl UGen {
             process,
             value: None,
             sum_inputs: true,
+            last_value: 0.0,
             clip: ClipType::None,
         }
     }
@@ -592,6 +658,7 @@ impl UGen {
                 if DEBUG {
                     println!("processing: [{:?}] with result {}", self, output)
                 }
+                self.last_value = output;
                 self.value = Some(output);
                 clear_inputs(&mut self.process);
                 output
@@ -610,7 +677,7 @@ impl UGen {
     //     set_input(&mut self.process, idx, value, self.sum_inputs)
     // }
 
-    fn set_input_with_connection(&mut self, connection: Connection, value: f64) {
+    fn set_input_with_connection(&mut self, connection: (u32, f64), value: f64) {
         let (idx, weight) = connection;
         if DEBUG {
             println!("setting input of [{:?}] to {}", self, value)
@@ -650,11 +717,24 @@ pub fn square() -> UGen {
 }
 
 pub fn sound_in(index: usize) -> UGen {
-    UGen::new(Process::SoundIn { index })
+    UGen::new(Process::SoundIn { input: 0.0, index })
 }
 
 pub fn sqrt() -> UGen {
     UGen::new(Process::Sqrt { input: 0.0 })
+}
+
+fn lpf2000() -> Process {
+    filter(filters::FilterType::BLPF, 2000.0, 6.0)
+}
+
+fn lp2000() -> Process {
+    Process::LPF1 {
+        input: 0.0,
+        freq: lag::lag(2000.0),
+        p: lpf1_calc_p(2000.),
+        last_out: 0.0,
+    }
 }
 
 fn rms_chain() -> Vec<Process> {
@@ -670,11 +750,15 @@ fn rms_chain() -> Vec<Process> {
     ]
 }
 
-pub fn rms() -> UGen {
-    UGen::new(Process::RMS {
+fn rms_proc() -> Process {
+    Process::RMS {
         input: 0.0,
         chain: rms_chain(),
-    })
+    }
+}
+
+pub fn rms() -> UGen {
+    UGen::new(rms_proc())
 }
 
 pub fn mem(init: f64) -> UGen {
@@ -712,6 +796,13 @@ fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
 
 pub fn lpf(freq: f64, q: f64) -> UGen {
     UGen::new(filter(filters::FilterType::BLPF, freq, q))
+}
+
+pub fn ring() -> UGen {
+    UGen::new(Process::Ring {
+        inputs: Vec::new(),
+        input_counter: 0,
+    })
 }
 
 pub fn hpf(freq: f64, q: f64) -> UGen {
@@ -793,6 +884,7 @@ fn fb_delay() -> UGen {
             last_value: 0.0,
         },
         value: None,
+        last_value: 0.0,
         clip: ClipType::None,
         sum_inputs: true,
     }
@@ -827,9 +919,9 @@ pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, No
     let low2 = g.add_node(lpf(f2, q));
     let high1 = g.add_node(hpf(f1, q));
     let high2 = g.add_node(hpf(f1, q));
-    g.add_edge(low1, low2, (0, 1.0));
-    g.add_edge(low2, high1, (0, 1.0));
-    g.add_edge(high1, high2, (0, 1.0));
+    g.add_edge(low1, low2, (0, lag::lag(1.0)));
+    g.add_edge(low2, high1, (0, lag::lag(1.0)));
+    g.add_edge(high1, high2, (0, lag::lag(1.0)));
     (low1, high2)
 }
 
@@ -863,7 +955,7 @@ pub fn filter_bank(
     let outputs = filters
         .iter()
         .map(|(input, output)| {
-            g.add_edge(input_sum, *input, (0, 1.0));
+            g.add_edge(input_sum, *input, (0, lag::lag(1.0)));
             *output
         })
         .collect();
@@ -883,8 +975,8 @@ pub fn rnd_connections(
         shuffled.iter().for_each(|&idx| {
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
-            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), (0, w1)));
-            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, w2)));
+            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), (0, lag::lag(w1))));
+            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, lag::lag(w2))));
         })
     }
     edges
@@ -945,7 +1037,7 @@ pub fn connect_least_connected(graph: &mut UGenGraph) {
             .next()
         {
             let w = thread_rng().gen_range(0.7, 1.0);
-            graph.add_edge(*first, *future_neighbor, (0, w));
+            graph.add_edge(*first, *future_neighbor, (0, lag::lag(w)));
         }
     }
 }
@@ -977,12 +1069,12 @@ pub fn ensure_connectivity(graph: &mut UGenGraph) {
             graph.add_edge(
                 disconnected_node[0],
                 *first.choose(&mut rng).unwrap(),
-                (0, w1),
+                (0, lag::lag(w1)),
             );
             graph.add_edge(
                 *first.choose(&mut rng).unwrap(),
                 disconnected_node[0],
-                (0, w2),
+                (0, lag::lag(w2)),
             );
         }
     }
@@ -1084,7 +1176,10 @@ pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
                 let edge = graph
                     .find_edge(idx, neighbor_idx)
                     .and_then(|e| graph.edge_weight(e))
-                    .map(|e| *e); // deref to stop borrowing
+                    .map(|e| {
+                        let (idx, w) = &*e;
+                        (*idx, w.current)
+                    }); // deref to stop borrowing
                 match edge {
                     Some(connection) => {
                         graph[neighbor_idx].set_input_with_connection(connection, output)
@@ -1120,5 +1215,10 @@ pub fn process_graph(
             }
             None => (),
         }
+    }
+    for e in graph.edge_weights_mut() {
+        let (_, w) = e;
+        w.tick();
+        ()
     }
 }

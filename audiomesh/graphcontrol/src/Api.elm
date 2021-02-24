@@ -5,8 +5,11 @@ module Api exposing
     , deleteNode
     , disconnectMostConnected
     , getGraph
+    , getGraphForDownload
     , getOutputs
+    , postGraph
     , randomize
+    , setEdgeWeight
     , setOutput
     , setParameter
     , setVolume
@@ -31,6 +34,14 @@ getGraph msg =
     Http.get
         { url = baseUrl ++ "/graph"
         , expect = Http.expectJson msg decodeGraph
+        }
+
+
+getGraphForDownload : (Result Http.Error String -> msg) -> Cmd msg
+getGraphForDownload msg =
+    Http.get
+        { url = baseUrl ++ "/graph"
+        , expect = Http.expectString msg
         }
 
 
@@ -81,6 +92,20 @@ setParameter msg ugenIdx parameter value =
         }
 
 
+setEdgeWeight : (Result Http.Error () -> msg) -> Int -> Float -> Cmd msg
+setEdgeWeight msg edgeIdx value =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/edge/"
+                ++ String.fromInt edgeIdx
+                ++ "/"
+                ++ String.fromFloat value
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
 setVolume : (Result Http.Error () -> msg) -> Float -> Cmd msg
 setVolume msg amp =
     Http.post
@@ -95,6 +120,15 @@ addNode msg proc =
     Http.post
         { url = baseUrl ++ "/node"
         , body = Http.jsonBody (encodeProcess proc)
+        , expect = Http.expectWhatever msg
+        }
+
+
+postGraph : (Result Http.Error () -> msg) -> String -> Cmd msg
+postGraph msg g =
+    Http.post
+        { url = baseUrl ++ "/graph"
+        , body = Http.stringBody "application/json" g
         , expect = Http.expectWhatever msg
         }
 

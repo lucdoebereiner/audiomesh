@@ -67,7 +67,7 @@ pub struct Biquad {
 }
 
 pub fn sr_default() -> f64 {
-    48000f64
+    44100f64
 }
 
 impl Biquad {

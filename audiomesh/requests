@@ -10,6 +10,85 @@ POST http://localhost:8008/randomize
 # get graph
 GET http://localhost:8008/graph
 
+# post graph
+POST http://localhost:8008/graph
+Content-Type: application/json
+{
+  "nodes": [
+    {
+      "feedback_delay": false,
+      "process": {
+        "Ring": {
+        }
+      },
+      "value": null,
+      "sum_inputs": true,
+      "clip": "None"
+    },
+    {
+      "feedback_delay": false,
+      "process": {
+        "Constant": {
+          "value": 0.5
+        }
+      },
+      "value": null,
+      "sum_inputs": true,
+      "clip": "None"
+    },
+    {
+      "feedback_delay": false,
+      "process": {
+        "Constant": {
+          "value": 1.0
+        }
+      },
+      "value": null,
+      "sum_inputs": true,
+      "clip": "None"
+    },
+    {
+      "feedback_delay": false,
+      "process": {
+        "SinOsc": {
+          "freq": 100.0
+        }
+      },
+      "value": null,
+      "sum_inputs": true,
+      "clip": "None"
+    }
+  ],
+  "node_holes": [],
+  "edge_property": "directed",
+  "edges": [
+    [
+      1,
+      0,
+      [
+        0,
+        1.0
+      ]
+    ],
+    [
+      2,
+      0,
+      [
+        0,
+        1.0
+      ]
+    ],
+    [
+      3,
+      0,
+      [
+        0,
+        1.0
+      ]
+    ]
+  ]
+}
+
 # get outputs
 GET http://localhost:8008/outputs
 
@@ -33,6 +112,10 @@ POST http://localhost:8008/node/5/parameter/1/3000.1
 
 # set parameter
 POST http://localhost:8008/node/2/parameter/1/50
+
+# poll node
+GET http://localhost:8008/node/9/poll
+
 
 # testing processes SIN
 POST http://localhost:8008/node

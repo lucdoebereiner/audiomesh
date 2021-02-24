@@ -10,12 +10,18 @@ import Element.Background as Background
 import Element.Border as Border
 import Element.Font as Font
 import Element.Input as Input
+import File exposing (File)
+import File.Download
+import File.Select
 import Graph
 import Html exposing (Html)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import Http
+import Parameters exposing (Mapping(..), Parameter)
 import ProcessGraph exposing (..)
+import Task
+import Utils exposing (..)
 
 
 
@@ -31,9 +37,10 @@ import ProcessGraph exposing (..)
 type alias Model =
     { graph : Maybe UGenGraph
     , outputs : List Int
-    , selectedNode : Maybe (Graph.Node UGen)
-    , selectedEdge : Maybe (Graph.Edge Link)
+    , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
+    , selectedEdge : Maybe Int --(Graph.Edge Link)
     , volume : Float
+    , edgesFac : Float
     , delayLength : String
     , sinMul : String
     , linConA : String
@@ -41,12 +48,14 @@ type alias Model =
     , filterType : FilterType
     , filterFreq : String
     , filterQ : String
+    , sinOscFreq : String
+    , fileName : String
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Nothing [] Nothing Nothing 1.0 "" "" "" "" BLPF "" ""
+    ( Model Nothing [] Nothing Nothing 0.4 1.0 "" "" "" "" BLPF "" "" "" "graph"
     , Api.getGraph GotGraph
     )
 
@@ -72,7 +81,7 @@ type Msg
     | Randomize
     | Randomized (Result Http.Error ())
     | UpdatedGraph (Result Http.Error ())
-    | SelectNode Int
+    | SelectNode Graph.NodeId
     | SelectEdge Int
     | DeleteNode Int
     | SetOutput Int Int
@@ -86,6 +95,18 @@ type Msg
     | SetFilterType FilterType
     | SetFilterFreq String
     | SetFilterQ String
+    | SetSinOscFreq String
+    | SetProcessParameter Graph.NodeId Int Float
+    | SetEdgeWeight Int Float
+    | MulAllEdgeWeights Float
+    | ConnectLeastConnected
+    | DisconnectMostConnected
+    | DownloadGraph
+    | GotDownloadGraph (Result Http.Error String)
+    | SetFileName String
+    | GraphJsonLoaded String
+    | LoadGraph
+    | FileSelected File
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -105,10 +126,40 @@ find predicate list =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        FileSelected f ->
+            ( model, readFile f )
+
+        LoadGraph ->
+            ( model, File.Select.file [ "application/json" ] FileSelected )
+
+        GraphJsonLoaded g ->
+            ( model, Api.postGraph UpdatedGraph g )
+
+        SetFileName s ->
+            ( { model | fileName = s }, Cmd.none )
+
+        ConnectLeastConnected ->
+            ( model, Api.connectLeastConnected UpdatedGraph )
+
+        DisconnectMostConnected ->
+            ( model, Api.disconnectMostConnected UpdatedGraph )
+
         GotGraph res ->
             case res of
                 Ok g ->
                     ( { model | graph = Just (mkGraph g) }, Api.getOutputs GotOutputs )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        GotDownloadGraph res ->
+            case res of
+                Ok g ->
+                    ( model
+                    , File.Download.string (model.fileName ++ ".json")
+                        "application/json"
+                        g
+                    )
 
                 _ ->
                     ( model, Cmd.none )
@@ -124,6 +175,9 @@ update msg model =
         GetGraph ->
             ( model, Api.getGraph GotGraph )
 
+        DownloadGraph ->
+            ( model, Api.getGraphForDownload GotDownloadGraph )
+
         Randomize ->
             ( model, Api.randomize Randomized )
 
@@ -131,20 +185,20 @@ update msg model =
             ( model, Api.getGraph GotGraph )
 
         SelectNode id ->
-            let
-                n =
-                    Maybe.andThen (Graph.get id) model.graph
-                        |> Maybe.map .node
-            in
-            ( { model | selectedNode = n }, Cmd.none )
+            -- let
+            --     n =
+            --         Maybe.andThen (Graph.get id) model.graph
+            --             |> Maybe.map .node
+            -- in
+            ( { model | selectedNode = Just id }, Cmd.none )
 
         SelectEdge id ->
-            let
-                n =
-                    Maybe.map Graph.edges model.graph
-                        |> Maybe.andThen (find (\e -> e.label.id == id))
-            in
-            ( { model | selectedEdge = n }, Cmd.none )
+            -- let
+            --     n =
+            --         Maybe.map Graph.edges model.graph
+            --             |> Maybe.andThen (find (\e -> e.label.id == id))
+            -- in
+            ( { model | selectedEdge = Just id }, Cmd.none )
 
         DeleteNode id ->
             ( model, Api.deleteNode UpdatedGraph id )
@@ -179,11 +233,49 @@ update msg model =
         SetFilterQ s ->
             ( { model | filterQ = s }, Cmd.none )
 
+        SetSinOscFreq s ->
+            ( { model | sinOscFreq = s }, Cmd.none )
+
         NoOp _ ->
             ( model, Cmd.none )
 
         AddProcess proc ->
             ( model, Api.addNode UpdatedGraph proc )
+
+        SetProcessParameter nodeId parIdx val ->
+            let
+                newGraph =
+                    Maybe.map (updateProcessParameter nodeId ( parIdx, val ))
+                        model.graph
+            in
+            ( { model | graph = newGraph }
+            , Api.setParameter NoOp nodeId parIdx val
+            )
+
+        SetEdgeWeight edgeId weight ->
+            ( { model | graph = Maybe.map (updateEdge edgeId weight) model.graph }
+            , Api.setEdgeWeight NoOp edgeId weight
+            )
+
+        MulAllEdgeWeights f ->
+            ( { model
+                | -- graph = Maybe.map (mulAllEdges f) model.graph
+                  edgesFac = f
+              }
+            , Maybe.map
+                (\g ->
+                    Cmd.batch <|
+                        List.map
+                            (\e ->
+                                Api.setEdgeWeight NoOp
+                                    e.label.id
+                                    (e.label.strength * f)
+                            )
+                            (Graph.edges g)
+                )
+                model.graph
+                |> Maybe.withDefault Cmd.none
+            )
 
 
 simpleButton : String -> msg -> Element msg
@@ -196,30 +288,38 @@ simpleButton s msg =
 
 displayNode : List Int -> Graph.Node UGen -> Element Msg
 displayNode outputs n =
-    row [ spacing 10 ]
-        ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label) ]
-            ++ (if not (List.member n.id outputs) then
-                    simpleButton "Delete" (DeleteNode n.id)
-                        :: (List.map
-                                (\out ->
-                                    simpleButton
-                                        ("As output " ++ String.fromInt out)
-                                        (SetOutput n.id out)
-                                )
-                            <|
-                                List.range 0 (List.length outputs - 1)
-                           )
+    column [ width fill ]
+        [ row [ spacing 10 ]
+            ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label) ]
+                ++ (if not (List.member n.id outputs) then
+                        simpleButton "Delete" (DeleteNode n.id)
+                            :: (List.map
+                                    (\out ->
+                                        simpleButton
+                                            ("As output " ++ String.fromInt out)
+                                            (SetOutput n.id out)
+                                    )
+                                <|
+                                    List.range 0 (List.length outputs - 1)
+                               )
 
-                else
-                    []
-               )
-        )
+                    else
+                        []
+                   )
+            )
+        , row [ spacing 10 ] <|
+            List.map
+                (\p -> slider (SetProcessParameter n.id p.idx) p)
+                (processParameters
+                    n.label.process
+                )
+        ]
 
 
-volumeSlider : Float -> Element Msg
-volumeSlider v =
+slider : (Float -> msg) -> Parameter -> Element msg
+slider msg par =
     Input.slider
-        [ width (px 200)
+        [ width (px 300)
         , height (px 30)
         , behindContent
             (el
@@ -232,14 +332,24 @@ volumeSlider v =
                 none
             )
         ]
-        { onChange = SetVolume
-        , label = Input.labelAbove [] (text "Output amp")
+        { onChange = \v -> msg (Parameters.mapped { par | value = v })
+        , label = Input.labelAbove [] (text par.name)
         , min = 0.0
         , max = 1.0
-        , value = v
+        , value = Parameters.unmapped par par.value
         , thumb = Input.defaultThumb
-        , step = Just 0.001
+        , step = Just 0.0001
         }
+
+
+volumeSlider : Float -> Element Msg
+volumeSlider v =
+    slider SetVolume (Parameter -1 v Exp "Output volume" 0.0001 1.0)
+
+
+edgesSlider : Float -> Element Msg
+edgesSlider e =
+    slider MulAllEdgeWeights (Parameter -1 e Exp "Edge fac" 0.01 10.0)
 
 
 addProcess : String -> Process -> Element Msg
@@ -258,6 +368,20 @@ delayInput v =
             }
         , Maybe.withDefault none <|
             Maybe.map (\i -> addProcess "Delay" (Delay { length = i })) (String.toInt v)
+        ]
+
+
+sinOscInput : String -> Element Msg
+sinOscInput v =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetSinOscFreq
+            , text = v
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Freq")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map (\i -> addProcess "SinOsc" (SinOsc { freq = i })) (String.toFloat v)
         ]
 
 
@@ -341,24 +465,78 @@ processRow m =
     row [ width fill, spacing 10 ]
         [ addProcess "Add" Add
         , addProcess "Mul" Mul
+        , addProcess "Ring" Ring
         , addProcess "Gauss" Gauss
         , addProcess "RMS" RMS
         , addProcess "BitNeg" BitNeg
-        , addProcess "BitOr" BitOr
-        , addProcess "BitXOr" BitXOr
-        , addProcess "BitAnd" BitAnd
+
+        -- , addProcess "BitOr" BitOr
+        -- , addProcess "BitXOr" BitXOr
+        -- , addProcess "BitAnd" BitAnd
         , delayInput m.delayLength
         , sinInput m.sinMul
+        , sinOscInput m.sinOscFreq
         , linconInput m.linConA m.linConB
         , filterInput m.filterType m.filterFreq m.filterQ
         ]
 
 
+downloadInput : String -> Element Msg
+downloadInput s =
+    row [ spacing 10 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetFileName
+            , text = s
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Name")
+            }
+        , simpleButton "Download" DownloadGraph
+        ]
+
+
+readFile : File -> Cmd Msg
+readFile file =
+    Task.perform GraphJsonLoaded (File.toString file)
+
+
+showSelectedEdge : Model -> Element Msg
+showSelectedEdge model =
+    let
+        e =
+            Maybe.andThen
+                (\id ->
+                    Maybe.map Graph.edges model.graph
+                        |> Maybe.andThen (find (\ed -> ed.label.id == id))
+                )
+                model.selectedEdge
+    in
+    Maybe.map
+        (\l ->
+            row [ spacing 10 ]
+                [ text ("Link weight: " ++ floatString l.label.strength)
+                , slider (SetEdgeWeight l.label.id)
+                    (Parameter -1 l.label.strength Exp "weight" 0.0001 2.0)
+                ]
+        )
+        e
+        |> Maybe.withDefault none
+
+
 view : Model -> Html Msg
 view model =
+    let
+        selectedNode =
+            Maybe.andThen
+                (\id ->
+                    Maybe.andThen (Graph.get id) model.graph
+                        |> Maybe.map .node
+                )
+                model.selectedNode
+    in
     layout
         [ spacing 10
         , width fill
+        , height fill
         , Font.size 14
         , Font.family
             [ Font.monospace
@@ -366,15 +544,25 @@ view model =
         ]
     <|
         column [ width fill, spacing 10 ]
-            [ simpleButton "Randomize" Randomize
-            , volumeSlider model.volume
+            [ row [ spacing 10 ]
+                [ simpleButton "Randomize" Randomize
+                , simpleButton "Discon Most Connected" DisconnectMostConnected
+                , simpleButton "Conn Least Connected" ConnectLeastConnected
+                , downloadInput model.fileName
+                , simpleButton "Load" LoadGraph
+                ]
+            , row [ spacing 10 ]
+                [ volumeSlider model.volume
+                , edgesSlider model.edgesFac
+                ]
+            , showSelectedEdge model
             , processRow model
-            , Maybe.withDefault none (Maybe.map (displayNode model.outputs) model.selectedNode)
+            , Maybe.withDefault none (Maybe.map (displayNode model.outputs) selectedNode)
             , case model.graph of
                 Just g ->
                     html <|
                         DrawGraph.view g
-                            (Maybe.map .id model.selectedNode)
+                            (Maybe.map .id selectedNode)
                             SelectNode
                             SelectEdge
                             model.outputs
