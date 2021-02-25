@@ -116,6 +116,8 @@ type Process
     | BitXOr
     | BitAnd
     | LinCon { linconA : Float, linconB : Float }
+    | Compressor { threshold : Float, ratio : Float, makeup : Float }
+    | Spike { threshold : Float, tConst : Float, tRest : Int }
 
 
 
@@ -148,6 +150,17 @@ processParameters p =
 
         LinCon { linconA, linconB } ->
             [ Parameter 1 linconA Exp "A" 0.001 10.0, Parameter 2 linconB Exp "B" 0.001 20.0 ]
+
+        Compressor { threshold, ratio, makeup } ->
+            [ Parameter 1 threshold Exp "Threshold" 0.01 0.9
+            , Parameter 2 ratio Exp "Ratio" 1.0 20.0
+            , Parameter 3 makeup Exp "Makup" 1.0 4.0
+            ]
+
+        Spike { threshold, tConst } ->
+            [ Parameter 1 threshold Exp "Threshold" 0.01 0.9
+            , Parameter 2 tConst Exp "T Const" 0.00001 0.5
+            ]
 
         _ ->
             []
@@ -186,6 +199,34 @@ setInput ( parIdx, val ) proc =
 
                 2 ->
                     LinCon { l | linconB = val }
+
+                _ ->
+                    proc
+
+        Compressor c ->
+            case parIdx of
+                1 ->
+                    Compressor { c | threshold = val }
+
+                2 ->
+                    Compressor { c | ratio = val }
+
+                3 ->
+                    Compressor { c | makeup = val }
+
+                _ ->
+                    proc
+
+        Spike s ->
+            case parIdx of
+                1 ->
+                    Spike { s | threshold = val }
+
+                2 ->
+                    Spike { s | tConst = val }
+
+                3 ->
+                    Spike { s | tRest = round val }
 
                 _ ->
                     proc
@@ -250,6 +291,12 @@ processName p =
 
         LinCon _ ->
             "LinCon"
+
+        Compressor _ ->
+            "Compressor"
+
+        Spike _ ->
+            "Spike"
 
 
 encodeProcess : Process -> Value
@@ -324,6 +371,24 @@ encodeProcess p =
                     ]
                 )
 
+        Compressor c ->
+            encObj p
+                (JE.object
+                    [ ( "threshold", JE.float c.threshold )
+                    , ( "ratio", JE.float c.ratio )
+                    , ( "makeup", JE.float c.makeup )
+                    ]
+                )
+
+        Spike s ->
+            encObj p
+                (JE.object
+                    [ ( "threshold", JE.float s.threshold )
+                    , ( "t_const", JE.float s.tConst )
+                    , ( "t_rest", JE.int s.tRest )
+                    ]
+                )
+
 
 processToString : Process -> String
 processToString p =
@@ -355,6 +420,22 @@ processToString p =
                 ++ floatString l.linconA
                 ++ " b: "
                 ++ floatString l.linconB
+
+        Compressor c ->
+            "Compr thr: "
+                ++ floatString c.threshold
+                ++ " r: "
+                ++ floatString c.ratio
+                ++ " m: "
+                ++ floatString c.makeup
+
+        Spike s ->
+            "Spike thr: "
+                ++ floatString s.threshold
+                ++ " tc: "
+                ++ String.fromFloat s.tConst
+                ++ " tr: "
+                ++ String.fromInt s.tRest
 
         _ ->
             processName p
@@ -468,6 +549,22 @@ decodeLinCon =
         |> required "lincon_b" float
 
 
+decodeCompressor : Decoder Process
+decodeCompressor =
+    Decode.succeed (\t r m -> Compressor { threshold = t, ratio = r, makeup = m })
+        |> required "threshold" float
+        |> required "ratio" float
+        |> required "makeup" float
+
+
+decodeSpike : Decoder Process
+decodeSpike =
+    Decode.succeed (\t c r -> Spike { threshold = t, tConst = c, tRest = r })
+        |> required "threshold" float
+        |> required "t_const" float
+        |> required "t_rest" int
+
+
 type alias UGen =
     { process : Process
     , sum_inputs : Bool
@@ -497,6 +594,8 @@ decodeUGen =
                 , field "Ring" decodeRing
                 , field "RMS" decodeRMS
                 , field "Constant" decodeConstant
+                , field "Compressor" decodeCompressor
+                , field "Spike" decodeSpike
                 , field "Sin" decodeSin
                 , field "Gauss" decodeGauss
                 , field "SoundIn" decodeSoundIn

@@ -18,18 +18,16 @@ import Html exposing (Html)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import Http
+import Maybe.Extra as M
 import Parameters exposing (Mapping(..), Parameter)
 import ProcessGraph exposing (..)
 import Task
+import Time
 import Utils exposing (..)
 
 
 
 -- TODO
--- set link strength
--- show connections when node select and be able to delete/connect
--- creation of new element
--- export graph/load graph
 -- poll
 -- scope
 
@@ -50,19 +48,49 @@ type alias Model =
     , filterQ : String
     , sinOscFreq : String
     , fileName : String
+    , waitingToConnect : Maybe Graph.NodeId
+    , lastPoll : Float
+    , compressorThreshold : String
+    , compressorRatio : String
+    , compressorMakeup : String
+    , spikeThreshold : String
+    , spikeTConst : String
+    , spikeTRest : String
     }
 
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model Nothing [] Nothing Nothing 0.4 1.0 "" "" "" "" BLPF "" "" "" "graph"
+    ( Model Nothing
+        []
+        Nothing
+        Nothing
+        0.4
+        1.0
+        ""
+        ""
+        ""
+        ""
+        BLPF
+        ""
+        ""
+        ""
+        "graph"
+        Nothing
+        0.0
+        "0.4"
+        "4"
+        "2"
+        "0.2"
+        "0.0001"
+        "100"
     , Api.getGraph GotGraph
     )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions m =
-    Sub.none
+    Time.every 250 Tick
 
 
 main =
@@ -96,8 +124,15 @@ type Msg
     | SetFilterFreq String
     | SetFilterQ String
     | SetSinOscFreq String
+    | SetCompressorThreshold String
+    | SetCompressorRatio String
+    | SetCompressorMakeup String
+    | SetSpikeThreshold String
+    | SetSpikeTConst String
+    | SetSpikeTRest String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
+    | DeleteEdge Int
     | MulAllEdgeWeights Float
     | ConnectLeastConnected
     | DisconnectMostConnected
@@ -107,6 +142,9 @@ type Msg
     | GraphJsonLoaded String
     | LoadGraph
     | FileSelected File
+    | WaitingToConnect Graph.NodeId
+    | Tick Time.Posix
+    | GotPoll (Result Http.Error Float)
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -126,6 +164,32 @@ find predicate list =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        Tick _ ->
+            ( model
+            , Maybe.map (\n -> Api.poll GotPoll n) model.selectedNode
+                |> Maybe.withDefault Cmd.none
+            )
+
+        GotPoll r ->
+            case r of
+                Ok p ->
+                    ( { model | lastPoll = p }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        WaitingToConnect i ->
+            case ( model.waitingToConnect, model.selectedNode ) of
+                ( Just w, Just n ) ->
+                    if i == n && i == w then
+                        ( { model | waitingToConnect = Nothing }, Cmd.none )
+
+                    else
+                        ( { model | waitingToConnect = Just i }, Cmd.none )
+
+                _ ->
+                    ( { model | waitingToConnect = Just i }, Cmd.none )
+
         FileSelected f ->
             ( model, readFile f )
 
@@ -185,12 +249,15 @@ update msg model =
             ( model, Api.getGraph GotGraph )
 
         SelectNode id ->
-            -- let
-            --     n =
-            --         Maybe.andThen (Graph.get id) model.graph
-            --             |> Maybe.map .node
-            -- in
-            ( { model | selectedNode = Just id }, Cmd.none )
+            -- todo make weight and input variable
+            case model.waitingToConnect of
+                Just i ->
+                    ( { model | waitingToConnect = Nothing }
+                    , Api.postEdge UpdatedGraph i id ( 0, 1.0 )
+                    )
+
+                Nothing ->
+                    ( { model | selectedNode = Just id }, Cmd.none )
 
         SelectEdge id ->
             -- let
@@ -236,6 +303,24 @@ update msg model =
         SetSinOscFreq s ->
             ( { model | sinOscFreq = s }, Cmd.none )
 
+        SetCompressorThreshold s ->
+            ( { model | compressorThreshold = s }, Cmd.none )
+
+        SetCompressorRatio s ->
+            ( { model | compressorRatio = s }, Cmd.none )
+
+        SetCompressorMakeup s ->
+            ( { model | compressorMakeup = s }, Cmd.none )
+
+        SetSpikeThreshold s ->
+            ( { model | spikeThreshold = s }, Cmd.none )
+
+        SetSpikeTRest s ->
+            ( { model | spikeTRest = s }, Cmd.none )
+
+        SetSpikeTConst s ->
+            ( { model | spikeTConst = s }, Cmd.none )
+
         NoOp _ ->
             ( model, Cmd.none )
 
@@ -256,6 +341,9 @@ update msg model =
             ( { model | graph = Maybe.map (updateEdge edgeId weight) model.graph }
             , Api.setEdgeWeight NoOp edgeId weight
             )
+
+        DeleteEdge e ->
+            ( model, Api.deleteEdge UpdatedGraph e )
 
         MulAllEdgeWeights f ->
             ( { model
@@ -286,11 +374,38 @@ simpleButton s msg =
         }
 
 
-displayNode : List Int -> Graph.Node UGen -> Element Msg
-displayNode outputs n =
+simpleStateButton : String -> Bool -> msg -> Element msg
+simpleStateButton s b msg =
+    Input.button
+        ([ Border.solid, Border.width 1, padding 10 ]
+            ++ (if b then
+                    [ Background.color (rgb 0.6 0.6 0.6) ]
+
+                else
+                    []
+               )
+        )
+        { onPress = Just msg
+        , label = text s
+        }
+
+
+
+-- todo waiting to connect button
+
+
+displayNode : Float -> Maybe Graph.NodeId -> List Int -> Graph.Node UGen -> Element Msg
+displayNode polled waiting outputs n =
     column [ width fill ]
         [ row [ spacing 10 ]
-            ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label) ]
+            ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
+             , simpleStateButton "Connect"
+                (M.isJust waiting)
+                (WaitingToConnect n.id)
+             , el [ width (px 60), padding 5, Border.solid, Border.width 1 ] <|
+                text <|
+                    floatString polled
+             ]
                 ++ (if not (List.member n.id outputs) then
                         simpleButton "Delete" (DeleteNode n.id)
                             :: (List.map
@@ -338,7 +453,7 @@ slider msg par =
         , max = 1.0
         , value = Parameters.unmapped par par.value
         , thumb = Input.defaultThumb
-        , step = Just 0.0001
+        , step = Just 0.00001
         }
 
 
@@ -349,7 +464,7 @@ volumeSlider v =
 
 edgesSlider : Float -> Element Msg
 edgesSlider e =
-    slider MulAllEdgeWeights (Parameter -1 e Exp "Edge fac" 0.01 10.0)
+    slider MulAllEdgeWeights (Parameter -1 e Exp "Edge fac" 0.05 5.0)
 
 
 addProcess : String -> Process -> Element Msg
@@ -421,6 +536,72 @@ linconInput a b =
         ]
 
 
+compressorInput : String -> String -> String -> Element Msg
+compressorInput t r m =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetCompressorThreshold
+            , text = t
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Threshold")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetCompressorRatio
+            , text = r
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Ratio")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetCompressorMakeup
+            , text = m
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Makeup")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map3
+                (\tf rf mf ->
+                    addProcess "Compressor"
+                        (Compressor { threshold = tf, ratio = rf, makeup = mf })
+                )
+                (String.toFloat t)
+                (String.toFloat r)
+                (String.toFloat m)
+        ]
+
+
+spikeInput : String -> String -> String -> Element Msg
+spikeInput t c r =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetSpikeThreshold
+            , text = t
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Threshold")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetSpikeTConst
+            , text = c
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "TConst")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetSpikeTRest
+            , text = r
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "TRest")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map3
+                (\tf cf ri ->
+                    addProcess "Spike"
+                        (Spike { threshold = tf, tConst = cf, tRest = ri })
+                )
+                (String.toFloat t)
+                (String.toFloat c)
+                (String.toInt r)
+        ]
+
+
 filterInput : FilterType -> String -> String -> Element Msg
 filterInput ft fr q =
     row [ spacing 5, Border.solid, Border.width 1 ]
@@ -462,7 +643,7 @@ filterInput ft fr q =
 
 processRow : Model -> Element Msg
 processRow m =
-    row [ width fill, spacing 10 ]
+    wrappedRow [ width fill, spacing 10 ]
         [ addProcess "Add" Add
         , addProcess "Mul" Mul
         , addProcess "Ring" Ring
@@ -478,6 +659,8 @@ processRow m =
         , sinOscInput m.sinOscFreq
         , linconInput m.linConA m.linConB
         , filterInput m.filterType m.filterFreq m.filterQ
+        , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
+        , spikeInput m.spikeThreshold m.spikeTConst m.spikeTRest
         ]
 
 
@@ -515,7 +698,8 @@ showSelectedEdge model =
             row [ spacing 10 ]
                 [ text ("Link weight: " ++ floatString l.label.strength)
                 , slider (SetEdgeWeight l.label.id)
-                    (Parameter -1 l.label.strength Exp "weight" 0.0001 2.0)
+                    (Parameter -1 l.label.strength Exp "weight" 0.01 2.0)
+                , simpleButton "Delete" (DeleteEdge l.label.id)
                 ]
         )
         e
@@ -557,7 +741,15 @@ view model =
                 ]
             , showSelectedEdge model
             , processRow model
-            , Maybe.withDefault none (Maybe.map (displayNode model.outputs) selectedNode)
+            , Maybe.withDefault none
+                (Maybe.map
+                    (displayNode
+                        model.lastPoll
+                        model.waitingToConnect
+                        model.outputs
+                    )
+                    selectedNode
+                )
             , case model.graph of
                 Just g ->
                     html <|

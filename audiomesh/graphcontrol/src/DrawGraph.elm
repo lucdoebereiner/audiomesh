@@ -47,7 +47,7 @@ init contentGraph dist ( w, h ) =
                         { source = from
                         , target = to
                         , distance = dist
-                        , strength = Just label.strength
+                        , strength = Nothing --Just label.strength
                         }
                     )
 
@@ -118,8 +118,9 @@ linkElement graph msg edge =
                 ( source.x - target.x, source.y - target.y )
 
             dist =
-                sqrt (dx * dx + dy * dy)
+                250
 
+            --sqrt (dx * dx + dy * dy)
             ( x3, y3 ) =
                 ( centerX + (dy / dist * 20), centerY - (dx / dist * 20) )
 
@@ -188,8 +189,8 @@ nodeElement selectedId msg outputs node =
     in
     g []
         [ ellipse
-            ([ rx 90
-             , ry 22
+            ([ rx 130
+             , ry 25
              , cx node.label.x
              , cy node.label.y
              , cursor CursorPointer

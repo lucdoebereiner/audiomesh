@@ -2,11 +2,14 @@ module Api exposing
     ( NodeIndex
     , addNode
     , connectLeastConnected
+    , deleteEdge
     , deleteNode
     , disconnectMostConnected
     , getGraph
     , getGraphForDownload
     , getOutputs
+    , poll
+    , postEdge
     , postGraph
     , randomize
     , setEdgeWeight
@@ -150,10 +153,49 @@ setOutput msg id out =
         }
 
 
+postEdge : (Result Http.Error () -> msg) -> Int -> Int -> ( Int, Float ) -> Cmd msg
+postEdge msg id1 id2 ( idx, w ) =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/edge/"
+                ++ String.fromInt id1
+                ++ "/"
+                ++ String.fromInt id2
+                ++ "/"
+                ++ String.fromFloat w
+                ++ "/"
+                ++ String.fromInt idx
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+deleteEdge : (Result Http.Error () -> msg) -> Int -> Cmd msg
+deleteEdge msg e =
+    Http.request
+        { method = "DELETE"
+        , headers = []
+        , url = baseUrl ++ "/edge/" ++ String.fromInt e
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        , timeout = Nothing
+        , tracker = Nothing
+        }
+
+
 randomize : (Result Http.Error () -> msg) -> Cmd msg
 randomize msg =
     Http.post
         { url = baseUrl ++ "/randomize"
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
+        }
+
+
+poll : (Result Http.Error Float -> msg) -> NodeIndex -> Cmd msg
+poll msg n =
+    Http.get
+        { url = baseUrl ++ "/node/" ++ String.fromInt n ++ "/poll"
+        , expect = Http.expectJson msg Decode.float
         }

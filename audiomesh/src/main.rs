@@ -362,12 +362,14 @@ fn main() {
     //    let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
     //    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
     // let gauss = g.add_node(gauss());
-    let ring = g.add_node(ring());
-    let c1 = g.add_node(constant(0.5));
-    let c2 = g.add_node(constant(1.0));
+    //let ring = g.add_node(ring());
+    let c1 = g.add_node(constant(0.8));
+    //    let c2 = g.add_node(constant(1.0));
+    //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
+    let sp = g.add_node(spike(0.5, 0.0001, 100));
     //    let s1 = g.add_node(sin_osc(100.0));
-    g.add_edge(c1, ring, (0, lag::lag(1.0)));
-    g.add_edge(c2, ring, (0, lag::lag(1.0)));
+    g.add_edge(c1, sp, (0, lag::lag(1.0)));
+    //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
     //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
 
@@ -378,7 +380,7 @@ fn main() {
     // ];
 
     //    rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![ring, c1];
+    let mut output_indices = vec![sp];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();

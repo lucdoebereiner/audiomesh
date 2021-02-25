@@ -70,6 +70,28 @@ pub enum Process {
         input: f64,
         last_value: f64,
     },
+    Compressor {
+        #[serde(skip)]
+        input_level: Vec<Process>,
+        #[serde(skip)]
+        input: f64,
+        threshold: lag::Lag,
+        ratio: lag::Lag,
+        makeup: lag::Lag,
+    },
+    Spike {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip)]
+        v: f64,
+        #[serde(skip)]
+        last_v: f64,
+        threshold: lag::Lag,
+        t_const: lag::Lag,
+        t_rest: usize,
+        #[serde(skip)]
+        t_rest_counter: usize,
+    },
     Square {
         #[serde(skip)]
         input: f64,
@@ -83,7 +105,6 @@ pub enum Process {
         input: f64,
         index: usize,
     },
-
     // Map {
     //     input: f64,
     //     func: fn(f64) -> f64,
@@ -240,6 +261,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         Process::Square { input } => input.powf(2.0),
         Process::Sqrt { input } => input.sqrt(),
         Process::Mem { input, .. } => *input,
+        //        Process::Constant { ref mut value } => value.tick(),
         Process::Constant { value } => *value,
         //        Process::Map { input, func } => (func)(*input),
         Process::Filter {
@@ -247,22 +269,71 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             ref mut filter,
         } => filter.process((*input).tanh()),
         // TODO debug the 0.0s in here
-        Process::Ring { ref mut inputs, .. } => {
-            inputs
+        Process::Ring { ref mut inputs, .. } => inputs
+            .iter_mut()
+            .map(|p| process(p, external_input))
+            .product(),
+        Process::Compressor {
+            ref mut input_level,
+            input,
+            threshold,
+            ratio,
+            makeup,
+        } => {
+            let level: f64 = input_level
                 .iter_mut()
                 .map(|p| process(p, external_input))
-                .product()
-            // .filter_map(|p| {
-            //     let v = process(p, external_input);
-            //     if v != 0.0 {
-            //         Some(v)
-            //     } else {
-            //         None
-            //     }
-            // })
-            //  .product()
-
-            //outputs.iter().product()
+                .sum();
+            let current_threshold = threshold.tick();
+            if level > current_threshold {
+                let current_ratio = ratio.tick();
+                let fac = (current_threshold.powf(1.0 - 1.0 / current_ratio)
+                    * level.powf(1.0 / current_ratio))
+                    / level;
+                let output = *input * fac * makeup.tick();
+                // println!(
+                //     "level {}, ratio {}, fac {}, output {}",
+                //     level, current_ratio, fac, output
+                // );
+                output
+            } else {
+                let output = *input * makeup.tick();
+                //                println!("level {}, output {}", level, output);
+                output
+            }
+        }
+        // leaky integrate and fire
+        Process::Spike {
+            input,
+            ref mut v,
+            ref mut last_v,
+            ref mut threshold,
+            ref mut t_const,
+            t_rest,
+            ref mut t_rest_counter,
+        } => {
+            let mut output = 0.0;
+            if *t_rest_counter > 0 {
+                *t_rest_counter = *t_rest_counter - 1;
+                *last_v = *v;
+                *v = 0.0;
+                threshold.tick();
+                t_const.tick();
+                println!("output {}", output);
+            } else {
+                let this_const = t_const.tick();
+                *v = *last_v + (((*last_v * -1.0) + *input) * this_const);
+                *last_v = *v;
+                println!(
+                    "after v {}, input {} , const {}, last {}",
+                    v, *input, this_const, last_v
+                );
+                if *v > threshold.tick() {
+                    output = 1.0;
+                    *t_rest_counter = *t_rest;
+                }
+            }
+            output
         }
         //        Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
         Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
@@ -375,13 +446,45 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
                 //  println!("inputs {:?}, ring inputs: {:?}", input_value, inputs)
             }
         }
-        Process::Constant { .. } => (),
-        //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
-        Process::SoundIn { ref mut input, .. } => match idx {
+        Process::Spike {
+            ref mut input,
+            ref mut threshold,
+            ref mut t_const,
+            ref mut t_rest,
+            ..
+        } => match idx {
             0 => set_or_add(input, input_value, add),
-            //	1 => *index = input_value as usize,
+            1 => threshold.set_target(input_value),
+            2 => t_const.set_target(input_value),
+            3 => *t_rest = input_value as usize,
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
+        Process::Compressor {
+            ref mut input,
+            ref mut input_level,
+            ref mut threshold,
+            ref mut ratio,
+            ref mut makeup,
+        } => match idx {
+            0 => {
+                if input_level.len() < 1 {
+                    input_level.push(rms_proc());
+                }
+                set_or_add(input, input_value, add);
+                set_input(&mut input_level[0], 0, input_value, false);
+            }
+            1 => threshold.set_target(input_value),
+            2 => ratio.set_target(input_value),
+            3 => makeup.set_target(input_value),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
+        Process::Constant { .. } => (),
+        //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
+        Process::SoundIn { .. } => (), // match idx {
+        //     0 => set_or_add(input, input_value, add),
+        //     //	1 => *index = input_value as usize,
+        //     _ => panic!("wrong index into {}: {}", name(proc), idx),
+        // },
         Process::Filter {
             ref mut input,
             ref mut filter,
@@ -491,17 +594,29 @@ pub enum InputType {
     Phase,
     Index,
     Factor,
+    Threshold,
+    Parameter,
+    Amplitude,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum ProcessType {
+    NoInputGenerator,
+    Processor,
+    NeedsMultipleInputs,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProcessSpec {
     name: String,
+    process_type: ProcessType,
     inputs: Vec<InputType>,
 }
 
-fn procspec(name: &'static str, inputs: Vec<InputType>) -> ProcessSpec {
+fn procspec(name: &'static str, process_type: ProcessType, inputs: Vec<InputType>) -> ProcessSpec {
     ProcessSpec {
         name: name.to_string(),
+        process_type,
         inputs,
     }
 }
@@ -512,35 +627,93 @@ fn name(process: &Process) -> String {
 
 fn spec(process: &Process) -> ProcessSpec {
     match process {
-        Process::SoundIn { .. } => procspec("soundin", vec![InputType::Any]),
-        Process::Sin { .. } => procspec("sin", vec![InputType::Phase]),
-        Process::SinOsc { .. } => procspec("sinosc", vec![InputType::Frequency]),
-        Process::Mul { .. } => procspec("mul", vec![InputType::Any]),
-        Process::Ring { .. } => procspec("ring", vec![InputType::Audio]),
-        Process::Add { .. } => procspec("add", vec![InputType::Any]),
-        Process::Mem { .. } => procspec("mem", vec![InputType::Any]),
-        Process::Constant { .. } => procspec("constant", vec![InputType::Any]),
+        Process::Spike { .. } => procspec(
+            "spike",
+            ProcessType::Processor,
+            vec![
+                InputType::Any,
+                InputType::Threshold,
+                InputType::Parameter,
+                InputType::Parameter,
+            ],
+        ),
+        Process::SoundIn { .. } => procspec(
+            "soundin",
+            ProcessType::NoInputGenerator,
+            vec![InputType::Any],
+        ),
+        Process::Sin { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Phase]),
+        Process::SinOsc { .. } => {
+            procspec("sinosc", ProcessType::Processor, vec![InputType::Frequency])
+        }
+        Process::Mul { .. } => procspec(
+            "mul",
+            ProcessType::NeedsMultipleInputs,
+            vec![InputType::Any],
+        ),
+        Process::Ring { .. } => procspec(
+            "ring",
+            ProcessType::NeedsMultipleInputs,
+            vec![InputType::Audio],
+        ),
+        Process::Add { .. } => procspec("add", ProcessType::Processor, vec![InputType::Any]),
+        Process::Mem { .. } => procspec("mem", ProcessType::Processor, vec![InputType::Any]),
+        Process::Constant { .. } => procspec("constant", ProcessType::NoInputGenerator, vec![]),
         //        Process::Map { .. } => procspec("map", vec![InputType::Any]),
         Process::Filter { .. } => procspec(
             "filter",
+            ProcessType::Processor,
             vec![InputType::Audio, InputType::Frequency, InputType::Q],
         ),
+
+        Process::Compressor { .. } => procspec(
+            "compressor",
+            ProcessType::Processor,
+            vec![
+                InputType::Audio,
+                InputType::Threshold,
+                InputType::Parameter,
+                InputType::Amplitude,
+            ],
+        ),
+
         //        Process::Noise { .. } => procspec("noise", vec![]),
-        Process::Wrap { .. } => procspec("wrap", vec![InputType::Any; 2]),
-        Process::Softclip { .. } => procspec("softclip", vec![InputType::Any]),
-        Process::Square { .. } => procspec("square", vec![InputType::Any]),
-        Process::Sqrt { .. } => procspec("sqrt", vec![InputType::Any]),
-        Process::Delay { .. } => procspec("delay", vec![InputType::Any]),
-        Process::BitNeg { .. } => procspec("bitneg", vec![InputType::Any]),
-        Process::BitOr { .. } => procspec("bitor", vec![InputType::Any; 2]),
-        Process::BitXOr { .. } => procspec("bitxor", vec![InputType::Any; 2]),
-        Process::BitAnd { .. } => procspec("bitand", vec![InputType::Any; 2]),
-        Process::CurveLin { .. } => procspec("curvelin", vec![InputType::Any; 6]),
-        Process::Gauss { .. } => procspec("gauss", vec![InputType::Audio]),
-        Process::RMS { .. } => procspec("rms", vec![InputType::Audio]),
-        Process::LPF1 { .. } => procspec("lpf1", vec![InputType::Audio, InputType::Frequency]),
+        Process::Wrap { .. } => procspec("wrap", ProcessType::Processor, vec![InputType::Any; 2]),
+        Process::Softclip { .. } => {
+            procspec("softclip", ProcessType::Processor, vec![InputType::Any])
+        }
+        Process::Square { .. } => procspec("square", ProcessType::Processor, vec![InputType::Any]),
+        Process::Sqrt { .. } => procspec("sqrt", ProcessType::Processor, vec![InputType::Any]),
+        Process::Delay { .. } => procspec("delay", ProcessType::Processor, vec![InputType::Any]),
+        Process::BitNeg { .. } => procspec("bitneg", ProcessType::Processor, vec![InputType::Any]),
+        Process::BitOr { .. } => procspec(
+            "bitor",
+            ProcessType::NeedsMultipleInputs,
+            vec![InputType::Any; 2],
+        ),
+        Process::BitXOr { .. } => procspec(
+            "bitxor",
+            ProcessType::NeedsMultipleInputs,
+            vec![InputType::Any; 2],
+        ),
+        Process::BitAnd { .. } => procspec(
+            "bitand",
+            ProcessType::NeedsMultipleInputs,
+            vec![InputType::Any; 2],
+        ),
+        Process::CurveLin { .. } => {
+            procspec("curvelin", ProcessType::Processor, vec![InputType::Any; 6])
+        }
+        Process::Gauss { .. } => procspec("gauss", ProcessType::Processor, vec![InputType::Audio]),
+        Process::RMS { .. } => procspec("rms", ProcessType::Processor, vec![InputType::Audio]),
+        Process::LPF1 { .. } => procspec(
+            "lpf1",
+            ProcessType::Processor,
+            vec![InputType::Audio, InputType::Frequency],
+        ),
         Process::LinCon { .. } => procspec(
             "lincon",
+            ProcessType::Processor,
             vec![InputType::Any, InputType::Factor, InputType::Factor],
         ),
     }
@@ -560,6 +733,8 @@ fn clear_inputs(process: &mut Process) {
 	| Process::RMS { ref mut input, .. }
         | Process::LPF1 { ref mut input, .. }
 	| Process::LinCon { ref mut input, .. }
+	| Process::Compressor { ref mut input, .. }
+	| Process::Spike { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
         Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
@@ -761,6 +936,18 @@ pub fn rms() -> UGen {
     UGen::new(rms_proc())
 }
 
+pub fn spike(threshold: f64, t_const: f64, t_rest: usize) -> UGen {
+    UGen::new(Process::Spike {
+        input: 0.0,
+        v: 0.0,
+        last_v: 0.0,
+        threshold: lag::lag(threshold),
+        t_const: lag::lag(t_const),
+        t_rest,
+        t_rest_counter: 0,
+    })
+}
+
 pub fn mem(init: f64) -> UGen {
     UGen::new(Process::Mem {
         input: init,
@@ -840,6 +1027,16 @@ pub fn wrap(lo: f64, hi: f64) -> UGen {
 
 pub fn softclip() -> UGen {
     UGen::new(Process::Softclip { input: 0.0 })
+}
+
+pub fn compressor(threshold: f64, ratio: f64, makeup: f64) -> UGen {
+    UGen::new(Process::Compressor {
+        input: 0.0,
+        input_level: vec![],
+        threshold: lag::lag(threshold),
+        ratio: lag::lag(ratio),
+        makeup: lag::lag(makeup),
+    })
 }
 
 pub fn bitneg() -> UGen {
