@@ -314,20 +314,23 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         } => {
             let mut output = 0.0;
             if *t_rest_counter > 0 {
+                let pulse_width = *t_rest as f64 / 16.0;
+                let offset = (*t_rest - 1) as f64 / 2.0;
+                output = (((*t_rest_counter as f64 - offset) / pulse_width).powf(2.0) * -1.0).exp();
                 *t_rest_counter = *t_rest_counter - 1;
                 *last_v = *v;
                 *v = 0.0;
                 threshold.tick();
                 t_const.tick();
-                println!("output {}", output);
+            //                println!("output {}", output);
             } else {
                 let this_const = t_const.tick();
                 *v = *last_v + (((*last_v * -1.0) + *input) * this_const);
                 *last_v = *v;
-                println!(
-                    "after v {}, input {} , const {}, last {}",
-                    v, *input, this_const, last_v
-                );
+                // println!(
+                //     "after v {}, input {} , const {}, last {}",
+                //     v, *input, this_const, last_v
+                // );
                 if *v > threshold.tick() {
                     output = 1.0;
                     *t_rest_counter = *t_rest;

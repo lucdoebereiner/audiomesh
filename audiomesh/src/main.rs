@@ -366,7 +366,7 @@ fn main() {
     let c1 = g.add_node(constant(0.8));
     //    let c2 = g.add_node(constant(1.0));
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
-    let sp = g.add_node(spike(0.5, 0.0001, 100));
+    let sp = g.add_node(spike(0.3, 0.0001, 100));
     //    let s1 = g.add_node(sin_osc(100.0));
     g.add_edge(c1, sp, (0, lag::lag(1.0)));
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
