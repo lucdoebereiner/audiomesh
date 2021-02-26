@@ -11,6 +11,7 @@ module Api exposing
     , poll
     , postEdge
     , postGraph
+    , randomCircle
     , randomize
     , setEdgeWeight
     , setOutput
@@ -188,6 +189,15 @@ randomize : (Result Http.Error () -> msg) -> Cmd msg
 randomize msg =
     Http.post
         { url = baseUrl ++ "/randomize"
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+randomCircle : (Result Http.Error () -> msg) -> Cmd msg
+randomCircle msg =
+    Http.post
+        { url = baseUrl ++ "/randomcircle"
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }

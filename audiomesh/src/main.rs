@@ -41,6 +41,7 @@ use processgraph::lag;
 
 enum UpdateMessage {
     Randomize,
+    RandomCircle,
     DumpGraph,
     SetGraph(UGenGraph),
     DumpOutputs,
@@ -155,6 +156,13 @@ fn randomize(state: State<Globals>) {
     sender.send(UpdateMessage::Randomize).unwrap()
 }
 
+#[post("/randomcircle")]
+fn random_circle(state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::RandomCircle).unwrap()
+}
+
 #[post("/connectleastconnected")]
 fn least_connected(state: State<Globals>) {
     let shared_data: &Globals = state.inner();
@@ -231,9 +239,14 @@ fn handle_messages(
             let nodes: Vec<NodeIndex> = graph.node_indices().collect();
             rnd_connections(graph, &nodes, 1);
             let new_flow = establish_flow(graph, output_indices);
-            //            let _ = mem::replace(flow, new_flow);
             *flow = new_flow;
-            //          return ();
+        }
+        UpdateMessage::RandomCircle => {
+            graph.clear_edges();
+            let nodes: Vec<NodeIndex> = graph.node_indices().collect();
+            rnd_circle(graph, &nodes, 1);
+            let new_flow = establish_flow(graph, output_indices);
+            *flow = new_flow;
         }
         UpdateMessage::DumpGraph => {
             let j = serde_json::to_string(graph).unwrap();
@@ -348,7 +361,7 @@ fn main() {
     // Create graph and init
     let mut g = new_graph();
 
-    //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
+    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
     //    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
     //    let rms = g.add_node(rms());
     //    let sinph = g.add_node(sin());
@@ -359,16 +372,16 @@ fn main() {
     //    let filter1 = g.add_node(lpf(100.0, 6.0));
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    //    let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
-    //    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
+    let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
+    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
     // let gauss = g.add_node(gauss());
     //let ring = g.add_node(ring());
-    let c1 = g.add_node(constant(0.8));
+    //    let c1 = g.add_node(constant(0.8));
     //    let c2 = g.add_node(constant(1.0));
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
-    let sp = g.add_node(spike(0.3, 0.0001, 100));
+    //  let sp = g.add_node(spike(0.3, 0.0001, 100));
     //    let s1 = g.add_node(sin_osc(100.0));
-    g.add_edge(c1, sp, (0, lag::lag(1.0)));
+    //g.add_edge(c1, sp, (0, lag::lag(1.0)));
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
     //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
@@ -379,8 +392,10 @@ fn main() {
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     // ];
 
+    let sum1 = g.add_node(add());
+    let sum2 = g.add_node(add());
     //    rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![sp];
+    let mut output_indices = vec![sum1, sum2];
 
     let mut flow = establish_flow(&g, &output_indices);
     let n_outs = output_indices.len();
@@ -492,7 +507,8 @@ fn main() {
                 set_parameter,
                 set_edge_weight,
                 poll_node,
-                set_graph
+                set_graph,
+                random_circle
             ],
         )
         .attach(cors)

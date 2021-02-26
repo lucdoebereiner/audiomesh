@@ -107,7 +107,7 @@ type Process
     | Gauss
     | RMS
     | Sin { mul : Float }
-    | SinOsc { freq : Float }
+    | SinOsc { freq : Float, freq_mul : Float }
     | Constant { value : Float }
     | SoundIn { index : Int }
     | Square
@@ -117,7 +117,7 @@ type Process
     | BitAnd
     | LinCon { linconA : Float, linconB : Float }
     | Compressor { threshold : Float, ratio : Float, makeup : Float }
-    | Spike { threshold : Float, tConst : Float, tRest : Int }
+    | Spike { threshold : Float, tConst : Float, r : Float, tRest : Int }
 
 
 
@@ -139,8 +139,10 @@ processParameters p =
         Sin { mul } ->
             [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
 
-        SinOsc { freq } ->
-            [ Parameter 1 freq Exp "Freq" 0.001 10000.0 ]
+        SinOsc { freq, freq_mul } ->
+            [ Parameter 1 freq Exp "Freq" 0.001 10000.0
+            , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
+            ]
 
         Constant { value } ->
             [ Parameter 1 value Lin "Value" -1.0 1.0 ]
@@ -157,9 +159,11 @@ processParameters p =
             , Parameter 3 makeup Exp "Makup" 1.0 4.0
             ]
 
-        Spike { threshold, tConst } ->
+        Spike { threshold, tConst, r, tRest } ->
             [ Parameter 1 threshold Exp "Threshold" 0.01 0.9
             , Parameter 2 tConst Exp "T Const" 0.00001 0.5
+            , Parameter 3 r Exp "R" 0.1 20
+            , Parameter 4 (toFloat tRest) Exp "Rest" 10 40000
             ]
 
         _ ->
@@ -175,8 +179,16 @@ setInput ( parIdx, val ) proc =
         Sin _ ->
             Sin { mul = val }
 
-        SinOsc _ ->
-            SinOsc { freq = val }
+        SinOsc s ->
+            case parIdx of
+                1 ->
+                    SinOsc { s | freq = val }
+
+                2 ->
+                    SinOsc { s | freq_mul = val }
+
+                _ ->
+                    proc
 
         Constant _ ->
             Constant { value = val }
@@ -226,6 +238,9 @@ setInput ( parIdx, val ) proc =
                     Spike { s | tConst = val }
 
                 3 ->
+                    Spike { s | r = val }
+
+                4 ->
                     Spike { s | tRest = round val }
 
                 _ ->
@@ -340,7 +355,12 @@ encodeProcess p =
             encObj p (JE.object [ ( "mul", JE.float m.mul ) ])
 
         SinOsc s ->
-            encObj p (JE.object [ ( "freq", JE.float s.freq ) ])
+            encObj p
+                (JE.object
+                    [ ( "freq", JE.float s.freq )
+                    , ( "freq_mul", JE.float s.freq_mul )
+                    ]
+                )
 
         Constant c ->
             encObj p (JE.object [ ( "value", JE.float c.value ) ])
@@ -385,6 +405,7 @@ encodeProcess p =
                 (JE.object
                     [ ( "threshold", JE.float s.threshold )
                     , ( "t_const", JE.float s.tConst )
+                    , ( "r", JE.float s.r )
                     , ( "t_rest", JE.int s.tRest )
                     ]
                 )
@@ -410,7 +431,10 @@ processToString p =
             "SoundIn " ++ String.fromInt i.index
 
         SinOsc f ->
-            "SinOsc " ++ floatString f.freq
+            "SinOsc fr:"
+                ++ floatString f.freq
+                ++ " fr_mul:"
+                ++ floatString f.freq_mul
 
         Sin s ->
             "Sin " ++ floatString s.mul
@@ -433,7 +457,9 @@ processToString p =
             "Spike thr: "
                 ++ floatString s.threshold
                 ++ " tc: "
-                ++ String.fromFloat s.tConst
+                ++ floatStringLong s.tConst
+                ++ " r:"
+                ++ floatString s.r
                 ++ " tr: "
                 ++ String.fromInt s.tRest
 
@@ -538,8 +564,9 @@ decodeFilter =
 
 decodeSinOsc : Decoder Process
 decodeSinOsc =
-    Decode.succeed (\f -> SinOsc { freq = f })
+    Decode.succeed (\f m -> SinOsc { freq = f, freq_mul = m })
         |> required "freq" float
+        |> required "freq_mul" float
 
 
 decodeLinCon : Decoder Process
@@ -559,9 +586,10 @@ decodeCompressor =
 
 decodeSpike : Decoder Process
 decodeSpike =
-    Decode.succeed (\t c r -> Spike { threshold = t, tConst = c, tRest = r })
+    Decode.succeed (\t c r rest -> Spike { threshold = t, tConst = c, r = r, tRest = rest })
         |> required "threshold" float
         |> required "t_const" float
+        |> required "r" float
         |> required "t_rest" int
 
 

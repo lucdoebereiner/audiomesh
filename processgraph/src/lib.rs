@@ -3,6 +3,7 @@ pub mod lag;
 //use petgraph::stable_graph::StableGraph;
 //use petgraph::graph::Graph;
 use petgraph::stable_graph::*;
+use petgraph::visit::IntoNodeReferences;
 use petgraph::Directed;
 use petgraph::Direction::*;
 //use rand::rngs::SmallRng;
@@ -47,6 +48,7 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
         freq: lag::Lag,
+        freq_mul: lag::Lag,
         #[serde(skip)]
         phase: f64,
     },
@@ -88,7 +90,10 @@ pub enum Process {
         last_v: f64,
         threshold: lag::Lag,
         t_const: lag::Lag,
+        r: lag::Lag,
         t_rest: usize,
+        #[serde(skip)]
+        t_this_rest: usize,
         #[serde(skip)]
         t_rest_counter: usize,
     },
@@ -250,10 +255,11 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             input,
             freq,
             ref mut phase,
+            freq_mul,
         } => {
             //            let freqIn = numerical::curvelin(*input, -1.0, 1.0, 1.0, 10000.0, 2.0);
             let output = phase.sin();
-            *phase += freq.tick() + (*input * 5000.0) * FREQ_FAC;
+            *phase += freq.tick() + (*input * freq_mul.tick()) * FREQ_FAC;
             output
         }
         Process::Mul { inputs, .. } => inputs.iter().product(),
@@ -309,14 +315,17 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             ref mut last_v,
             ref mut threshold,
             ref mut t_const,
+            ref mut r,
             t_rest,
+            ref mut t_this_rest,
             ref mut t_rest_counter,
         } => {
             let mut output = 0.0;
             if *t_rest_counter > 0 {
-                let pulse_width = *t_rest as f64 / 16.0;
-                let offset = (*t_rest - 1) as f64 / 2.0;
-                output = (((*t_rest_counter as f64 - offset) / pulse_width).powf(2.0) * -1.0).exp();
+                let pulse_width = *t_this_rest as f64 / 8.0;
+                let offset = (*t_this_rest - 1) as f64 / 2.0;
+                output = (((*t_rest_counter as f64 - offset) / pulse_width).powf(2.0) * -1.0).exp()
+                    * 0.7; // hardcoded amplitude
                 *t_rest_counter = *t_rest_counter - 1;
                 *last_v = *v;
                 *v = 0.0;
@@ -325,7 +334,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             //                println!("output {}", output);
             } else {
                 let this_const = t_const.tick();
-                *v = *last_v + (((*last_v * -1.0) + *input) * this_const);
+                *v = *last_v + (((*last_v * -1.0) + (*input * r.tick())) * this_const);
                 *last_v = *v;
                 // println!(
                 //     "after v {}, input {} , const {}, last {}",
@@ -333,6 +342,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
                 // );
                 if *v > threshold.tick() {
                     output = 1.0;
+                    *t_this_rest = *t_rest;
                     *t_rest_counter = *t_rest;
                 }
             }
@@ -425,10 +435,12 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
         Process::SinOsc {
             ref mut input,
             ref mut freq,
+            ref mut freq_mul,
             ..
         } => match idx {
-            0 => freq.set_target(freq.current + *input),
+            0 => set_or_add(input, input_value, add),
             1 => freq.set_target(input_value),
+            2 => freq_mul.set_target(input_value),
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
         Process::Add { ref mut inputs } | Process::Mul { ref mut inputs } => {
@@ -453,13 +465,15 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
             ref mut input,
             ref mut threshold,
             ref mut t_const,
+            ref mut r,
             ref mut t_rest,
             ..
         } => match idx {
             0 => set_or_add(input, input_value, add),
             1 => threshold.set_target(input_value),
             2 => t_const.set_target(input_value),
-            3 => *t_rest = input_value as usize,
+            3 => r.set_target(input_value),
+            4 => *t_rest = input_value.round() as usize,
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
         Process::Compressor {
@@ -602,7 +616,7 @@ pub enum InputType {
     Amplitude,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ProcessType {
     NoInputGenerator,
     Processor,
@@ -646,9 +660,11 @@ fn spec(process: &Process) -> ProcessSpec {
             vec![InputType::Any],
         ),
         Process::Sin { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Phase]),
-        Process::SinOsc { .. } => {
-            procspec("sinosc", ProcessType::Processor, vec![InputType::Frequency])
-        }
+        Process::SinOsc { .. } => procspec(
+            "sinosc",
+            ProcessType::Processor,
+            vec![InputType::Frequency, InputType::Factor],
+        ),
         Process::Mul { .. } => procspec(
             "mul",
             ProcessType::NeedsMultipleInputs,
@@ -939,14 +955,16 @@ pub fn rms() -> UGen {
     UGen::new(rms_proc())
 }
 
-pub fn spike(threshold: f64, t_const: f64, t_rest: usize) -> UGen {
+pub fn spike(threshold: f64, t_const: f64, r: f64, t_rest: usize) -> UGen {
     UGen::new(Process::Spike {
         input: 0.0,
         v: 0.0,
         last_v: 0.0,
         threshold: lag::lag(threshold),
         t_const: lag::lag(t_const),
+        r: lag::lag(r),
         t_rest,
+        t_this_rest: t_rest,
         t_rest_counter: 0,
     })
 }
@@ -969,10 +987,11 @@ pub fn sin() -> UGen {
     })
 }
 
-pub fn sin_osc(freq: f64) -> UGen {
+pub fn sin_osc(freq: f64, freq_mul: f64) -> UGen {
     UGen::new(Process::SinOsc {
         input: 0.0,
         freq: lag::lag(freq),
+        freq_mul: lag::lag(freq_mul),
         phase: 0.0,
     })
 }
@@ -1009,13 +1028,13 @@ pub fn bpf(freq: f64, q: f64) -> UGen {
 //     })
 // }
 
-fn sinosc(freq: f64) -> Process {
-    Process::SinOsc {
-        input: 0.0,
-        freq: lag::lag(freq),
-        phase: 0.0,
-    }
-}
+// fn sinosc(freq: f64) -> Process {
+//     Process::SinOsc {
+//         input: 0.0,
+//         freq: lag::lag(freq),
+//         phase: 0.0,
+//     }
+// }
 
 // fn map_process(func: fn(f64) -> f64) -> UGen {
 //     UGen::new(Process::Map {
@@ -1175,11 +1194,75 @@ pub fn rnd_connections(
         shuffled.iter().for_each(|&idx| {
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
-            edges.push(g.add_edge(idx, *shuffled.choose(&mut rng).unwrap(), (0, lag::lag(w1))));
-            edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, lag::lag(w2))));
+            if let Some(to_node) = choose_with_input(g) {
+                edges.push(g.add_edge(idx, to_node, (0, lag::lag(w1))));
+            }
+            if does_idx_have_input(g, idx) {
+                edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, lag::lag(w2))));
+            }
         })
     }
     edges
+}
+
+pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) -> Vec<EdgeIndex> {
+    let mut rng = thread_rng();
+    let mut shuffled = nodes.to_vec();
+    shuffled.shuffle(&mut rng);
+    let mut edges = Vec::new();
+    for _i in 0..n_connections {
+        let filtered_shuffled: Vec<&NodeIndex> = shuffled
+            .iter()
+            .filter(|&idx| does_idx_have_input(g, *idx))
+            .collect();
+        let length = filtered_shuffled.len();
+        for (i, &idx) in filtered_shuffled.iter().enumerate() {
+            let w1 = rng.gen_range(0.7, 1.0);
+            edges.push(g.add_edge(
+                *idx,
+                *filtered_shuffled[(i + 1) % length],
+                (0, lag::lag(w1)),
+            ));
+        }
+
+        let w2 = rng.gen_range(0.7, 1.0);
+        let generators: Vec<&NodeIndex> = shuffled
+            .iter()
+            .filter(|&idx| !does_idx_have_input(g, *idx))
+            .collect();
+        for &idx in generators.iter() {
+            edges.push(g.add_edge(
+                *idx,
+                **filtered_shuffled.choose(&mut rng).unwrap(),
+                (0, lag::lag(w2)),
+            ))
+        }
+    }
+    edges
+}
+
+fn does_idx_have_input(g: &UGenGraph, node: NodeIndex) -> bool {
+    if let Some(u) = g.node_weight(node) {
+        !(spec(&u.process).process_type == ProcessType::NoInputGenerator)
+    } else {
+        false
+    }
+}
+
+// guarantees that choosen idx is a process with input
+fn choose_with_input(g: &UGenGraph) -> Option<NodeIndex> {
+    let mut rng = thread_rng();
+    let with_input: Vec<NodeIndex> = g
+        .node_references()
+        .filter_map(|(idx, u)| {
+            if !(spec(&u.process).process_type == ProcessType::NoInputGenerator) {
+                Some(idx)
+            } else {
+                None
+            }
+        })
+        .collect();
+    with_input.choose(&mut rng).map(|r| *r)
 }
 
 fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {

@@ -28,7 +28,6 @@ import Utils exposing (..)
 
 
 -- TODO
--- poll
 -- scope
 
 
@@ -47,6 +46,7 @@ type alias Model =
     , filterFreq : String
     , filterQ : String
     , sinOscFreq : String
+    , sinOscFreqMul : String
     , fileName : String
     , waitingToConnect : Maybe Graph.NodeId
     , lastPoll : Float
@@ -55,6 +55,7 @@ type alias Model =
     , compressorMakeup : String
     , spikeThreshold : String
     , spikeTConst : String
+    , spikeR : String
     , spikeTRest : String
     }
 
@@ -75,6 +76,7 @@ init _ =
         ""
         ""
         ""
+        ""
         "graph"
         Nothing
         0.0
@@ -83,7 +85,8 @@ init _ =
         "2"
         "0.2"
         "0.0001"
-        "100"
+        "5"
+        "20000"
     , Api.getGraph GotGraph
     )
 
@@ -107,6 +110,7 @@ type Msg
     | GetGraph
     | GotOutputs (Result Http.Error (List Int))
     | Randomize
+    | RandomCircle
     | Randomized (Result Http.Error ())
     | UpdatedGraph (Result Http.Error ())
     | SelectNode Graph.NodeId
@@ -124,11 +128,13 @@ type Msg
     | SetFilterFreq String
     | SetFilterQ String
     | SetSinOscFreq String
+    | SetSinOscFreqMul String
     | SetCompressorThreshold String
     | SetCompressorRatio String
     | SetCompressorMakeup String
     | SetSpikeThreshold String
     | SetSpikeTConst String
+    | SetSpikeR String
     | SetSpikeTRest String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
@@ -245,6 +251,9 @@ update msg model =
         Randomize ->
             ( model, Api.randomize Randomized )
 
+        RandomCircle ->
+            ( model, Api.randomCircle Randomized )
+
         Randomized _ ->
             ( model, Api.getGraph GotGraph )
 
@@ -303,6 +312,9 @@ update msg model =
         SetSinOscFreq s ->
             ( { model | sinOscFreq = s }, Cmd.none )
 
+        SetSinOscFreqMul s ->
+            ( { model | sinOscFreqMul = s }, Cmd.none )
+
         SetCompressorThreshold s ->
             ( { model | compressorThreshold = s }, Cmd.none )
 
@@ -317,6 +329,9 @@ update msg model =
 
         SetSpikeTRest s ->
             ( { model | spikeTRest = s }, Cmd.none )
+
+        SetSpikeR s ->
+            ( { model | spikeR = s }, Cmd.none )
 
         SetSpikeTConst s ->
             ( { model | spikeTConst = s }, Cmd.none )
@@ -486,17 +501,23 @@ delayInput v =
         ]
 
 
-sinOscInput : String -> Element Msg
-sinOscInput v =
+sinOscInput : String -> String -> Element Msg
+sinOscInput fr frm =
     row [ spacing 5, Border.solid, Border.width 1 ]
         [ Input.text [ width (px 80) ]
             { onChange = SetSinOscFreq
-            , text = v
+            , text = fr
             , placeholder = Nothing
             , label = Input.labelLeft [] (text "Freq")
             }
+        , Input.text [ width (px 80) ]
+            { onChange = SetSinOscFreqMul
+            , text = frm
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Freq Mul")
+            }
         , Maybe.withDefault none <|
-            Maybe.map (\i -> addProcess "SinOsc" (SinOsc { freq = i })) (String.toFloat v)
+            Maybe.map2 (\ff fmf -> addProcess "SinOsc" (SinOsc { freq = ff, freq_mul = fmf })) (String.toFloat fr) (String.toFloat frm)
         ]
 
 
@@ -569,8 +590,8 @@ compressorInput t r m =
         ]
 
 
-spikeInput : String -> String -> String -> Element Msg
-spikeInput t c r =
+spikeInput : String -> String -> String -> String -> Element Msg
+spikeInput t c r rest =
     row [ spacing 5, Border.solid, Border.width 1 ]
         [ Input.text [ width (px 80) ]
             { onChange = SetSpikeThreshold
@@ -585,20 +606,27 @@ spikeInput t c r =
             , label = Input.labelLeft [] (text "TConst")
             }
         , Input.text [ width (px 80) ]
-            { onChange = SetSpikeTRest
+            { onChange = SetSpikeTConst
             , text = r
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "TConst")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetSpikeTRest
+            , text = rest
             , placeholder = Nothing
             , label = Input.labelLeft [] (text "TRest")
             }
         , Maybe.withDefault none <|
-            Maybe.map3
-                (\tf cf ri ->
+            Maybe.map4
+                (\tf cf rf ri ->
                     addProcess "Spike"
-                        (Spike { threshold = tf, tConst = cf, tRest = ri })
+                        (Spike { threshold = tf, tConst = cf, r = rf, tRest = ri })
                 )
                 (String.toFloat t)
                 (String.toFloat c)
-                (String.toInt r)
+                (String.toFloat r)
+                (String.toInt rest)
         ]
 
 
@@ -656,11 +684,11 @@ processRow m =
         -- , addProcess "BitAnd" BitAnd
         , delayInput m.delayLength
         , sinInput m.sinMul
-        , sinOscInput m.sinOscFreq
+        , sinOscInput m.sinOscFreq m.sinOscFreqMul
         , linconInput m.linConA m.linConB
         , filterInput m.filterType m.filterFreq m.filterQ
         , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
-        , spikeInput m.spikeThreshold m.spikeTConst m.spikeTRest
+        , spikeInput m.spikeThreshold m.spikeTConst m.spikeR m.spikeTRest
         ]
 
 
@@ -730,6 +758,7 @@ view model =
         column [ width fill, spacing 10 ]
             [ row [ spacing 10 ]
                 [ simpleButton "Randomize" Randomize
+                , simpleButton "Random Circle" RandomCircle
                 , simpleButton "Discon Most Connected" DisconnectMostConnected
                 , simpleButton "Conn Least Connected" ConnectLeastConnected
                 , downloadInput model.fileName
@@ -758,9 +787,9 @@ view model =
                             SelectNode
                             SelectEdge
                             model.outputs
-                            ( 1000, 800 )
                             ( 1600, 1100 )
-                            200.0
+                            ( 2000, 1800 )
+                            150.0
 
                 _ ->
                     none
