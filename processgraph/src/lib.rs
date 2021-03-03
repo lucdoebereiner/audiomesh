@@ -23,15 +23,16 @@ static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
 
 // TODO
+// refactor to multiple modules
 // move debug flag to main
 // softclip on filter input optional
 // variable delay times
 // input indices
 // kuramoto
-// lag
 // zip
 
 // DONE
+// lag
 // not necessary
 // remember node index in ugen
 // outside input
@@ -259,7 +260,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         } => {
             //            let freqIn = numerical::curvelin(*input, -1.0, 1.0, 1.0, 10000.0, 2.0);
             let output = phase.sin();
-            *phase += freq.tick() + (*input * freq_mul.tick()) * FREQ_FAC;
+            *phase += (freq.tick() + (*input * freq_mul.tick())) * FREQ_FAC;
             output
         }
         Process::Mul { inputs, .. } => inputs.iter().product(),
@@ -334,7 +335,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             //                println!("output {}", output);
             } else {
                 let this_const = t_const.tick();
-                *v = *last_v + (((*last_v * -1.0) + (*input * r.tick())) * this_const);
+                *v = *last_v + (((*last_v * -1.0) + (input.abs() * r.tick())) * this_const);
                 *last_v = *v;
                 // println!(
                 //     "after v {}, input {} , const {}, last {}",
@@ -355,7 +356,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             input,
             ref mut rec_idx,
         } => {
-            let prev_idx = ((*rec_idx - 1) + input.len()) % input.len();
+            let prev_idx = ((*rec_idx + 1) + input.len()) % input.len();
             let result = input[prev_idx];
             *rec_idx = (*rec_idx + 1) % input.len();
             result
@@ -416,7 +417,7 @@ fn set_or_add(field: &mut f64, value: f64, add: bool) {
 
 pub fn set_parameter(graph: &mut UGenGraph, node_idx: NodeIndex, idx: u32, input_value: f64) {
     //    println!("setting input {:?} to {:?}", idx, input_value);
-    if let Some(node) = graph.node_weight_mut(node_idx) {
+    if let Some(node) = graph.graph.node_weight_mut(node_idx) {
         //  println!("found node");
         set_input(&mut node.process, idx as u32, input_value, false)
     }
@@ -809,6 +810,7 @@ pub struct UGen {
     pub last_value: f64,
     sum_inputs: bool,
     clip: ClipType,
+    output_sends: Vec<(usize, lag::Lag)>,
 }
 
 impl UGen {
@@ -820,6 +822,7 @@ impl UGen {
             sum_inputs: true,
             last_value: 0.0,
             clip: ClipType::None,
+            output_sends: vec![],
         }
     }
 
@@ -834,6 +837,13 @@ impl UGen {
         UGen {
             sum_inputs: true,
             ..self
+        }
+    }
+
+    pub fn set_output(&mut self, idx: usize, amp: f64) {
+        match self.output_sends.iter().position(|(i, _)| *i == idx) {
+            Some(pos) => self.output_sends[pos].1.set_target(amp),
+            None => self.output_sends.push((idx, lag::lag(amp))),
         }
     }
 }
@@ -1106,13 +1116,55 @@ fn fb_delay() -> UGen {
         last_value: 0.0,
         clip: ClipType::None,
         sum_inputs: true,
+        output_sends: vec![(0, lag::lag(1.0))],
     }
 }
 
-pub type UGenGraph = StableGraph<UGen, Connection, Directed, DefaultIx>;
+pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>;
+
+pub struct UGenGraph {
+    pub graph: UGenGraphStructure,
+    current_listening_nodes: Vec<NodeIndex>,
+}
 
 pub fn new_graph() -> UGenGraph {
-    StableGraph::with_capacity(100, 100)
+    UGenGraph {
+        graph: StableGraph::with_capacity(100, 100),
+        current_listening_nodes: vec![],
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OutputSpec {
+    node: usize,
+    output: usize,
+    amp: f64,
+}
+
+impl UGenGraph {
+    pub fn set_output(&mut self, spec: OutputSpec) {
+        self.graph[NodeIndex::new(spec.node)].set_output(spec.output, spec.amp)
+    }
+}
+
+// returns true if it had to update
+fn update_listening_nodes(g: &mut UGenGraph) -> bool {
+    let mut nodes_to_listen_to = vec![];
+    for (idx, ugen) in g.graph.node_references() {
+        if ugen.output_sends.iter().any(|(_, w)| w.target > 0.0) {
+            nodes_to_listen_to.push(idx);
+        }
+    }
+    if (g.current_listening_nodes.len() == nodes_to_listen_to.len())
+        && nodes_to_listen_to
+            .iter()
+            .all(|n| g.current_listening_nodes.contains(n))
+    {
+        false
+    } else {
+        g.current_listening_nodes = nodes_to_listen_to;
+        true
+    }
 }
 
 // enum UGenNode {
@@ -1134,13 +1186,13 @@ pub fn new_graph() -> UGenGraph {
 // }
 
 pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, NodeIndex) {
-    let low1 = g.add_node(lpf(f2, q));
-    let low2 = g.add_node(lpf(f2, q));
-    let high1 = g.add_node(hpf(f1, q));
-    let high2 = g.add_node(hpf(f1, q));
-    g.add_edge(low1, low2, (0, lag::lag(1.0)));
-    g.add_edge(low2, high1, (0, lag::lag(1.0)));
-    g.add_edge(high1, high2, (0, lag::lag(1.0)));
+    let low1 = g.graph.add_node(lpf(f2, q));
+    let low2 = g.graph.add_node(lpf(f2, q));
+    let high1 = g.graph.add_node(hpf(f1, q));
+    let high2 = g.graph.add_node(hpf(f1, q));
+    g.graph.add_edge(low1, low2, (0, lag::lag(1.0)));
+    g.graph.add_edge(low2, high1, (0, lag::lag(1.0)));
+    g.graph.add_edge(high1, high2, (0, lag::lag(1.0)));
     (low1, high2)
 }
 
@@ -1170,11 +1222,11 @@ pub fn filter_bank(
         .windows(2)
         .map(|pair| band_pass2(g, pair[0], pair[1], q))
         .collect();
-    let input_sum = g.add_node(add());
+    let input_sum = g.graph.add_node(add());
     let outputs = filters
         .iter()
         .map(|(input, output)| {
-            g.add_edge(input_sum, *input, (0, lag::lag(1.0)));
+            g.graph.add_edge(input_sum, *input, (0, lag::lag(1.0)));
             *output
         })
         .collect();
@@ -1195,10 +1247,14 @@ pub fn rnd_connections(
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
             if let Some(to_node) = choose_with_input(g) {
-                edges.push(g.add_edge(idx, to_node, (0, lag::lag(w1))));
+                edges.push(g.graph.add_edge(idx, to_node, (0, lag::lag(w1))));
             }
             if does_idx_have_input(g, idx) {
-                edges.push(g.add_edge(*shuffled.choose(&mut rng).unwrap(), idx, (0, lag::lag(w2))));
+                edges.push(g.graph.add_edge(
+                    *shuffled.choose(&mut rng).unwrap(),
+                    idx,
+                    (0, lag::lag(w2)),
+                ));
             }
         })
     }
@@ -1218,7 +1274,7 @@ pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) ->
         let length = filtered_shuffled.len();
         for (i, &idx) in filtered_shuffled.iter().enumerate() {
             let w1 = rng.gen_range(0.7, 1.0);
-            edges.push(g.add_edge(
+            edges.push(g.graph.add_edge(
                 *idx,
                 *filtered_shuffled[(i + 1) % length],
                 (0, lag::lag(w1)),
@@ -1231,7 +1287,7 @@ pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) ->
             .filter(|&idx| !does_idx_have_input(g, *idx))
             .collect();
         for &idx in generators.iter() {
-            edges.push(g.add_edge(
+            edges.push(g.graph.add_edge(
                 *idx,
                 **filtered_shuffled.choose(&mut rng).unwrap(),
                 (0, lag::lag(w2)),
@@ -1242,7 +1298,7 @@ pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) ->
 }
 
 fn does_idx_have_input(g: &UGenGraph, node: NodeIndex) -> bool {
-    if let Some(u) = g.node_weight(node) {
+    if let Some(u) = g.graph.node_weight(node) {
         !(spec(&u.process).process_type == ProcessType::NoInputGenerator)
     } else {
         false
@@ -1253,6 +1309,7 @@ fn does_idx_have_input(g: &UGenGraph, node: NodeIndex) -> bool {
 fn choose_with_input(g: &UGenGraph) -> Option<NodeIndex> {
     let mut rng = thread_rng();
     let with_input: Vec<NodeIndex> = g
+        .graph
         .node_references()
         .filter_map(|(idx, u)| {
             if !(spec(&u.process).process_type == ProcessType::NoInputGenerator) {
@@ -1268,11 +1325,11 @@ fn choose_with_input(g: &UGenGraph) -> Option<NodeIndex> {
 fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
     let mut sets = Vec::new();
 
-    for node in graph.node_indices() {
-        let mut bfs = Bfs::new(&graph, node);
+    for node in graph.graph.node_indices() {
+        let mut bfs = Bfs::new(&graph.graph, node);
 
         let mut all_neighbors = Vec::new();
-        while let Some(nx) = bfs.next(&graph) {
+        while let Some(nx) = bfs.next(&graph.graph) {
             all_neighbors.push(nx)
         }
 
@@ -1298,8 +1355,8 @@ fn collect_components(graph: &UGenGraph) -> Vec<Vec<NodeIndex>> {
 
 fn nodes_with_neighbors(graph: &mut UGenGraph) -> Vec<(NodeIndex, Vec<NodeIndex>)> {
     let mut result = Vec::new();
-    for node in graph.node_indices() {
-        let neighbors = graph.neighbors_undirected(node).collect();
+    for node in graph.graph.node_indices() {
+        let neighbors = graph.graph.neighbors_undirected(node).collect();
         result.push((node, neighbors));
     }
     result.sort_by(
@@ -1320,7 +1377,9 @@ pub fn connect_least_connected(graph: &mut UGenGraph) {
             .next()
         {
             let w = thread_rng().gen_range(0.7, 1.0);
-            graph.add_edge(*first, *future_neighbor, (0, lag::lag(w)));
+            graph
+                .graph
+                .add_edge(*first, *future_neighbor, (0, lag::lag(w)));
         }
     }
 }
@@ -1335,8 +1394,8 @@ pub fn disconnect_most_connected(graph: &mut UGenGraph) {
             .filter(|(_, neighbors)| neighbors.contains(last))
             .next()
         {
-            if let Some((e, _)) = graph.find_edge_undirected(*last, *neighbor) {
-                graph.remove_edge(e);
+            if let Some((e, _)) = graph.graph.find_edge_undirected(*last, *neighbor) {
+                graph.graph.remove_edge(e);
             }
         }
     }
@@ -1349,12 +1408,12 @@ pub fn ensure_connectivity(graph: &mut UGenGraph) {
         for disconnected_node in rest.iter() {
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
-            graph.add_edge(
+            graph.graph.add_edge(
                 disconnected_node[0],
                 *first.choose(&mut rng).unwrap(),
                 (0, lag::lag(w1)),
             );
-            graph.add_edge(
+            graph.graph.add_edge(
                 *first.choose(&mut rng).unwrap(),
                 disconnected_node[0],
                 (0, lag::lag(w2)),
@@ -1410,29 +1469,29 @@ pub fn ensure_connectivity(graph: &mut UGenGraph) {
 //     insert_fb_nodes(graph, visited, to_visit_next);
 // }
 
-pub fn establish_flow(graph: &UGenGraph, start_nodes: &[NodeIndex]) -> Vec<NodeIndex> {
-    let mut to_visit = start_nodes.to_vec();
-    let mut visited: Vec<NodeIndex> = start_nodes.to_vec();
+pub fn establish_flow(graph: &mut UGenGraph) -> Vec<NodeIndex> {
+    let _ = update_listening_nodes(graph);
+    let mut to_visit = graph.current_listening_nodes.to_owned();
+    let mut visited: Vec<NodeIndex> = to_visit.to_owned();
 
     while !to_visit.is_empty() {
         match to_visit.pop() {
-            Some(current_node) => {
-                graph
-                    .neighbors_directed(current_node, Incoming)
-                    .for_each(|neighbor| {
-                        if !visited.contains(&neighbor) {
-                            visited.push(neighbor);
-                            match graph.node_weight(neighbor) {
-                                Some(fb) => {
-                                    if !fb.feedback_delay {
-                                        to_visit.insert(0, neighbor);
-                                    }
+            Some(current_node) => graph
+                .graph
+                .neighbors_directed(current_node, Incoming)
+                .for_each(|neighbor| {
+                    if !visited.contains(&neighbor) {
+                        visited.push(neighbor);
+                        match graph.graph.node_weight(neighbor) {
+                            Some(fb) => {
+                                if !fb.feedback_delay {
+                                    to_visit.insert(0, neighbor);
                                 }
-                                None => (),
                             }
+                            None => (),
                         }
-                    })
-            }
+                    }
+                }),
             None => break,
         }
     }
@@ -1440,32 +1499,29 @@ pub fn establish_flow(graph: &UGenGraph, start_nodes: &[NodeIndex]) -> Vec<NodeI
     visited
 }
 
-pub fn update_connections_and_flow(
-    graph: &mut UGenGraph,
-    flow: &mut Vec<NodeIndex>,
-    output_indices: &mut [NodeIndex],
-) {
+pub fn update_connections_and_flow(graph: &mut UGenGraph, flow: &mut Vec<NodeIndex>) {
     ensure_connectivity(graph);
-    *flow = establish_flow(graph, output_indices);
+    *flow = establish_flow(graph);
 }
 
 /// Calls a ugen and sends result to connected ugens
 pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
-    match graph.node_weight_mut(idx) {
+    match graph.graph.node_weight_mut(idx) {
         Some(ugen) => {
             let output = ugen.process(input);
-            let mut neighbors = graph.neighbors_directed(idx, Outgoing).detach();
-            while let Some(neighbor_idx) = neighbors.next_node(graph) {
+            let mut neighbors = graph.graph.neighbors_directed(idx, Outgoing).detach();
+            while let Some(neighbor_idx) = neighbors.next_node(&graph.graph) {
                 let edge = graph
+                    .graph
                     .find_edge(idx, neighbor_idx)
-                    .and_then(|e| graph.edge_weight(e))
+                    .and_then(|e| graph.graph.edge_weight(e))
                     .map(|e| {
                         let (idx, w) = &*e;
                         (*idx, w.current)
                     }); // deref to stop borrowing
                 match edge {
                     Some(connection) => {
-                        graph[neighbor_idx].set_input_with_connection(connection, output)
+                        graph.graph[neighbor_idx].set_input_with_connection(connection, output)
                     }
                     None => (),
                 }
@@ -1478,28 +1534,34 @@ pub fn call_and_output(graph: &mut UGenGraph, idx: NodeIndex, input: &[f64]) {
 pub fn process_graph(
     graph: &mut UGenGraph,
     flow: &Vec<NodeIndex>,
-    listening_nodes: &[NodeIndex],
     input_buffer: &[f64],
     output_buffer: &mut [f64],
 ) {
     flow.iter()
         .for_each(|&idx| call_and_output(graph, idx, input_buffer));
-    for (i, &listening_node) in listening_nodes.iter().enumerate() {
-        let output = match graph.node_weight(listening_node) {
-            Some(node) => node.value.unwrap_or(0.0),
-            None => 0.0,
-        };
-        output_buffer[i] = output;
+
+    output_buffer.iter_mut().for_each(|x| *x = 0.0);
+
+    for ugen in graph.graph.node_weights_mut() {
+        let current_value = ugen.value.unwrap_or(0.0);
+        for (out_i, amp_out) in ugen.output_sends.iter_mut() {
+            output_buffer[*out_i % output_buffer.len()] += current_value * amp_out.tick();
+        }
+        // let output = match graph.node_weight(listening_node) {
+        //     Some(node) =>
+        //     None => 0.0,
+        // };
+        // output_buffer[i] = output;
     }
     for &i in flow {
-        match graph.node_weight_mut(i) {
+        match graph.graph.node_weight_mut(i) {
             Some(n) => {
                 n.reset();
             }
             None => (),
         }
     }
-    for e in graph.edge_weights_mut() {
+    for e in graph.graph.edge_weights_mut() {
         let (_, w) = e;
         w.tick();
         ()

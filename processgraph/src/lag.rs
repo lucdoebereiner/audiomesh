@@ -3,7 +3,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[derive(Debug)]
 pub struct Lag {
     pub current: f64,
-    target: f64,
+    pub target: f64,
     factor: f64,
 }
 

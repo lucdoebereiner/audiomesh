@@ -90,7 +90,27 @@ Content-Type: application/json
 }
 
 # get outputs
-GET http://localhost:8008/outputs
+#GET http://localhost:8008/outputs
+
+# set solo output
+POST http://localhost:8008/output/0/node/0/amp/0.5
+
+# set multiple outputs
+POST http://localhost:8008/outputs
+Content-Type: application/json
+[
+{
+  "node": 0,
+  "output": 0,
+  "amp": 1.0
+},
+{
+  "node": 1,
+  "output": 1,
+  "amp": 1.0
+}
+]
+
 
 # remove node
 DELETE http://localhost:8008/node/3
@@ -114,7 +134,7 @@ POST http://localhost:8008/node/5/parameter/1/3000.1
 POST http://localhost:8008/node/2/parameter/1/50
 
 # poll node
-GET http://localhost:8008/node/9/poll
+GET http://localhost:8008/node/0/poll
 
 
 # testing processes SIN

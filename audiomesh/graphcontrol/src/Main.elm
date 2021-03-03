@@ -33,7 +33,8 @@ import Utils exposing (..)
 
 type alias Model =
     { graph : Maybe UGenGraph
-    , outputs : List Int
+
+    --    , outputs : List Int
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
     , volume : Float
@@ -63,7 +64,7 @@ type alias Model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( Model Nothing
-        []
+        --  []
         Nothing
         Nothing
         0.4
@@ -108,7 +109,7 @@ main =
 type Msg
     = GotGraph (Result Http.Error BackendGraph)
     | GetGraph
-    | GotOutputs (Result Http.Error (List Int))
+      --    | GotOutputs (Result Http.Error (List Int))
     | Randomize
     | RandomCircle
     | Randomized (Result Http.Error ())
@@ -215,9 +216,13 @@ update msg model =
             ( model, Api.disconnectMostConnected UpdatedGraph )
 
         GotGraph res ->
+            let
+                _ =
+                    Debug.log "got graph" res
+            in
             case res of
                 Ok g ->
-                    ( { model | graph = Just (mkGraph g) }, Api.getOutputs GotOutputs )
+                    ( { model | graph = Just (mkGraph g) }, Cmd.none )
 
                 _ ->
                     ( model, Cmd.none )
@@ -234,14 +239,12 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        GotOutputs res ->
-            case res of
-                Ok l ->
-                    ( { model | outputs = l }, Cmd.none )
-
-                _ ->
-                    ( model, Cmd.none )
-
+        -- GotOutputs res ->
+        --     case res of
+        --         Ok l ->
+        --             ( { model | outputs = l }, Cmd.none )
+        --         _ ->
+        --             ( model, Cmd.none )
         GetGraph ->
             ( model, Api.getGraph GotGraph )
 
@@ -409,8 +412,8 @@ simpleStateButton s b msg =
 -- todo waiting to connect button
 
 
-displayNode : Float -> Maybe Graph.NodeId -> List Int -> Graph.Node UGen -> Element Msg
-displayNode polled waiting outputs n =
+displayNode : Float -> Maybe Graph.NodeId -> Graph.Node UGen -> Element Msg
+displayNode polled waiting n =
     column [ width fill ]
         [ row [ spacing 10 ]
             ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
@@ -421,21 +424,20 @@ displayNode polled waiting outputs n =
                 text <|
                     floatString polled
              ]
-                ++ (if not (List.member n.id outputs) then
-                        simpleButton "Delete" (DeleteNode n.id)
-                            :: (List.map
-                                    (\out ->
-                                        simpleButton
-                                            ("As output " ++ String.fromInt out)
-                                            (SetOutput n.id out)
-                                    )
-                                <|
-                                    List.range 0 (List.length outputs - 1)
-                               )
-
-                    else
-                        []
-                   )
+             -- ++ (if not (List.member n.id outputs) then
+             --         simpleButton "Delete" (DeleteNode n.id)
+             --             :: (List.map
+             --                     (\out ->
+             --                         simpleButton
+             --                             ("As output " ++ String.fromInt out)
+             --                             (SetOutput n.id out)
+             --                     )
+             --                 <|
+             --                     List.range 0 (List.length outputs - 1)
+             --                )
+             -- else
+             --     []
+             --                   )
             )
         , row [ spacing 10 ] <|
             List.map
@@ -775,7 +777,7 @@ view model =
                     (displayNode
                         model.lastPoll
                         model.waitingToConnect
-                        model.outputs
+                     --                        model.outputs
                     )
                     selectedNode
                 )
@@ -786,7 +788,7 @@ view model =
                             (Maybe.map .id selectedNode)
                             SelectNode
                             SelectEdge
-                            model.outputs
+                            []
                             ( 1600, 1100 )
                             ( 2000, 1800 )
                             150.0

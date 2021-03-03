@@ -6,8 +6,9 @@ module Api exposing
     , deleteNode
     , disconnectMostConnected
     , getGraph
-    , getGraphForDownload
-    , getOutputs
+    ,  getGraphForDownload
+       --    , getOutputs
+
     , poll
     , postEdge
     , postGraph
@@ -137,12 +138,13 @@ postGraph msg g =
         }
 
 
-getOutputs : (Result Http.Error (List NodeIndex) -> msg) -> Cmd msg
-getOutputs msg =
-    Http.get
-        { url = baseUrl ++ "/outputs"
-        , expect = Http.expectJson msg (Decode.list Decode.int)
-        }
+
+-- getOutputs : (Result Http.Error (List NodeIndex) -> msg) -> Cmd msg
+-- getOutputs msg =
+--     Http.get
+--         { url = baseUrl ++ "/outputs"
+--         , expect = Http.expectJson msg (Decode.list Decode.int)
+--         }
 
 
 setOutput : (Result Http.Error () -> msg) -> Int -> Int -> Cmd msg

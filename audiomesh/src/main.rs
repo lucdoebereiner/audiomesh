@@ -43,14 +43,14 @@ enum UpdateMessage {
     Randomize,
     RandomCircle,
     DumpGraph,
-    SetGraph(UGenGraph),
-    DumpOutputs,
+    SetGraph(UGenGraphStructure),
     AddEdge(NodeIndex, NodeIndex, f64, usize),
     RemoveNode(usize),
     AddNode(Process),
     RemoveEdge(usize),
     SetEdgeWeight(usize, f64),
-    SetOutput(NodeIndex, usize),
+    SetOutput(NodeIndex, usize, f64),
+    SetOutputs(Vec<OutputSpec>),
     SetVolume(f64),
     ConnectLeastConnected,
     DisconnectMostConnected,
@@ -60,7 +60,7 @@ enum UpdateMessage {
 
 enum ReturnMessage {
     Graph(String),
-    Outputs(String),
+    //  Outputs(String),
     PollOutput(String),
 }
 
@@ -93,7 +93,7 @@ fn add_node(process: Json<Process>, state: State<Globals>) {
 }
 
 #[post("/graph", data = "<graph>")]
-fn set_graph(graph: Json<UGenGraph>, state: State<Globals>) {
+fn set_graph(graph: Json<UGenGraphStructure>, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -101,14 +101,32 @@ fn set_graph(graph: Json<UGenGraph>, state: State<Globals>) {
         .unwrap()
 }
 
-#[post("/node/<id>/output/<output>")]
-fn node_output(id: usize, output: usize, state: State<Globals>) {
+#[post("/node/<id>/output/<output>/amp/<amp>")]
+fn node_output(id: usize, output: usize, amp: f64, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
-        .send(UpdateMessage::SetOutput(NodeIndex::new(id), output))
+        .send(UpdateMessage::SetOutput(NodeIndex::new(id), output, amp))
         .unwrap()
 }
+
+#[post("/outputs", data = "<specvec>")]
+fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetOutputs(specvec.into_inner()))
+        .unwrap()
+}
+
+// #[post("/output/<idx>/node/<id>/amp/<amp>")]
+// fn solo_output(idx: usize, id: usize, amp: f64, state: State<Globals>) {
+//     let shared_data: &Globals = state.inner();
+//     let sender = &shared_data.sender;
+//     sender
+//         .send(UpdateMessage::SetSoloOutput(idx, NodeIndex::new(id), amp))
+//         .unwrap()
+// }
 
 #[post("/node/<id>/parameter/<input>/<value>")]
 fn set_parameter(id: usize, input: u32, value: f64, state: State<Globals>) {
@@ -177,18 +195,18 @@ fn most_connected(state: State<Globals>) {
     sender.send(UpdateMessage::DisconnectMostConnected).unwrap()
 }
 
-#[get("/outputs")]
-fn get_outputs(state: State<Globals>) -> content::Json<String> {
-    let shared_data: &Globals = state.inner();
-    let sender = &shared_data.sender;
-    let receiver = &shared_data.receiver;
-    sender.send(UpdateMessage::DumpOutputs).unwrap();
-    match receiver.recv().unwrap() {
-        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
-            content::Json(g)
-        }
-    }
-}
+// #[get("/outputs")]
+// fn get_outputs(state: State<Globals>) -> content::Json<String> {
+//     let shared_data: &Globals = state.inner();
+//     let sender = &shared_data.sender;
+//     let receiver = &shared_data.receiver;
+//     sender.send(UpdateMessage::DumpOutputs).unwrap();
+//     match receiver.recv().unwrap() {
+//         ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
+//             content::Json(g)
+//         }
+//     }
+// }
 
 #[get("/graph")]
 fn get_graph(state: State<Globals>) -> content::Json<String> {
@@ -197,9 +215,7 @@ fn get_graph(state: State<Globals>) -> content::Json<String> {
     let receiver = &shared_data.receiver;
     sender.send(UpdateMessage::DumpGraph).unwrap();
     match receiver.recv().unwrap() {
-        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
-            content::Json(g)
-        }
+        ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => content::Json(g),
     }
 }
 
@@ -212,9 +228,7 @@ fn poll_node(id: usize, state: State<Globals>) -> content::Json<String> {
         .send(UpdateMessage::PollNode(NodeIndex::new(id)))
         .unwrap();
     match receiver.recv().unwrap() {
-        ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
-            content::Json(g)
-        }
+        ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => content::Json(g),
     }
 }
 
@@ -230,30 +244,30 @@ fn handle_messages(
     graph: &mut UGenGraph,
     //    nodes: &mut Vec<NodeIndex>,
     flow: &mut Vec<NodeIndex>,
-    output_indices: &mut [NodeIndex],
+    //    output_indices: &mut [NodeIndex],
     sender: &Sender<ReturnMessage>,
 ) {
     match msg {
         UpdateMessage::Randomize => {
-            graph.clear_edges();
-            let nodes: Vec<NodeIndex> = graph.node_indices().collect();
+            graph.graph.clear_edges();
+            let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
             rnd_connections(graph, &nodes, 1);
-            let new_flow = establish_flow(graph, output_indices);
+            let new_flow = establish_flow(graph);
             *flow = new_flow;
         }
         UpdateMessage::RandomCircle => {
-            graph.clear_edges();
-            let nodes: Vec<NodeIndex> = graph.node_indices().collect();
+            graph.graph.clear_edges();
+            let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
             rnd_circle(graph, &nodes, 1);
-            let new_flow = establish_flow(graph, output_indices);
+            let new_flow = establish_flow(graph);
             *flow = new_flow;
         }
         UpdateMessage::DumpGraph => {
-            let j = serde_json::to_string(graph).unwrap();
+            let j = serde_json::to_string(&graph.graph).unwrap();
             sender.send(ReturnMessage::Graph(j)).unwrap()
         }
         UpdateMessage::PollNode(node) => {
-            let n = graph.node_weight(node);
+            let n = graph.graph.node_weight(node);
             match n {
                 Some(n) => {
                     let j = serde_json::to_string(&n.last_value).unwrap();
@@ -265,13 +279,13 @@ fn handle_messages(
             }
         }
 
-        UpdateMessage::DumpOutputs => {
-            let j = serde_json::to_string(output_indices).unwrap();
-            sender.send(ReturnMessage::Outputs(j)).unwrap()
-        }
+        // UpdateMessage::DumpOutputs => {
+        //     let j = serde_json::to_string(output_indices).unwrap();
+        //     sender.send(ReturnMessage::Outputs(j)).unwrap()
+        // }
         UpdateMessage::RemoveNode(id) => {
-            graph.remove_node(NodeIndex::new(id));
-            update_connections_and_flow(graph, flow, output_indices)
+            graph.graph.remove_node(NodeIndex::new(id));
+            update_connections_and_flow(graph, flow)
             // ensure_connectivity(graph);
             // let new_flow = establish_flow(graph, output_indices);
             // *flow = new_flow;
@@ -279,15 +293,15 @@ fn handle_messages(
             //            println!("{:?}", collect_components(graph));
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
-            if let Some(e) = graph.edge_weight_mut(EdgeIndex::new(id)) {
+            if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
                 let (_, weight) = e;
                 //                *e = (*idx, w)
                 weight.set_target(w)
             }
         }
         UpdateMessage::RemoveEdge(id) => {
-            graph.remove_edge(EdgeIndex::new(id));
-            update_connections_and_flow(graph, flow, output_indices)
+            graph.graph.remove_edge(EdgeIndex::new(id));
+            update_connections_and_flow(graph, flow)
             // ensure_connectivity(graph);
             // let new_flow = establish_flow(graph, output_indices);
             // *flow = new_flow;
@@ -295,10 +309,23 @@ fn handle_messages(
 
             //          println!("{:?}", collect_components(graph));
         }
-        UpdateMessage::SetOutput(node, output) => output_indices[output] = node,
+        UpdateMessage::SetOutput(node, output, amp) => {
+            graph.graph[node].set_output(output, amp);
+            let new_flow = establish_flow(graph);
+            *flow = new_flow;
+        }
+        UpdateMessage::SetOutputs(outputs) => {
+            for spec in outputs.into_iter() {
+                graph.set_output(spec);
+            }
+            let new_flow = establish_flow(graph);
+            *flow = new_flow;
+        }
         UpdateMessage::AddNode(node) => {
-            let _idx = graph.add_node(UGen::new(node).clip(ClipType::SoftClip));
-            update_connections_and_flow(graph, flow, output_indices)
+            let _idx = graph
+                .graph
+                .add_node(UGen::new(node).clip(ClipType::SoftClip));
+            update_connections_and_flow(graph, flow)
             // ensure_connectivity(graph);
             // let new_flow = establish_flow(graph, output_indices);
             // *flow = new_flow;
@@ -307,20 +334,23 @@ fn handle_messages(
         }
 
         UpdateMessage::SetGraph(g) => {
-            graph.clear();
-            *graph = g;
-            update_connections_and_flow(graph, flow, output_indices)
+            graph.graph.clear();
+            *graph = new_graph();
+            graph.graph = g;
+            update_connections_and_flow(graph, flow)
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
-            let _idx = graph.add_edge(node_from, node_to, (index as u32, lag::lag(weight)));
+            let _idx = graph
+                .graph
+                .add_edge(node_from, node_to, (index as u32, lag::lag(weight)));
         }
         UpdateMessage::ConnectLeastConnected => {
             connect_least_connected(graph);
-            update_connections_and_flow(graph, flow, output_indices)
+            update_connections_and_flow(graph, flow)
         }
         UpdateMessage::DisconnectMostConnected => {
             disconnect_most_connected(graph);
-            update_connections_and_flow(graph, flow, output_indices)
+            update_connections_and_flow(graph, flow)
         }
 
         UpdateMessage::SetParameter(node, idx, value) => {
@@ -361,27 +391,27 @@ fn main() {
     // Create graph and init
     let mut g = new_graph();
 
-    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    //    let del1 = g.add_node(delay(21231).clip(ClipType::Wrap));
+    //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
+    let del1 = g.graph.add_node(delay(44100).clip(ClipType::Wrap));
     //    let rms = g.add_node(rms());
     //    let sinph = g.add_node(sin());
-    //    let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
+    // let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
     //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     // let sum = g.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
     //    let filter1 = g.add_node(lpf(100.0, 6.0));
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
-    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
+    //  let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
+    //    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
     // let gauss = g.add_node(gauss());
     //let ring = g.add_node(ring());
     //    let c1 = g.add_node(constant(0.8));
     //    let c2 = g.add_node(constant(1.0));
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
     //  let sp = g.add_node(spike(0.3, 0.0001, 100));
-    //    let s1 = g.add_node(sin_osc(100.0));
-    //g.add_edge(c1, sp, (0, lag::lag(1.0)));
+    let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
+    g.graph.add_edge(s1, del1, (0, lag::lag(0.5)));
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
     //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
@@ -392,13 +422,14 @@ fn main() {
     //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
     // ];
 
-    let sum1 = g.add_node(add());
-    let sum2 = g.add_node(add());
+    // let sum1 = g.add_node(add());
+    //let sum2 = g.add_node(add());
     //    rnd_connections(&mut g, &nodes, 1);
-    let mut output_indices = vec![sum1, sum2];
+    //    let mut output_indices = vec![sum1, sum2];
 
-    let mut flow = establish_flow(&g, &output_indices);
-    let n_outs = output_indices.len();
+    //    let mut flow = establish_flow(&g, &output_indices);
+    let mut flow = vec![];
+    let n_outs = 2;
     let mut frame_buffer = vec![0.0; n_outs];
 
     // println!("flow: {:?}", flow);
@@ -445,7 +476,7 @@ fn main() {
             while let Ok(update) = rx.try_recv() {
                 match update {
                     UpdateMessage::SetVolume(a) => amplitude.set_target(a),
-                    _ => handle_messages(update, &mut g, &mut flow, &mut output_indices, &s_ret),
+                    _ => handle_messages(update, &mut g, &mut flow, &s_ret),
                 }
             }
 
@@ -461,13 +492,7 @@ fn main() {
                 let input_samples: Vec<f64> =
                     ins.iter().map(|input| input[i as usize] as f64).collect();
                 let amp = amplitude.tick();
-                process_graph(
-                    &mut g,
-                    &flow,
-                    &output_indices,
-                    &input_samples,
-                    &mut frame_buffer,
-                );
+                process_graph(&mut g, &flow, &input_samples, &mut frame_buffer);
                 if i == 0 && polling {
                     println!("{}", frame_buffer[0]);
                 }
@@ -499,7 +524,7 @@ fn main() {
                 remove_edge,
                 node_output,
                 add_node,
-                get_outputs,
+                //                get_outputs,
                 add_edge,
                 set_volume,
                 least_connected,
@@ -508,7 +533,8 @@ fn main() {
                 set_edge_weight,
                 poll_node,
                 set_graph,
-                random_circle
+                random_circle,
+                set_outputs
             ],
         )
         .attach(cors)
