@@ -16,12 +16,15 @@ module Api exposing
     , randomize
     , setEdgeWeight
     , setOutput
+    , setOutputs
     , setParameter
     , setVolume
     )
 
 import Http
 import Json.Decode as Decode
+import Json.Encode as JE
+import OutputIndices
 import ProcessGraph exposing (..)
 
 
@@ -152,6 +155,15 @@ setOutput msg id out =
     Http.post
         { url = baseUrl ++ "/node/" ++ String.fromInt id ++ "/output/" ++ String.fromInt out
         , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setOutputs : (Result Http.Error () -> msg) -> List OutputIndices.OutputSpec -> Cmd msg
+setOutputs msg specs =
+    Http.post
+        { url = baseUrl ++ "/outputs"
+        , body = Http.jsonBody (JE.list OutputIndices.encodeSpec <| specs)
         , expect = Http.expectWhatever msg
         }
 

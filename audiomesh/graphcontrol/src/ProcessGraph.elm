@@ -10,6 +10,7 @@ module ProcessGraph exposing
     , decodeGraph
     , defaultUGen
     , encodeProcess
+    , getNodes
     , mkGraph
     , mulAllEdges
     , processParameters
@@ -109,7 +110,7 @@ type Process
     | Sin { mul : Float }
     | SinOsc { freq : Float, freq_mul : Float }
     | Constant { value : Float }
-    | SoundIn { index : Int }
+    | SoundIn { index : Int, factor : Float }
     | Square
     | BitNeg
     | BitOr
@@ -138,6 +139,9 @@ processParameters p =
 
         Sin { mul } ->
             [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
+
+        SoundIn { index, factor } ->
+            [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]
 
         SinOsc { freq, freq_mul } ->
             [ Parameter 1 freq Exp "Freq" 0.001 10000.0
@@ -178,6 +182,9 @@ setInput ( parIdx, val ) proc =
 
         Sin _ ->
             Sin { mul = val }
+
+        SoundIn s ->
+            SoundIn { s | factor = val }
 
         SinOsc s ->
             case parIdx of
@@ -366,7 +373,7 @@ encodeProcess p =
             encObj p (JE.object [ ( "value", JE.float c.value ) ])
 
         SoundIn s ->
-            encObj p (JE.object [ ( "index", JE.int s.index ) ])
+            encObj p (JE.object [ ( "index", JE.int s.index ), ( "factor", JE.float s.factor ) ])
 
         Square ->
             encObj p (JE.object [])
@@ -428,7 +435,10 @@ processToString p =
                 ++ floatString f.q
 
         SoundIn i ->
-            "SoundIn " ++ String.fromInt i.index
+            "SoundIn "
+                ++ String.fromInt i.index
+                ++ " fac: "
+                ++ floatString i.factor
 
         SinOsc f ->
             "SinOsc fr:"
@@ -486,8 +496,9 @@ decodeAdd =
 
 decodeSoundIn : Decoder Process
 decodeSoundIn =
-    Decode.succeed (\input -> SoundIn { index = input })
+    Decode.succeed (\input f -> SoundIn { index = input, factor = f })
         |> required "index" int
+        |> required "factor" float
 
 
 decodeMul : Decoder Process

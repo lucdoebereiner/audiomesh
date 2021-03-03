@@ -110,6 +110,7 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
         index: usize,
+        factor: lag::Lag,
     },
     // Map {
     //     input: f64,
@@ -248,9 +249,11 @@ fn clear_chain(chain: &mut [Process]) {
 
 fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
     match proc {
-        Process::SoundIn { input, index } => {
-            (*input * 0.5) + *external_input.get(*index).unwrap_or(&0.0)
-        }
+        Process::SoundIn {
+            input,
+            index,
+            ref mut factor,
+        } => (*input + (*external_input.get(*index).unwrap_or(&0.0) * factor.tick())),
         Process::Sin { input, mul } => (*input * mul.tick()).sin(),
         Process::SinOsc {
             input,
@@ -258,7 +261,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             ref mut phase,
             freq_mul,
         } => {
-            //            let freqIn = numerical::curvelin(*input, -1.0, 1.0, 1.0, 10000.0, 2.0);
+            //            let freq_in = numerical::curvelin(input.abs(), 0.0, 1.0, 1.0, freq_mul.tick(), 2.0);
             let output = phase.sin();
             *phase += (freq.tick() + (*input * freq_mul.tick())) * FREQ_FAC;
             output
@@ -498,7 +501,7 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
         },
         Process::Constant { .. } => (),
         //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
-        Process::SoundIn { .. } => (), // match idx {
+        Process::SoundIn { ref mut factor, .. } => factor.set_target(input_value), // match idx {
         //     0 => set_or_add(input, input_value, add),
         //     //	1 => *index = input_value as usize,
         //     _ => panic!("wrong index into {}: {}", name(proc), idx),
@@ -658,7 +661,7 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::SoundIn { .. } => procspec(
             "soundin",
             ProcessType::NoInputGenerator,
-            vec![InputType::Any],
+            vec![InputType::Index, InputType::Factor],
         ),
         Process::Sin { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Phase]),
         Process::SinOsc { .. } => procspec(
@@ -921,7 +924,11 @@ pub fn square() -> UGen {
 }
 
 pub fn sound_in(index: usize) -> UGen {
-    UGen::new(Process::SoundIn { input: 0.0, index })
+    UGen::new(Process::SoundIn {
+        input: 0.0,
+        index,
+        factor: lag::lag(1.0),
+    })
 }
 
 pub fn sqrt() -> UGen {
@@ -1151,7 +1158,11 @@ impl UGenGraph {
 fn update_listening_nodes(g: &mut UGenGraph) -> bool {
     let mut nodes_to_listen_to = vec![];
     for (idx, ugen) in g.graph.node_references() {
-        if ugen.output_sends.iter().any(|(_, w)| w.target > 0.0) {
+        if ugen
+            .output_sends
+            .iter()
+            .any(|(_, w)| w.target > 0.0 || w.current > 0.0)
+        {
             nodes_to_listen_to.push(idx);
         }
     }

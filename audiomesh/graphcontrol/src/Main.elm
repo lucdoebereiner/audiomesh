@@ -3,6 +3,7 @@ module Main exposing (Msg(..), main, update, view)
 --import Html exposing (Html, button, div, span, text)
 
 import Api
+import Array exposing (Array)
 import Browser
 import DrawGraph
 import Element exposing (..)
@@ -19,6 +20,7 @@ import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import Http
 import Maybe.Extra as M
+import OutputIndices
 import Parameters exposing (Mapping(..), Parameter)
 import ProcessGraph exposing (..)
 import Task
@@ -33,8 +35,7 @@ import Utils exposing (..)
 
 type alias Model =
     { graph : Maybe UGenGraph
-
-    --    , outputs : List Int
+    , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
     , volume : Float
@@ -64,7 +65,7 @@ type alias Model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( Model Nothing
-        --  []
+        (Array.fromList [ 0.0, 0.0 ])
         Nothing
         Nothing
         0.4
@@ -109,7 +110,7 @@ main =
 type Msg
     = GotGraph (Result Http.Error BackendGraph)
     | GetGraph
-      --    | GotOutputs (Result Http.Error (List Int))
+    | SetOutputs Int Float
     | Randomize
     | RandomCircle
     | Randomized (Result Http.Error ())
@@ -171,6 +172,16 @@ find predicate list =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        SetOutputs channel pos ->
+            let
+                newIndices =
+                    Array.set channel pos model.outputIndices
+            in
+            ( { model | outputIndices = newIndices }
+            , Maybe.map (\g -> Api.setOutputs NoOp (OutputIndices.outputSpecs newIndices g)) model.graph
+                |> Maybe.withDefault Cmd.none
+            )
+
         Tick _ ->
             ( model
             , Maybe.map (\n -> Api.poll GotPoll n) model.selectedNode
@@ -416,29 +427,15 @@ displayNode : Float -> Maybe Graph.NodeId -> Graph.Node UGen -> Element Msg
 displayNode polled waiting n =
     column [ width fill ]
         [ row [ spacing 10 ]
-            ([ text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
-             , simpleStateButton "Connect"
+            [ text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
+            , simpleStateButton "Connect"
                 (M.isJust waiting)
                 (WaitingToConnect n.id)
-             , el [ width (px 60), padding 5, Border.solid, Border.width 1 ] <|
+            , el [ width (px 60), padding 5, Border.solid, Border.width 1 ] <|
                 text <|
                     floatString polled
-             ]
-             -- ++ (if not (List.member n.id outputs) then
-             --         simpleButton "Delete" (DeleteNode n.id)
-             --             :: (List.map
-             --                     (\out ->
-             --                         simpleButton
-             --                             ("As output " ++ String.fromInt out)
-             --                             (SetOutput n.id out)
-             --                     )
-             --                 <|
-             --                     List.range 0 (List.length outputs - 1)
-             --                )
-             -- else
-             --     []
-             --                   )
-            )
+            , simpleButton "Delete" (DeleteNode n.id)
+            ]
         , row [ spacing 10 ] <|
             List.map
                 (\p -> slider (SetProcessParameter n.id p.idx) p)
@@ -451,7 +448,7 @@ displayNode polled waiting n =
 slider : (Float -> msg) -> Parameter -> Element msg
 slider msg par =
     Input.slider
-        [ width (px 300)
+        [ width (px 400)
         , height (px 30)
         , behindContent
             (el
@@ -477,6 +474,11 @@ slider msg par =
 volumeSlider : Float -> Element Msg
 volumeSlider v =
     slider SetVolume (Parameter -1 v Exp "Output volume" 0.0001 1.0)
+
+
+outputSlider : Int -> Float -> Element Msg
+outputSlider channel v =
+    slider (SetOutputs channel) (Parameter -1 v Lin "Output 1" 0.0 1.0)
 
 
 edgesSlider : Float -> Element Msg
@@ -680,6 +682,8 @@ processRow m =
         , addProcess "Gauss" Gauss
         , addProcess "RMS" RMS
         , addProcess "BitNeg" BitNeg
+        , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
+        , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
 
         -- , addProcess "BitOr" BitOr
         -- , addProcess "BitXOr" BitXOr
@@ -767,9 +771,11 @@ view model =
                 , simpleButton "Load" LoadGraph
                 ]
             , row [ spacing 10 ]
-                [ volumeSlider model.volume
-                , edgesSlider model.edgesFac
-                ]
+                ([ volumeSlider model.volume
+                 , edgesSlider model.edgesFac
+                 ]
+                    ++ List.map (\( i, f ) -> outputSlider i f) (Array.toIndexedList model.outputIndices)
+                )
             , showSelectedEdge model
             , processRow model
             , Maybe.withDefault none
@@ -789,8 +795,8 @@ view model =
                             SelectNode
                             SelectEdge
                             []
-                            ( 1600, 1100 )
-                            ( 2000, 1800 )
+                            ( 2000, 1600 )
+                            ( 3000, 2400 )
                             150.0
 
                 _ ->
