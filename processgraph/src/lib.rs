@@ -624,7 +624,8 @@ pub enum InputType {
 pub enum ProcessType {
     NoInputGenerator,
     Processor,
-    NeedsMultipleInputs,
+    TwoInputs,
+    MultipleInputs,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -669,17 +670,11 @@ fn spec(process: &Process) -> ProcessSpec {
             ProcessType::Processor,
             vec![InputType::Frequency, InputType::Factor],
         ),
-        Process::Mul { .. } => procspec(
-            "mul",
-            ProcessType::NeedsMultipleInputs,
-            vec![InputType::Any],
-        ),
-        Process::Ring { .. } => procspec(
-            "ring",
-            ProcessType::NeedsMultipleInputs,
-            vec![InputType::Audio],
-        ),
-        Process::Add { .. } => procspec("add", ProcessType::Processor, vec![InputType::Any]),
+        Process::Mul { .. } => procspec("mul", ProcessType::MultipleInputs, vec![InputType::Any]),
+        Process::Ring { .. } => {
+            procspec("ring", ProcessType::MultipleInputs, vec![InputType::Audio])
+        }
+        Process::Add { .. } => procspec("add", ProcessType::MultipleInputs, vec![InputType::Any]),
         Process::Mem { .. } => procspec("mem", ProcessType::Processor, vec![InputType::Any]),
         Process::Constant { .. } => procspec("constant", ProcessType::NoInputGenerator, vec![]),
         //        Process::Map { .. } => procspec("map", vec![InputType::Any]),
@@ -709,21 +704,13 @@ fn spec(process: &Process) -> ProcessSpec {
         Process::Sqrt { .. } => procspec("sqrt", ProcessType::Processor, vec![InputType::Any]),
         Process::Delay { .. } => procspec("delay", ProcessType::Processor, vec![InputType::Any]),
         Process::BitNeg { .. } => procspec("bitneg", ProcessType::Processor, vec![InputType::Any]),
-        Process::BitOr { .. } => procspec(
-            "bitor",
-            ProcessType::NeedsMultipleInputs,
-            vec![InputType::Any; 2],
-        ),
-        Process::BitXOr { .. } => procspec(
-            "bitxor",
-            ProcessType::NeedsMultipleInputs,
-            vec![InputType::Any; 2],
-        ),
-        Process::BitAnd { .. } => procspec(
-            "bitand",
-            ProcessType::NeedsMultipleInputs,
-            vec![InputType::Any; 2],
-        ),
+        Process::BitOr { .. } => procspec("bitor", ProcessType::TwoInputs, vec![InputType::Any; 2]),
+        Process::BitXOr { .. } => {
+            procspec("bitxor", ProcessType::TwoInputs, vec![InputType::Any; 2])
+        }
+        Process::BitAnd { .. } => {
+            procspec("bitand", ProcessType::TwoInputs, vec![InputType::Any; 2])
+        }
         Process::CurveLin { .. } => {
             procspec("curvelin", ProcessType::Processor, vec![InputType::Any; 6])
         }
@@ -919,34 +906,34 @@ pub fn mul() -> UGen {
     UGen::new(Process::Mul { inputs: Vec::new() })
 }
 
-pub fn square() -> UGen {
-    UGen::new(Process::Square { input: 0.0 })
-}
+// pub fn square() -> UGen {
+//     UGen::new(Process::Square { input: 0.0 })
+// }
 
-pub fn sound_in(index: usize) -> UGen {
-    UGen::new(Process::SoundIn {
-        input: 0.0,
-        index,
-        factor: lag::lag(1.0),
-    })
-}
+// pub fn sound_in(index: usize) -> UGen {
+//     UGen::new(Process::SoundIn {
+//         input: 0.0,
+//         index,
+//         factor: lag::lag(1.0),
+//     })
+// }
 
-pub fn sqrt() -> UGen {
-    UGen::new(Process::Sqrt { input: 0.0 })
-}
+// pub fn sqrt() -> UGen {
+//     UGen::new(Process::Sqrt { input: 0.0 })
+// }
 
 fn lpf2000() -> Process {
     filter(filters::FilterType::BLPF, 2000.0, 6.0)
 }
 
-fn lp2000() -> Process {
-    Process::LPF1 {
-        input: 0.0,
-        freq: lag::lag(2000.0),
-        p: lpf1_calc_p(2000.),
-        last_out: 0.0,
-    }
-}
+// fn lp2000() -> Process {
+//     Process::LPF1 {
+//         input: 0.0,
+//         freq: lag::lag(2000.0),
+//         p: lpf1_calc_p(2000.),
+//         last_out: 0.0,
+//     }
+// }
 
 fn rms_chain() -> Vec<Process> {
     vec![
@@ -968,41 +955,41 @@ fn rms_proc() -> Process {
     }
 }
 
-pub fn rms() -> UGen {
-    UGen::new(rms_proc())
-}
+// pub fn rms() -> UGen {
+//     UGen::new(rms_proc())
+// }
 
-pub fn spike(threshold: f64, t_const: f64, r: f64, t_rest: usize) -> UGen {
-    UGen::new(Process::Spike {
-        input: 0.0,
-        v: 0.0,
-        last_v: 0.0,
-        threshold: lag::lag(threshold),
-        t_const: lag::lag(t_const),
-        r: lag::lag(r),
-        t_rest,
-        t_this_rest: t_rest,
-        t_rest_counter: 0,
-    })
-}
+// pub fn spike(threshold: f64, t_const: f64, r: f64, t_rest: usize) -> UGen {
+//     UGen::new(Process::Spike {
+//         input: 0.0,
+//         v: 0.0,
+//         last_v: 0.0,
+//         threshold: lag::lag(threshold),
+//         t_const: lag::lag(t_const),
+//         r: lag::lag(r),
+//         t_rest,
+//         t_this_rest: t_rest,
+//         t_rest_counter: 0,
+//     })
+// }
 
-pub fn mem(init: f64) -> UGen {
-    UGen::new(Process::Mem {
-        input: init,
-        last_value: 0.0,
-    })
-}
+// pub fn mem(init: f64) -> UGen {
+//     UGen::new(Process::Mem {
+//         input: init,
+//         last_value: 0.0,
+//     })
+// }
 
-pub fn constant(v: f64) -> UGen {
-    UGen::new(Process::Constant { value: v })
-}
+// pub fn constant(v: f64) -> UGen {
+//     UGen::new(Process::Constant { value: v })
+// }
 
-pub fn sin() -> UGen {
-    UGen::new(Process::Sin {
-        input: 0.0,
-        mul: lag::lag(1.0),
-    })
-}
+// pub fn sin() -> UGen {
+//     UGen::new(Process::Sin {
+//         input: 0.0,
+//         mul: lag::lag(1.0),
+//     })
+// }
 
 pub fn sin_osc(freq: f64, freq_mul: f64) -> UGen {
     UGen::new(Process::SinOsc {
@@ -1112,20 +1099,20 @@ pub fn curvelin(in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> UGen {
     })
 }
 
-fn fb_delay() -> UGen {
-    UGen {
-        feedback_delay: true,
-        process: Process::Mem {
-            input: 0.0,
-            last_value: 0.0,
-        },
-        value: None,
-        last_value: 0.0,
-        clip: ClipType::None,
-        sum_inputs: true,
-        output_sends: vec![(0, lag::lag(1.0))],
-    }
-}
+// fn fb_delay() -> UGen {
+//     UGen {
+//         feedback_delay: true,
+//         process: Process::Mem {
+//             input: 0.0,
+//             last_value: 0.0,
+//         },
+//         value: None,
+//         last_value: 0.0,
+//         clip: ClipType::None,
+//         sum_inputs: true,
+//         output_sends: vec![(0, lag::lag(1.0))],
+//     }
+// }
 
 pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>;
 
@@ -1177,15 +1164,6 @@ fn update_listening_nodes(g: &mut UGenGraph) -> bool {
         true
     }
 }
-
-// enum UGenNode {
-//     UniNode(NodeIndex),
-//     NetworkNode(NodeIndex, NodeIndex),
-// }
-
-// pub fn add_process(g: &mut UGenGraph, UGen) -> UGenNode {
-
-// }
 
 // pub fn rms(g: &mut UGenGraph) -> (NodeIndex, NodeIndex) {
 //     let square = g.add_node(map_process(|x| x * x));
@@ -1257,7 +1235,7 @@ pub fn rnd_connections(
         shuffled.iter().for_each(|&idx| {
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
-            if let Some(to_node) = choose_with_input(g) {
+            if let Some(to_node) = choose_with_input(g, Some(idx)) {
                 edges.push(g.graph.add_edge(idx, to_node, (0, lag::lag(w1))));
             }
             if does_idx_have_input(g, idx) {
@@ -1270,6 +1248,58 @@ pub fn rnd_connections(
         })
     }
     edges
+}
+
+fn get_spec(g: &UGenGraph, node: NodeIndex) -> Option<ProcessSpec> {
+    g.graph.node_weight(node).map(|u| spec(&u.process))
+}
+
+fn has_two_inputs(g: &UGenGraph, node: NodeIndex) -> bool {
+    get_spec(g, node)
+        .map(|s| s.process_type == ProcessType::TwoInputs)
+        .unwrap_or(false)
+}
+
+pub fn connect_new_node(g: &mut UGenGraph, new_node: NodeIndex) {
+    let mut rng = thread_rng();
+    let mut shuffled: Vec<NodeIndex> = g.graph.node_indices().collect();
+    shuffled = shuffled
+        .into_iter()
+        .filter(|idx| *idx != new_node)
+        .collect();
+    shuffled.shuffle(&mut rng);
+
+    // output
+    if let Some(target) = choose_with_input(g, Some(new_node)) {
+        let w = rng.gen_range(0.7, 1.0);
+        let mut idx: u32 = 0;
+        if has_two_inputs(g, target) {
+            idx = rng.gen_range(0, 2);
+        };
+        g.graph.add_edge(new_node, target, (idx, lag::lag(w)));
+    }
+    // input
+    if let Some(spec) = get_spec(g, new_node) {
+        match spec.process_type {
+            ProcessType::Processor | ProcessType::MultipleInputs => {
+                if let Some(source) = shuffled.choose(&mut rng) {
+                    let w = rng.gen_range(0.7, 1.0);
+                    g.graph.add_edge(*source, new_node, (0, lag::lag(w)));
+                }
+            }
+            ProcessType::TwoInputs => {
+                let w1 = rng.gen_range(0.7, 1.0);
+                let w2 = rng.gen_range(0.7, 1.0);
+                if shuffled.len() > 0 {
+                    g.graph.add_edge(shuffled[0], new_node, (0, lag::lag(w1)));
+                };
+                if shuffled.len() > 1 {
+                    g.graph.add_edge(shuffled[1], new_node, (0, lag::lag(w2)));
+                }
+            }
+            ProcessType::NoInputGenerator => (),
+        }
+    }
 }
 
 pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) -> Vec<EdgeIndex> {
@@ -1317,14 +1347,23 @@ fn does_idx_have_input(g: &UGenGraph, node: NodeIndex) -> bool {
 }
 
 // guarantees that choosen idx is a process with input
-fn choose_with_input(g: &UGenGraph) -> Option<NodeIndex> {
+fn choose_with_input(g: &UGenGraph, exclude: Option<NodeIndex>) -> Option<NodeIndex> {
     let mut rng = thread_rng();
     let with_input: Vec<NodeIndex> = g
         .graph
         .node_references()
         .filter_map(|(idx, u)| {
             if !(spec(&u.process).process_type == ProcessType::NoInputGenerator) {
-                Some(idx)
+                match exclude {
+                    Some(ex) => {
+                        if ex != idx {
+                            Some(idx)
+                        } else {
+                            None
+                        }
+                    }
+                    None => Some(idx),
+                }
             } else {
                 None
             }
