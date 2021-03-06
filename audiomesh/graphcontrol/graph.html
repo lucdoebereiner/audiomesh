@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+    <head>
+	<title></title>
+	<meta charset="utf-8" />
+	<script src="elm.js"></script>
+	<style>
+	 .slider {
+	     -webkit-appearance: none !important;
+	     width: 100% !important;
+	     height: 25px !important;
+	     background: #d3d3d3 !important;
+	     outline: none !important;
+	     opacity: 0.7 !important;
+	     -webkit-transition: .2s !important;
+	     transition: opacity .2s !important;
+	 }
+
+	 .slider:hover {
+	     opacity: 1 !important;
+	 }
+
+	 .slider::-webkit-slider-thumb {
+	     -webkit-appearance: none !important;
+	     appearance: none !important;
+	     width: 25px !important;
+	     height: 25px !important;
+	     background: #00008B !important;
+	     cursor: pointer !important;
+	 }
+
+	 .slider::-moz-range-thumb {
+	     width: 25px !important;
+	     height: 25px !important;
+	     background: #00008B !important;
+	     cursor: pointer !important;
+	 }
+	</style>
+    </head>
+    
+    <body>
+	<div id="elm-main"></div>
+    </body>
+    <script>
+
+
+     var app = Elm.Main.init({
+	 flags: {},
+	 node: document.getElementById('elm-main')
+     });
+    </script>
+</html>

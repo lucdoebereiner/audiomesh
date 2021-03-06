@@ -16,8 +16,9 @@ import File.Download
 import File.Select
 import Graph
 import Html exposing (Html)
-import Html.Attributes exposing (class)
-import Html.Events exposing (onClick)
+import Html.Attributes as Attr exposing (class)
+import Html.Events as Events exposing (onClick)
+import Html.Lazy as Lazy
 import Http
 import IntDict
 import Maybe.Extra as M
@@ -31,6 +32,7 @@ import Utils exposing (..)
 
 type alias Model =
     { graph : Maybe UGenGraph
+    , drawGraph : Maybe UGenGraph
     , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
@@ -61,6 +63,7 @@ type alias Model =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( Model Nothing
+        Nothing
         (Array.fromList [ 0.0, 0.0 ])
         Nothing
         Nothing
@@ -91,7 +94,7 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions m =
-    Time.every 250 Tick
+    Sub.batch [ Time.every 300 Tick, Time.every 4000 UpdateDrawGraph ]
 
 
 main =
@@ -116,6 +119,7 @@ type Msg
     | DeleteNode Int
     | SetVolume Float
     | NoOp (Result Http.Error ())
+    | NoMsg
     | AddProcess Process
     | SetDelayLength String
     | SetSinMul String
@@ -148,6 +152,11 @@ type Msg
     | WaitingToConnect Graph.NodeId
     | Tick Time.Posix
     | GotPoll (Result Http.Error Float)
+    | SelectPrevNode
+    | SelectNextNode
+    | SelectPrevEdge
+    | SelectNextEdge
+    | UpdateDrawGraph Time.Posix
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -167,6 +176,37 @@ find predicate list =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        UpdateDrawGraph g ->
+            ( { model | drawGraph = model.graph }, Cmd.none )
+
+        SelectPrevNode ->
+            let
+                nextNode =
+                    Maybe.andThen (\g -> ProcessGraph.prevNode g model.selectedNode) model.graph
+            in
+            ( { model | selectedNode = nextNode }, Cmd.none )
+
+        SelectNextNode ->
+            let
+                nextNode =
+                    Maybe.andThen (\g -> ProcessGraph.nextNode g model.selectedNode) model.graph
+            in
+            ( { model | selectedNode = nextNode }, Cmd.none )
+
+        SelectPrevEdge ->
+            let
+                nextEdge =
+                    Maybe.andThen (\g -> ProcessGraph.prevEdge g model.selectedEdge) model.graph
+            in
+            ( { model | selectedEdge = nextEdge }, Cmd.none )
+
+        SelectNextEdge ->
+            let
+                nextEdge =
+                    Maybe.andThen (\g -> ProcessGraph.nextEdge g model.selectedEdge) model.graph
+            in
+            ( { model | selectedEdge = nextEdge }, Cmd.none )
+
         SetOutputs channel pos ->
             let
                 newIndices =
@@ -346,11 +386,17 @@ update msg model =
         NoOp _ ->
             ( model, Cmd.none )
 
+        NoMsg ->
+            ( model, Cmd.none )
+
         AddProcess proc ->
             ( model, Api.addNode UpdatedGraph proc )
 
         SetProcessParameter nodeId parIdx val ->
             let
+                _ =
+                    Debug.log "para" val
+
                 newGraph =
                     Maybe.map (updateProcessParameter nodeId ( parIdx, val ))
                         model.graph
@@ -359,6 +405,7 @@ update msg model =
             , Api.setParameter NoOp nodeId parIdx val
             )
 
+        --            ( model, Cmd.none )
         SetEdgeWeight edgeId weight ->
             ( { model | graph = Maybe.map (updateEdge edgeId weight) model.graph }
             , Api.setEdgeWeight NoOp edgeId weight
@@ -454,30 +501,58 @@ displayNode polled waiting n =
         ]
 
 
-slider : (Float -> msg) -> Parameter -> Element msg
+slider : (Float -> Msg) -> Parameter -> Element Msg
 slider msg par =
-    Input.slider
-        [ width (px 400)
-        , height (px 30)
-        , behindContent
-            (el
-                [ width fill
-                , height (px 2)
-                , centerY
-                , Background.color (rgb 0.5 0.5 0.5)
-                , Border.rounded 2
-                ]
-                none
-            )
+    column [ width (px 400) ]
+        [ text (par.name ++ " " ++ floatString par.value)
+        , el [ width (px 400), height (px 30) ] <|
+            html <|
+                Html.input
+                    [ Attr.type_ "range"
+                    , Attr.min "0.0"
+                    , Attr.max "1.0"
+                    , Attr.class "slider"
+                    , Attr.step "0.005"
+                    , Attr.value <| String.fromFloat (Parameters.unmapped par par.value)
+                    , Events.onInput
+                        (\v ->
+                            case String.toFloat v of
+                                Just val ->
+                                    msg (Parameters.mapped { par | value = val })
+
+                                Nothing ->
+                                    NoMsg
+                        )
+                    ]
+                    []
         ]
-        { onChange = \v -> msg (Parameters.mapped { par | value = v })
-        , label = Input.labelAbove [ width (px 400) ] (text (par.name ++ " " ++ floatString par.value))
-        , min = 0.0
-        , max = 1.0
-        , value = Parameters.unmapped par par.value
-        , thumb = Input.defaultThumb
-        , step = Just 0.00001
-        }
+
+
+
+-- slider : (Float -> msg) -> Parameter -> Element msg
+-- slider msg par =
+--     Input.slider
+--         [ width (px 400)
+--         , height (px 30)
+--         , behindContent
+--             (el
+--                 [ width fill
+--                 , height (px 2)
+--                 , centerY
+--                 , Background.color (rgb 0.5 0.5 0.5)
+--                 , Border.rounded 2
+--                 ]
+--                 none
+--             )
+--         ]
+--         { onChange = \v -> msg (Parameters.mapped { par | value = v })
+--         , label = Input.labelAbove [ width (px 400) ] (text (par.name ++ " " ++ floatString par.value))
+--         , min = 0.0
+--         , max = 1.0
+--         , value = Parameters.unmapped par par.value
+--         , thumb = Input.defaultThumb
+--         , step = Just 0.01
+--         }
 
 
 volumeSlider : Float -> Element Msg
@@ -787,7 +862,8 @@ view model =
                 )
             , showSelectedEdge model
             , processRow model
-            , Maybe.withDefault none
+            , Maybe.withDefault
+                none
                 (Maybe.map
                     (displayNode
                         model.lastPoll
@@ -796,31 +872,29 @@ view model =
                     selectedNode
                 )
             , row [ spacing 20 ]
-                [ Maybe.map (\next -> simpleButton "Prev Node" (SelectNode next))
-                    (Maybe.andThen (\g -> ProcessGraph.prevNode g (Maybe.map .id selectedNode)) model.graph)
-                    |> Maybe.withDefault none
-                , Maybe.map (\next -> simpleButton "Next Node" (SelectNode next))
-                    (Maybe.andThen (\g -> ProcessGraph.nextNode g (Maybe.map .id selectedNode)) model.graph)
-                    |> Maybe.withDefault none
-                , Maybe.map (\next -> simpleButton "Prev Edge" (SelectEdge next))
-                    (Maybe.andThen (\g -> ProcessGraph.prevEdge g model.selectedEdge) model.graph)
-                    |> Maybe.withDefault none
-                , Maybe.map (\next -> simpleButton "Next Edge" (SelectEdge next))
-                    (Maybe.andThen (\g -> ProcessGraph.nextEdge g model.selectedEdge) model.graph)
-                    |> Maybe.withDefault none
+                [ simpleButton "Prev Node" SelectPrevNode
+                , simpleButton "Next Node" SelectNextNode
+                , simpleButton "Prev Edge" SelectPrevEdge
+                , simpleButton "Next Edge" SelectNextEdge
                 ]
-            , case model.graph of
+            , case model.drawGraph of
                 Just g ->
                     html <|
-                        DrawGraph.view g
-                            (Maybe.map .id selectedNode)
+                        Lazy.lazy3
+                            (\graph n e ->
+                                DrawGraph.view graph
+                                    n
+                                    e
+                                    SelectNode
+                                    SelectEdge
+                                    []
+                                    ( 2000, 1600 )
+                                    ( 3000, 2400 )
+                                    150.0
+                            )
+                            g
+                            model.selectedNode
                             model.selectedEdge
-                            SelectNode
-                            SelectEdge
-                            []
-                            ( 2000, 1600 )
-                            ( 3000, 2400 )
-                            150.0
 
                 _ ->
                     none
