@@ -17117,6 +17117,95 @@ var $mdgriffith$elm_ui$Element$layout = $mdgriffith$elm_ui$Element$layoutWith(
 	{options: _List_Nil});
 var $mdgriffith$elm_ui$Internal$Model$Monospace = {$: 'Monospace'};
 var $mdgriffith$elm_ui$Element$Font$monospace = $mdgriffith$elm_ui$Internal$Model$Monospace;
+var $elm_community$list_extra$List$Extra$find = F2(
+	function (predicate, list) {
+		find:
+		while (true) {
+			if (!list.b) {
+				return $elm$core$Maybe$Nothing;
+			} else {
+				var first = list.a;
+				var rest = list.b;
+				if (predicate(first)) {
+					return $elm$core$Maybe$Just(first);
+				} else {
+					var $temp$predicate = predicate,
+						$temp$list = rest;
+					predicate = $temp$predicate;
+					list = $temp$list;
+					continue find;
+				}
+			}
+		}
+	});
+var $elm_community$list_extra$List$Extra$last = function (items) {
+	last:
+	while (true) {
+		if (!items.b) {
+			return $elm$core$Maybe$Nothing;
+		} else {
+			if (!items.b.b) {
+				var x = items.a;
+				return $elm$core$Maybe$Just(x);
+			} else {
+				var rest = items.b;
+				var $temp$items = rest;
+				items = $temp$items;
+				continue last;
+			}
+		}
+	}
+};
+var $elm$core$List$sortBy = _List_sortBy;
+var $elm$core$List$sort = function (xs) {
+	return A2($elm$core$List$sortBy, $elm$core$Basics$identity, xs);
+};
+var $author$project$ProcessGraph$nextEdge = F2(
+	function (g, eId) {
+		var edges = $elm$core$List$sort(
+			A2(
+				$elm$core$List$map,
+				A2(
+					$elm$core$Basics$composeR,
+					function ($) {
+						return $.label;
+					},
+					function ($) {
+						return $.id;
+					}),
+				$elm_community$graph$Graph$edges(g)));
+		if (eId.$ === 'Nothing') {
+			return $elm$core$List$head(edges);
+		} else {
+			var e = eId.a;
+			return _Utils_eq(
+				eId,
+				$elm_community$list_extra$List$Extra$last(edges)) ? $elm$core$List$head(edges) : A2(
+				$elm_community$list_extra$List$Extra$find,
+				function (other) {
+					return _Utils_cmp(other, e) > 0;
+				},
+				edges);
+		}
+	});
+var $author$project$ProcessGraph$nextNode = F2(
+	function (g, nId) {
+		var nodes = $elm$core$List$sort(
+			$elm_community$graph$Graph$nodeIds(g));
+		if (nId.$ === 'Nothing') {
+			return $elm$core$List$head(nodes);
+		} else {
+			var n = nId.a;
+			return _Utils_eq(
+				nId,
+				$elm_community$list_extra$List$Extra$last(nodes)) ? $elm$core$List$head(nodes) : A2(
+				$elm_community$list_extra$List$Extra$find,
+				function (other) {
+					return _Utils_cmp(other, n) > 0;
+				},
+				nodes);
+		}
+	});
 var $author$project$Main$SetOutputs = F2(
 	function (a, b) {
 		return {$: 'SetOutputs', a: a, b: b};
@@ -17134,6 +17223,54 @@ var $author$project$Main$outputSlider = F2(
 				'Output ' + $elm$core$String$fromInt(channel),
 				0.0,
 				1.0));
+	});
+var $author$project$ProcessGraph$prevEdge = F2(
+	function (g, eId) {
+		var edges = $elm$core$List$reverse(
+			$elm$core$List$sort(
+				A2(
+					$elm$core$List$map,
+					A2(
+						$elm$core$Basics$composeR,
+						function ($) {
+							return $.label;
+						},
+						function ($) {
+							return $.id;
+						}),
+					$elm_community$graph$Graph$edges(g))));
+		if (eId.$ === 'Nothing') {
+			return $elm$core$List$head(edges);
+		} else {
+			var e = eId.a;
+			return _Utils_eq(
+				eId,
+				$elm_community$list_extra$List$Extra$last(edges)) ? $elm$core$List$head(edges) : A2(
+				$elm_community$list_extra$List$Extra$find,
+				function (other) {
+					return _Utils_cmp(other, e) < 0;
+				},
+				edges);
+		}
+	});
+var $author$project$ProcessGraph$prevNode = F2(
+	function (g, nId) {
+		var nodes = $elm$core$List$reverse(
+			$elm$core$List$sort(
+				$elm_community$graph$Graph$nodeIds(g)));
+		if (nId.$ === 'Nothing') {
+			return $elm$core$List$head(nodes);
+		} else {
+			var n = nId.a;
+			return _Utils_eq(
+				nId,
+				$elm_community$list_extra$List$Extra$last(nodes)) ? $elm$core$List$head(nodes) : A2(
+				$elm_community$list_extra$List$Extra$find,
+				function (other) {
+					return _Utils_cmp(other, n) < 0;
+				},
+				nodes);
+		}
 	});
 var $author$project$Main$AddProcess = function (a) {
 	return {$: 'AddProcess', a: a};
@@ -19619,8 +19756,6 @@ var $elm_community$typed_svg$TypedSvg$Attributes$InPx$cy = function (value) {
 		$elm_community$typed_svg$TypedSvg$Types$px(value));
 };
 var $author$project$ProcessGraph$defaultUGen = A4($author$project$ProcessGraph$UGen, $author$project$ProcessGraph$Add, true, $author$project$ProcessGraph$None, $elm_community$intdict$IntDict$empty);
-var $elm_community$typed_svg$TypedSvg$line = $elm_community$typed_svg$TypedSvg$Core$node('line');
-var $elm_community$typed_svg$TypedSvg$Types$PaintNone = {$: 'PaintNone'};
 var $avh4$elm_color$Color$toCssString = function (_v0) {
 	var r = _v0.a;
 	var g = _v0.b;
@@ -19672,6 +19807,8 @@ var $elm_community$typed_svg$TypedSvg$Attributes$fill = A2(
 	$elm$core$Basics$composeL,
 	$elm_community$typed_svg$TypedSvg$Core$attribute('fill'),
 	$elm_community$typed_svg$TypedSvg$TypesToStrings$paintToString);
+var $elm_community$typed_svg$TypedSvg$line = $elm_community$typed_svg$TypedSvg$Core$node('line');
+var $elm_community$typed_svg$TypedSvg$Types$PaintNone = {$: 'PaintNone'};
 var $elm_community$typed_svg$TypedSvg$Attributes$noFill = $elm_community$typed_svg$TypedSvg$Attributes$fill($elm_community$typed_svg$TypedSvg$Types$PaintNone);
 var $elm_community$typed_svg$TypedSvg$Events$on = $elm$virtual_dom$VirtualDom$on;
 var $elm_community$typed_svg$TypedSvg$Events$simpleOn = function (name) {
@@ -19709,6 +19846,7 @@ var $elm_community$typed_svg$TypedSvg$Attributes$InPx$r = function (value) {
 	return $elm_community$typed_svg$TypedSvg$Attributes$r(
 		$elm_community$typed_svg$TypedSvg$Types$px(value));
 };
+var $avh4$elm_color$Color$red = A4($avh4$elm_color$Color$RgbaSpace, 204 / 255, 0 / 255, 0 / 255, 1.0);
 var $elm_community$typed_svg$TypedSvg$Attributes$stroke = A2(
 	$elm$core$Basics$composeL,
 	$elm_community$typed_svg$TypedSvg$Core$attribute('stroke'),
@@ -19763,8 +19901,8 @@ var $elm_community$typed_svg$TypedSvg$Attributes$InPx$y2 = function (value) {
 	return $elm_community$typed_svg$TypedSvg$Attributes$y2(
 		$elm_community$typed_svg$TypedSvg$Types$px(value));
 };
-var $author$project$DrawGraph$linkElement = F3(
-	function (graph, msg, edge) {
+var $author$project$DrawGraph$linkElement = F4(
+	function (selectedEdge, graph, msg, edge) {
 		var retrieveEntity = A2(
 			$elm$core$Basics$composeL,
 			$elm$core$Maybe$withDefault(
@@ -19783,6 +19921,14 @@ var $author$project$DrawGraph$linkElement = F3(
 		var target = retrieveEntity(
 			A2($elm_community$graph$Graph$get, edge.to, graph));
 		var link = edge.label;
+		var isSelected = A2(
+			$elm$core$Maybe$withDefault,
+			false,
+			A2(
+				$elm$core$Maybe$map,
+				$elm$core$Basics$eq(link.id),
+				selectedEdge));
+		var color = isSelected ? $elm_community$typed_svg$TypedSvg$Types$Paint($avh4$elm_color$Color$red) : $elm_community$typed_svg$TypedSvg$Types$Paint($avh4$elm_color$Color$black);
 		if (_Utils_eq(source, target)) {
 			return A2(
 				$elm_community$typed_svg$TypedSvg$circle,
@@ -19790,12 +19936,13 @@ var $author$project$DrawGraph$linkElement = F3(
 					[
 						$elm_community$typed_svg$TypedSvg$Attributes$InPx$strokeWidth(
 						3 * A2($elm$core$Basics$pow, edge.label.strength, 2)),
-						$elm_community$typed_svg$TypedSvg$Attributes$stroke(
-						$elm_community$typed_svg$TypedSvg$Types$Paint($avh4$elm_color$Color$black)),
+						$elm_community$typed_svg$TypedSvg$Attributes$stroke(color),
 						$elm_community$typed_svg$TypedSvg$Attributes$noFill,
 						$elm_community$typed_svg$TypedSvg$Attributes$InPx$cx(source.x),
 						$elm_community$typed_svg$TypedSvg$Attributes$InPx$cy(source.y - 25),
-						$elm_community$typed_svg$TypedSvg$Attributes$InPx$r(40)
+						$elm_community$typed_svg$TypedSvg$Attributes$InPx$r(40),
+						$elm_community$typed_svg$TypedSvg$Events$onClick(
+						msg(link.id))
 					]),
 				_List_Nil);
 		} else {
@@ -19839,8 +19986,8 @@ var $author$project$DrawGraph$linkElement = F3(
 								$elm_community$typed_svg$TypedSvg$Attributes$cursor($elm_community$typed_svg$TypedSvg$Types$CursorPointer),
 								$elm_community$typed_svg$TypedSvg$Events$onClick(
 								msg(link.id)),
-								$elm_community$typed_svg$TypedSvg$Attributes$stroke(
-								$elm_community$typed_svg$TypedSvg$Types$Paint($avh4$elm_color$Color$black)),
+								$elm_community$typed_svg$TypedSvg$Attributes$fill(color),
+								$elm_community$typed_svg$TypedSvg$Attributes$stroke(color),
 								$elm_community$typed_svg$TypedSvg$Attributes$points(
 								_List_fromArray(
 									[
@@ -19972,10 +20119,12 @@ var $elm_community$typed_svg$TypedSvg$Attributes$InPx$y = function (value) {
 };
 var $author$project$DrawGraph$nodeElement = F4(
 	function (selectedId, msg, outputs, node) {
-		var weight = _Utils_eq(
-			selectedId,
-			$elm$core$Maybe$Just(node.id)) ? $elm_community$typed_svg$TypedSvg$Types$FontWeightBolder : $elm_community$typed_svg$TypedSvg$Types$FontWeightNormal;
 		var thisNode = $author$project$ProcessGraph$ugenLabel(node.label.value);
+		var _v0 = _Utils_eq(
+			selectedId,
+			$elm$core$Maybe$Just(node.id)) ? _Utils_Tuple2($elm_community$typed_svg$TypedSvg$Types$FontWeightBolder, $avh4$elm_color$Color$red) : _Utils_Tuple2($elm_community$typed_svg$TypedSvg$Types$FontWeightNormal, $avh4$elm_color$Color$black);
+		var weight = _v0.a;
+		var color = _v0.b;
 		return A2(
 			$elm_community$typed_svg$TypedSvg$g,
 			_List_Nil,
@@ -19994,7 +20143,7 @@ var $author$project$DrawGraph$nodeElement = F4(
 								$elm_community$typed_svg$TypedSvg$Events$onClick(
 								msg(node.id)),
 								$elm_community$typed_svg$TypedSvg$Attributes$stroke(
-								$elm_community$typed_svg$TypedSvg$Types$Paint($avh4$elm_color$Color$black))
+								$elm_community$typed_svg$TypedSvg$Types$Paint(color))
 							]),
 						A2($elm$core$List$member, node.id, outputs) ? _List_fromArray(
 							[
@@ -20060,8 +20209,8 @@ var $elm_community$typed_svg$TypedSvg$Attributes$width = function (length) {
 		'width',
 		$elm_community$typed_svg$TypedSvg$TypesToStrings$lengthToString(length));
 };
-var $author$project$DrawGraph$viewGraph = F7(
-	function (_v0, selectedNode, nodeSelectMsg, linkSelectMsg, outputs, _v1, model) {
+var $author$project$DrawGraph$viewGraph = F8(
+	function (_v0, selectedNode, selectedEdge, nodeSelectMsg, linkSelectMsg, outputs, _v1, model) {
 		var w = _v0.a;
 		var h = _v0.b;
 		var boxWidth = _v1.a;
@@ -20088,7 +20237,7 @@ var $author$project$DrawGraph$viewGraph = F7(
 						]),
 					A2(
 						$elm$core$List$map,
-						A2($author$project$DrawGraph$linkElement, model, linkSelectMsg),
+						A3($author$project$DrawGraph$linkElement, selectedEdge, model, linkSelectMsg),
 						$elm_community$graph$Graph$edges(model))),
 					A2(
 					$elm_community$typed_svg$TypedSvg$g,
@@ -20104,16 +20253,17 @@ var $author$project$DrawGraph$viewGraph = F7(
 						$elm_community$graph$Graph$nodes(model)))
 				]));
 	});
-var $author$project$DrawGraph$view = F8(
-	function (graph, selectedNode, nodeSelectMsg, linkSelectMsg, outputs, _v0, _v1, dist) {
+var $author$project$DrawGraph$view = F9(
+	function (graph, selectedNode, selectedEdge, nodeSelectMsg, linkSelectMsg, outputs, _v0, _v1, dist) {
 		var width = _v0.a;
 		var height = _v0.b;
 		var boxWidth = _v1.a;
 		var boxHeight = _v1.b;
-		return A7(
+		return A8(
 			$author$project$DrawGraph$viewGraph,
 			_Utils_Tuple2(width, height),
 			selectedNode,
+			selectedEdge,
 			nodeSelectMsg,
 			linkSelectMsg,
 			outputs,
@@ -20213,12 +20363,105 @@ var $author$project$Main$view = function (model) {
 						$elm$core$Maybe$map,
 						A2($author$project$Main$displayNode, model.lastPoll, model.waitingToConnect),
 						selectedNode)),
+					A2(
+					$mdgriffith$elm_ui$Element$row,
+					_List_fromArray(
+						[
+							$mdgriffith$elm_ui$Element$spacing(20)
+						]),
+					_List_fromArray(
+						[
+							A2(
+							$elm$core$Maybe$withDefault,
+							$mdgriffith$elm_ui$Element$none,
+							A2(
+								$elm$core$Maybe$map,
+								function (next) {
+									return A2(
+										$author$project$Main$simpleButton,
+										'Prev Node',
+										$author$project$Main$SelectNode(next));
+								},
+								A2(
+									$elm$core$Maybe$andThen,
+									function (g) {
+										return A2(
+											$author$project$ProcessGraph$prevNode,
+											g,
+											A2(
+												$elm$core$Maybe$map,
+												function ($) {
+													return $.id;
+												},
+												selectedNode));
+									},
+									model.graph))),
+							A2(
+							$elm$core$Maybe$withDefault,
+							$mdgriffith$elm_ui$Element$none,
+							A2(
+								$elm$core$Maybe$map,
+								function (next) {
+									return A2(
+										$author$project$Main$simpleButton,
+										'Next Node',
+										$author$project$Main$SelectNode(next));
+								},
+								A2(
+									$elm$core$Maybe$andThen,
+									function (g) {
+										return A2(
+											$author$project$ProcessGraph$nextNode,
+											g,
+											A2(
+												$elm$core$Maybe$map,
+												function ($) {
+													return $.id;
+												},
+												selectedNode));
+									},
+									model.graph))),
+							A2(
+							$elm$core$Maybe$withDefault,
+							$mdgriffith$elm_ui$Element$none,
+							A2(
+								$elm$core$Maybe$map,
+								function (next) {
+									return A2(
+										$author$project$Main$simpleButton,
+										'Prev Edge',
+										$author$project$Main$SelectEdge(next));
+								},
+								A2(
+									$elm$core$Maybe$andThen,
+									function (g) {
+										return A2($author$project$ProcessGraph$prevEdge, g, model.selectedEdge);
+									},
+									model.graph))),
+							A2(
+							$elm$core$Maybe$withDefault,
+							$mdgriffith$elm_ui$Element$none,
+							A2(
+								$elm$core$Maybe$map,
+								function (next) {
+									return A2(
+										$author$project$Main$simpleButton,
+										'Next Edge',
+										$author$project$Main$SelectEdge(next));
+								},
+								A2(
+									$elm$core$Maybe$andThen,
+									function (g) {
+										return A2($author$project$ProcessGraph$nextEdge, g, model.selectedEdge);
+									},
+									model.graph)))
+						])),
 					function () {
 					var _v1 = model.graph;
 					if (_v1.$ === 'Just') {
 						var g = _v1.a;
 						return $mdgriffith$elm_ui$Element$html(
-							A8(
+							A9(
 								$author$project$DrawGraph$view,
 								g,
 								A2(
@@ -20227,6 +20470,7 @@ var $author$project$Main$view = function (model) {
 										return $.id;
 									},
 									selectedNode),
+								model.selectedEdge,
 								$author$project$Main$SelectNode,
 								$author$project$Main$SelectEdge,
 								_List_Nil,

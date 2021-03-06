@@ -83,8 +83,8 @@ updateContextWithValue nodeCtx entValue =
     { nodeCtx | node = { node | label = entValue } }
 
 
-linkElement : Graph Entity Link -> (Int -> msg) -> Edge Link -> Svg msg
-linkElement graph msg edge =
+linkElement : Maybe Int -> Graph Entity Link -> (Int -> msg) -> Edge Link -> Svg msg
+linkElement selectedEdge graph msg edge =
     let
         retrieveEntity =
             Maybe.withDefault (Force.entity 0 defaultUGen) << Maybe.map (.node >> .label)
@@ -97,15 +97,26 @@ linkElement graph msg edge =
 
         link =
             edge.label
+
+        isSelected =
+            Maybe.map ((==) link.id) selectedEdge |> Maybe.withDefault False
+
+        color =
+            if isSelected then
+                Paint Color.red
+
+            else
+                Paint Color.black
     in
     if source == target then
         circle
             [ strokeWidth (3 * (edge.label.strength ^ 2))
-            , stroke (Paint Color.black)
+            , stroke color
             , noFill
             , cx source.x
             , cy (source.y - 25)
             , r 40
+            , onClick (msg link.id)
             ]
             []
 
@@ -141,7 +152,8 @@ linkElement graph msg edge =
                 [ strokeWidth 1
                 , cursor CursorPointer
                 , onClick (msg link.id)
-                , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
+                , fill color
+                , stroke color --(Paint Color.black) --<| Scale.convert colorScale source.x
                 , points
                     [ ( centerOffsetX, centerOffsetY )
                     , ( x3, y3 )
@@ -180,12 +192,12 @@ nodeElement selectedId msg outputs node =
         thisNode =
             ugenLabel node.label.value
 
-        weight =
+        ( weight, color ) =
             if selectedId == Just node.id then
-                FontWeightBolder
+                ( FontWeightBolder, Color.red )
 
             else
-                FontWeightNormal
+                ( FontWeightNormal, Color.black )
     in
     g []
         [ ellipse
@@ -195,7 +207,7 @@ nodeElement selectedId msg outputs node =
              , cy node.label.y
              , cursor CursorPointer
              , onClick (msg node.id)
-             , stroke (Paint Color.black)
+             , stroke (Paint color) --(Paint Color.black)
              ]
                 ++ (if List.member node.id outputs then
                         [ strokeWidth 3.0, fill (Paint Color.grey) ]
@@ -218,11 +230,20 @@ nodeElement selectedId msg outputs node =
         ]
 
 
-viewGraph : ( Float, Float ) -> Maybe Int -> (Int -> msg) -> (Int -> msg) -> List Int -> ( Float, Float ) -> Graph Entity Link -> Html msg
-viewGraph ( w, h ) selectedNode nodeSelectMsg linkSelectMsg outputs ( boxWidth, boxHeight ) model =
+viewGraph :
+    ( Float, Float )
+    -> Maybe Int
+    -> Maybe Int
+    -> (Int -> msg)
+    -> (Int -> msg)
+    -> List Int
+    -> ( Float, Float )
+    -> Graph Entity Link
+    -> Html msg
+viewGraph ( w, h ) selectedNode selectedEdge nodeSelectMsg linkSelectMsg outputs ( boxWidth, boxHeight ) model =
     svg [ width (Px w), height (Px h), viewBox 0 0 boxWidth boxHeight ]
         [ g [ class [ "links" ] ] <|
-            List.map (linkElement model linkSelectMsg) <|
+            List.map (linkElement selectedEdge model linkSelectMsg) <|
                 Graph.edges model
         , g [ class [ "nodes" ] ] <|
             List.map (nodeElement selectedNode nodeSelectMsg outputs) <|
@@ -233,6 +254,7 @@ viewGraph ( w, h ) selectedNode nodeSelectMsg linkSelectMsg outputs ( boxWidth, 
 view :
     UGenGraph
     -> Maybe Int
+    -> Maybe Int
     -> (Int -> msg)
     -> (Int -> msg)
     -> List Int
@@ -240,9 +262,10 @@ view :
     -> ( Float, Float )
     -> Float
     -> Html msg
-view graph selectedNode nodeSelectMsg linkSelectMsg outputs ( width, height ) ( boxWidth, boxHeight ) dist =
+view graph selectedNode selectedEdge nodeSelectMsg linkSelectMsg outputs ( width, height ) ( boxWidth, boxHeight ) dist =
     viewGraph ( width, height )
         selectedNode
+        selectedEdge
         nodeSelectMsg
         linkSelectMsg
         outputs

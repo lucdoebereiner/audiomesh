@@ -13,6 +13,10 @@ module ProcessGraph exposing
     , getNodes
     , mkGraph
     , mulAllEdges
+    , nextEdge
+    , nextNode
+    , prevEdge
+    , prevNode
     , processParameters
     , setInput
     , ugenLabel
@@ -40,6 +44,7 @@ import Json.Decode as Decode
         )
 import Json.Decode.Pipeline exposing (hardcoded, required)
 import Json.Encode as JE exposing (Value)
+import List.Extra as L
 import Parameters exposing (Mapping(..), Parameter)
 import Utils exposing (..)
 
@@ -830,6 +835,78 @@ mkGraph gr =
     in
     Graph.fromNodesAndEdges nodes <|
         List.map (\e -> Graph.Edge e.from e.to e.link) gr.edges
+
+
+nextNode : UGenGraph -> Maybe Graph.NodeId -> Maybe Graph.NodeId
+nextNode g nId =
+    let
+        nodes =
+            Graph.nodeIds g |> List.sort
+    in
+    case nId of
+        Nothing ->
+            List.head nodes
+
+        Just n ->
+            if nId == L.last nodes then
+                List.head nodes
+
+            else
+                L.find (\other -> other > n) nodes
+
+
+nextEdge : UGenGraph -> Maybe Int -> Maybe Int
+nextEdge g eId =
+    let
+        edges =
+            Graph.edges g |> List.map (.label >> .id) |> List.sort
+    in
+    case eId of
+        Nothing ->
+            List.head edges
+
+        Just e ->
+            if eId == L.last edges then
+                List.head edges
+
+            else
+                L.find (\other -> other > e) edges
+
+
+prevEdge : UGenGraph -> Maybe Int -> Maybe Int
+prevEdge g eId =
+    let
+        edges =
+            Graph.edges g |> List.map (.label >> .id) |> List.sort |> List.reverse
+    in
+    case eId of
+        Nothing ->
+            List.head edges
+
+        Just e ->
+            if eId == L.last edges then
+                List.head edges
+
+            else
+                L.find (\other -> other < e) edges
+
+
+prevNode : UGenGraph -> Maybe Graph.NodeId -> Maybe Graph.NodeId
+prevNode g nId =
+    let
+        nodes =
+            Graph.nodeIds g |> List.sort |> List.reverse
+    in
+    case nId of
+        Nothing ->
+            List.head nodes
+
+        Just n ->
+            if nId == L.last nodes then
+                List.head nodes
+
+            else
+                L.find (\other -> other < n) nodes
 
 
 updateProcessParameter : Graph.NodeId -> ( Int, Float ) -> UGenGraph -> UGenGraph

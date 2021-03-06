@@ -114,7 +114,6 @@ type Msg
     | SelectNode Graph.NodeId
     | SelectEdge Int
     | DeleteNode Int
-      --    | SetOutput Int Int
     | SetVolume Float
     | NoOp (Result Http.Error ())
     | AddProcess Process
@@ -793,15 +792,29 @@ view model =
                     (displayNode
                         model.lastPoll
                         model.waitingToConnect
-                     --                        model.outputs
                     )
                     selectedNode
                 )
+            , row [ spacing 20 ]
+                [ Maybe.map (\next -> simpleButton "Prev Node" (SelectNode next))
+                    (Maybe.andThen (\g -> ProcessGraph.prevNode g (Maybe.map .id selectedNode)) model.graph)
+                    |> Maybe.withDefault none
+                , Maybe.map (\next -> simpleButton "Next Node" (SelectNode next))
+                    (Maybe.andThen (\g -> ProcessGraph.nextNode g (Maybe.map .id selectedNode)) model.graph)
+                    |> Maybe.withDefault none
+                , Maybe.map (\next -> simpleButton "Prev Edge" (SelectEdge next))
+                    (Maybe.andThen (\g -> ProcessGraph.prevEdge g model.selectedEdge) model.graph)
+                    |> Maybe.withDefault none
+                , Maybe.map (\next -> simpleButton "Next Edge" (SelectEdge next))
+                    (Maybe.andThen (\g -> ProcessGraph.nextEdge g model.selectedEdge) model.graph)
+                    |> Maybe.withDefault none
+                ]
             , case model.graph of
                 Just g ->
                     html <|
                         DrawGraph.view g
                             (Maybe.map .id selectedNode)
+                            model.selectedEdge
                             SelectNode
                             SelectEdge
                             []
