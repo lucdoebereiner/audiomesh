@@ -910,13 +910,13 @@ pub fn mul() -> UGen {
 //     UGen::new(Process::Square { input: 0.0 })
 // }
 
-// pub fn sound_in(index: usize) -> UGen {
-//     UGen::new(Process::SoundIn {
-//         input: 0.0,
-//         index,
-//         factor: lag::lag(1.0),
-//     })
-// }
+pub fn sound_in(index: usize) -> UGen {
+    UGen::new(Process::SoundIn {
+        input: 0.0,
+        index,
+        factor: lag::lag(1.0),
+    })
+}
 
 // pub fn sqrt() -> UGen {
 //     UGen::new(Process::Sqrt { input: 0.0 })
@@ -1222,32 +1222,28 @@ pub fn filter_bank(
     (input_sum, outputs)
 }
 
-pub fn rnd_connections(
-    g: &mut UGenGraph,
-    nodes: &[NodeIndex],
-    n_connections: u32,
-) -> Vec<EdgeIndex> {
+pub fn rnd_connections(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) {
     let mut rng = thread_rng();
     let mut shuffled = nodes.to_vec();
     shuffled.shuffle(&mut rng);
-    let mut edges = Vec::new();
+    //    let mut edges = Vec::new();
     for _i in 0..n_connections {
         shuffled.iter().for_each(|&idx| {
-            let w1 = rng.gen_range(0.7, 1.0);
-            let w2 = rng.gen_range(0.7, 1.0);
-            if let Some(to_node) = choose_with_input(g, Some(idx)) {
-                edges.push(g.graph.add_edge(idx, to_node, (0, lag::lag(w1))));
-            }
-            if does_idx_have_input(g, idx) {
-                edges.push(g.graph.add_edge(
-                    *shuffled.choose(&mut rng).unwrap(),
-                    idx,
-                    (0, lag::lag(w2)),
-                ));
-            }
+            rnd_connect_input(g, idx);
+            rnd_connect_output(g, idx);
+            // let w1 = rng.gen_range(0.7, 1.0);
+            // let w2 = rng.gen_range(0.7, 1.0);
+            // if let Some(to_node) = choose_with_input(g, Some(idx)) {
+            //     edges.push(g.graph.add_edge(idx, to_node, (0, lag::lag(w1))));
+            // }
+            // if does_idx_have_input(g, idx) {
+            //     edges.push(g.graph.add_edge(
+            //         *shuffled.choose(&mut rng).unwrap(),
+            //         idx,
+            //         (0, lag::lag(w2)),
+            //     ));
         })
     }
-    edges
 }
 
 fn get_spec(g: &UGenGraph, node: NodeIndex) -> Option<ProcessSpec> {
@@ -1260,15 +1256,17 @@ fn has_two_inputs(g: &UGenGraph, node: NodeIndex) -> bool {
         .unwrap_or(false)
 }
 
-pub fn connect_new_node(g: &mut UGenGraph, new_node: NodeIndex) {
-    let mut rng = thread_rng();
-    let mut shuffled: Vec<NodeIndex> = g.graph.node_indices().collect();
-    shuffled = shuffled
-        .into_iter()
-        .filter(|idx| *idx != new_node)
-        .collect();
-    shuffled.shuffle(&mut rng);
+pub fn rnd_connect_if_necessary(g: &mut UGenGraph, node: NodeIndex) {
+    if !does_idx_have_sufficient_inputs(g, node) {
+        rnd_connect_input(g, node);
+    };
+    if !does_idx_have_sufficient_outputs(g, node) {
+        rnd_connect_output(g, node);
+    }
+}
 
+pub fn rnd_connect_output(g: &mut UGenGraph, new_node: NodeIndex) {
+    let mut rng = thread_rng();
     // output
     if let Some(target) = choose_with_input(g, Some(new_node)) {
         let w = rng.gen_range(0.7, 1.0);
@@ -1278,23 +1276,34 @@ pub fn connect_new_node(g: &mut UGenGraph, new_node: NodeIndex) {
         };
         g.graph.add_edge(new_node, target, (idx, lag::lag(w)));
     }
+}
+
+pub fn rnd_connect_input(g: &mut UGenGraph, new_node: NodeIndex) {
+    let mut rng = thread_rng();
+    let mut shuffled: Vec<NodeIndex> = g.graph.node_indices().collect();
+    shuffled = shuffled
+        .into_iter()
+        .filter(|idx| *idx != new_node)
+        .collect();
+    shuffled.shuffle(&mut rng);
+
     // input
     if let Some(spec) = get_spec(g, new_node) {
         match spec.process_type {
-            ProcessType::Processor | ProcessType::MultipleInputs => {
+            ProcessType::Processor => {
                 if let Some(source) = shuffled.choose(&mut rng) {
                     let w = rng.gen_range(0.7, 1.0);
                     g.graph.add_edge(*source, new_node, (0, lag::lag(w)));
                 }
             }
-            ProcessType::TwoInputs => {
+            ProcessType::TwoInputs | ProcessType::MultipleInputs => {
                 let w1 = rng.gen_range(0.7, 1.0);
                 let w2 = rng.gen_range(0.7, 1.0);
                 if shuffled.len() > 0 {
                     g.graph.add_edge(shuffled[0], new_node, (0, lag::lag(w1)));
                 };
                 if shuffled.len() > 1 {
-                    g.graph.add_edge(shuffled[1], new_node, (0, lag::lag(w2)));
+                    g.graph.add_edge(shuffled[1], new_node, (1, lag::lag(w2)));
                 }
             }
             ProcessType::NoInputGenerator => (),
@@ -1344,6 +1353,24 @@ fn does_idx_have_input(g: &UGenGraph, node: NodeIndex) -> bool {
     } else {
         false
     }
+}
+
+fn does_idx_have_sufficient_inputs(g: &UGenGraph, node: NodeIndex) -> bool {
+    if let Some(u) = g.graph.node_weight(node) {
+        let n = g.graph.neighbors_directed(node, Incoming).count();
+        match spec(&u.process).process_type {
+            ProcessType::NoInputGenerator => true,
+            ProcessType::TwoInputs | ProcessType::MultipleInputs => n >= 2,
+            ProcessType::Processor => n >= 1,
+        }
+    } else {
+        false
+    }
+}
+
+fn does_idx_have_sufficient_outputs(g: &UGenGraph, node: NodeIndex) -> bool {
+    let n = g.graph.neighbors_directed(node, Outgoing).count();
+    n > 0
 }
 
 // guarantees that choosen idx is a process with input
@@ -1452,6 +1479,11 @@ pub fn disconnect_most_connected(graph: &mut UGenGraph) {
 }
 
 pub fn ensure_connectivity(graph: &mut UGenGraph) {
+    // first do an rnd connect to ensure everyone has sufficient inputs/outputs
+    let indices: Vec<NodeIndex> = graph.graph.node_indices().collect();
+    indices
+        .iter()
+        .for_each(|idx| rnd_connect_if_necessary(graph, *idx));
     let components = collect_components(graph);
     let mut rng = thread_rng();
     if let Some((first, rest)) = components.split_first() {

@@ -18,6 +18,7 @@ module ProcessGraph exposing
     , ugenLabel
     , updateEdge
     , updateProcessParameter
+    , upsertOutputSend
     )
 
 import Array exposing (Array)
@@ -608,7 +609,17 @@ type alias UGen =
     { process : Process
     , sum_inputs : Bool
     , clip : ClipType
+    , output_sends : IntDict Float
     }
+
+
+upsertOutputSend : ( Int, Float ) -> UGen -> UGen
+upsertOutputSend ( k, v ) ugen =
+    if IntDict.member k ugen.output_sends then
+        { ugen | output_sends = IntDict.update k (always (Just v)) ugen.output_sends }
+
+    else
+        { ugen | output_sends = IntDict.insert k v ugen.output_sends }
 
 
 ugenLabel : UGen -> String
@@ -618,12 +629,18 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen Add True None
+    UGen Add True None IntDict.empty
+
+
+decodeOutputTuple =
+    Decode.map2 Tuple.pair
+        (Decode.index 0 Decode.int)
+        (Decode.index 1 Decode.float)
 
 
 decodeUGen : Decoder UGen
 decodeUGen =
-    Decode.succeed (\p sum clip -> UGen p sum (clipTypeFromString clip))
+    Decode.succeed (\p sum clip sends -> UGen p sum (clipTypeFromString clip) (IntDict.fromList sends))
         |> required "process"
             (oneOf
                 [ field "Delay" decodeDelay
@@ -650,6 +667,7 @@ decodeUGen =
             )
         |> required "sum_inputs" bool
         |> required "clip" string
+        |> required "output_sends" (list decodeOutputTuple)
 
 
 type alias Link =

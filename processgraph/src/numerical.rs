@@ -77,19 +77,19 @@ pub fn gauss_curve(x: f64) -> f64 {
 }
 
 pub fn bit_neg(input: f64) -> f64 {
-    f64::from_bits(input.to_bits().wrapping_neg()) / f64::MAX * 2.0 - 1.0
+    f64::from_bits(input.to_bits().wrapping_neg()) // / f64::MAX * 2.0 - 1.0
 }
 
 pub fn bit_or(input1: f64, input2: f64) -> f64 {
-    f64::from_bits(input1.to_bits() | input2.to_bits()) / f64::MAX * 2.0 - 1.0
+    f64::from_bits(input1.to_bits() | input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
 pub fn bit_xor(input1: f64, input2: f64) -> f64 {
-    f64::from_bits(input1.to_bits() ^ input2.to_bits()) / f64::MAX * 2.0 - 1.0
+    f64::from_bits(input1.to_bits() ^ input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
 pub fn bit_and(input1: f64, input2: f64) -> f64 {
-    f64::from_bits(input1.to_bits() & input2.to_bits()) / f64::MAX * 2.0 - 1.0
+    f64::from_bits(input1.to_bits() & input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
 // TODO unit tests

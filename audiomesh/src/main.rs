@@ -242,9 +242,7 @@ fn poll_node(id: usize, state: State<Globals>) -> content::Json<String> {
 fn handle_messages(
     msg: UpdateMessage,
     graph: &mut UGenGraph,
-    //    nodes: &mut Vec<NodeIndex>,
     flow: &mut Vec<NodeIndex>,
-    //    output_indices: &mut [NodeIndex],
     sender: &Sender<ReturnMessage>,
 ) {
     match msg {
@@ -279,35 +277,19 @@ fn handle_messages(
             }
         }
 
-        // UpdateMessage::DumpOutputs => {
-        //     let j = serde_json::to_string(output_indices).unwrap();
-        //     sender.send(ReturnMessage::Outputs(j)).unwrap()
-        // }
         UpdateMessage::RemoveNode(id) => {
             graph.graph.remove_node(NodeIndex::new(id));
             update_connections_and_flow(graph, flow)
-            // ensure_connectivity(graph);
-            // let new_flow = establish_flow(graph, output_indices);
-            // *flow = new_flow;
-            //let _ = mem::replace(flow, new_flow);
-            //            println!("{:?}", collect_components(graph));
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
                 let (_, weight) = e;
-                //                *e = (*idx, w)
                 weight.set_target(w)
             }
         }
         UpdateMessage::RemoveEdge(id) => {
             graph.graph.remove_edge(EdgeIndex::new(id));
             update_connections_and_flow(graph, flow)
-            // ensure_connectivity(graph);
-            // let new_flow = establish_flow(graph, output_indices);
-            // *flow = new_flow;
-            //		let _ = mem::replace(flow, new_flow);
-
-            //          println!("{:?}", collect_components(graph));
         }
         UpdateMessage::SetOutput(node, output, amp) => {
             graph.graph[node].set_output(output, amp);
@@ -322,15 +304,11 @@ fn handle_messages(
             *flow = new_flow;
         }
         UpdateMessage::AddNode(node) => {
-            let _idx = graph
+            let idx = graph
                 .graph
                 .add_node(UGen::new(node).clip(ClipType::SoftClip));
+            rnd_connect_if_necessary(graph, idx);
             update_connections_and_flow(graph, flow)
-            // ensure_connectivity(graph);
-            // let new_flow = establish_flow(graph, output_indices);
-            // *flow = new_flow;
-            //let _ = mem::replace(flow, new_flow);
-            //            println!("{:?}", nodes_with_neighbors(graph));
         }
 
         UpdateMessage::SetGraph(g) => {
@@ -397,13 +375,13 @@ fn main() {
     //    let sinph = g.add_node(sin());
     // let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
     //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
-    // let sum = g.add_node(add().clip(ClipType::Wrap));
+    let sum = g.graph.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
     //    let filter1 = g.add_node(lpf(100.0, 6.0));
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    //  let in1 = g.add_node(sound_in(0).clip(ClipType::SoftClip));
-    //    let in2 = g.add_node(sound_in(1).clip(ClipType::SoftClip));
+    let in1 = g.graph.add_node(sound_in(0).clip(ClipType::SoftClip));
+    let in2 = g.graph.add_node(sound_in(1).clip(ClipType::SoftClip));
     // let gauss = g.add_node(gauss());
     //let ring = g.add_node(ring());
     //    let c1 = g.add_node(constant(0.8));
@@ -411,7 +389,12 @@ fn main() {
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
     //  let sp = g.add_node(spike(0.3, 0.0001, 100));
     let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
+    let s2 = g.graph.add_node(sin_osc(2225.0, 0.0));
     g.graph.add_edge(s1, del1, (0, lag::lag(0.5)));
+    g.graph.add_edge(del1, sum, (0, lag::lag(0.5)));
+    g.graph.add_edge(s2, sum, (0, lag::lag(0.5)));
+    g.graph.add_edge(in1, sum, (0, lag::lag(0.5)));
+    g.graph.add_edge(in2, sum, (0, lag::lag(0.5)));
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
     //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];

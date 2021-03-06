@@ -6,16 +6,13 @@ module Api exposing
     , deleteNode
     , disconnectMostConnected
     , getGraph
-    ,  getGraphForDownload
-       --    , getOutputs
-
+    , getGraphForDownload
     , poll
     , postEdge
     , postGraph
     , randomCircle
     , randomize
     , setEdgeWeight
-    , setOutput
     , setOutputs
     , setParameter
     , setVolume
@@ -142,21 +139,13 @@ postGraph msg g =
 
 
 
--- getOutputs : (Result Http.Error (List NodeIndex) -> msg) -> Cmd msg
--- getOutputs msg =
---     Http.get
---         { url = baseUrl ++ "/outputs"
---         , expect = Http.expectJson msg (Decode.list Decode.int)
+-- setOutput : (Result Http.Error () -> msg) -> Int -> Int -> Cmd msg
+-- setOutput msg id out =
+--     Http.post
+--         { url = baseUrl ++ "/node/" ++ String.fromInt id ++ "/output/" ++ String.fromInt out
+--         , body = Http.emptyBody
+--         , expect = Http.expectWhatever msg
 --         }
-
-
-setOutput : (Result Http.Error () -> msg) -> Int -> Int -> Cmd msg
-setOutput msg id out =
-    Http.post
-        { url = baseUrl ++ "/node/" ++ String.fromInt id ++ "/output/" ++ String.fromInt out
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever msg
-        }
 
 
 setOutputs : (Result Http.Error () -> msg) -> List OutputIndices.OutputSpec -> Cmd msg

@@ -5877,9 +5877,9 @@ var $elm$json$Json$Decode$nullable = function (decoder) {
 			]));
 };
 var $author$project$ProcessGraph$decodeConnection = $elm$json$Json$Decode$nullable($author$project$ProcessGraph$decodeLink);
-var $author$project$ProcessGraph$UGen = F3(
-	function (process, sum_inputs, clip) {
-		return {clip: clip, process: process, sum_inputs: sum_inputs};
+var $author$project$ProcessGraph$UGen = F4(
+	function (process, sum_inputs, clip, output_sends) {
+		return {clip: clip, output_sends: output_sends, process: process, sum_inputs: sum_inputs};
 	});
 var $elm$json$Json$Decode$bool = _Json_decodeBool;
 var $author$project$ProcessGraph$None = {$: 'None'};
@@ -6032,6 +6032,16 @@ var $author$project$ProcessGraph$decodeMem = A3(
 		}));
 var $author$project$ProcessGraph$Mul = {$: 'Mul'};
 var $author$project$ProcessGraph$decodeMul = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$Mul);
+var $elm$json$Json$Decode$index = _Json_decodeIndex;
+var $elm$core$Tuple$pair = F2(
+	function (a, b) {
+		return _Utils_Tuple2(a, b);
+	});
+var $author$project$ProcessGraph$decodeOutputTuple = A3(
+	$elm$json$Json$Decode$map2,
+	$elm$core$Tuple$pair,
+	A2($elm$json$Json$Decode$index, 0, $elm$json$Json$Decode$int),
+	A2($elm$json$Json$Decode$index, 1, $elm$json$Json$Decode$float));
 var $author$project$ProcessGraph$RMS = {$: 'RMS'};
 var $author$project$ProcessGraph$decodeRMS = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$RMS);
 var $author$project$ProcessGraph$Ring = {$: 'Ring'};
@@ -6109,57 +6119,226 @@ var $author$project$ProcessGraph$decodeSpike = A3(
 						}))))));
 var $author$project$ProcessGraph$Square = {$: 'Square'};
 var $author$project$ProcessGraph$decodeSquare = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$Square);
-var $author$project$ProcessGraph$decodeUGen = A3(
-	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-	'clip',
-	$elm$json$Json$Decode$string,
-	A3(
-		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-		'sum_inputs',
-		$elm$json$Json$Decode$bool,
-		A3(
-			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-			'process',
-			$elm$json$Json$Decode$oneOf(
-				_List_fromArray(
-					[
-						A2($elm$json$Json$Decode$field, 'Delay', $author$project$ProcessGraph$decodeDelay),
-						A2($elm$json$Json$Decode$field, 'Add', $author$project$ProcessGraph$decodeAdd),
-						A2($elm$json$Json$Decode$field, 'Mem', $author$project$ProcessGraph$decodeMem),
-						A2($elm$json$Json$Decode$field, 'Mul', $author$project$ProcessGraph$decodeMul),
-						A2($elm$json$Json$Decode$field, 'Ring', $author$project$ProcessGraph$decodeRing),
-						A2($elm$json$Json$Decode$field, 'RMS', $author$project$ProcessGraph$decodeRMS),
-						A2($elm$json$Json$Decode$field, 'Constant', $author$project$ProcessGraph$decodeConstant),
-						A2($elm$json$Json$Decode$field, 'Compressor', $author$project$ProcessGraph$decodeCompressor),
-						A2($elm$json$Json$Decode$field, 'Spike', $author$project$ProcessGraph$decodeSpike),
-						A2($elm$json$Json$Decode$field, 'Sin', $author$project$ProcessGraph$decodeSin),
-						A2($elm$json$Json$Decode$field, 'Gauss', $author$project$ProcessGraph$decodeGauss),
-						A2($elm$json$Json$Decode$field, 'SoundIn', $author$project$ProcessGraph$decodeSoundIn),
-						A2($elm$json$Json$Decode$field, 'Filter', $author$project$ProcessGraph$decodeFilter),
-						A2($elm$json$Json$Decode$field, 'SinOsc', $author$project$ProcessGraph$decodeSinOsc),
-						A2($elm$json$Json$Decode$field, 'LinCon', $author$project$ProcessGraph$decodeLinCon),
-						A2($elm$json$Json$Decode$field, 'Square', $author$project$ProcessGraph$decodeSquare),
-						A2($elm$json$Json$Decode$field, 'BitAnd', $author$project$ProcessGraph$decodeBitAnd),
-						A2($elm$json$Json$Decode$field, 'BitOr', $author$project$ProcessGraph$decodeBitOr),
-						A2($elm$json$Json$Decode$field, 'BitXOr', $author$project$ProcessGraph$decodeBitXOr),
-						A2($elm$json$Json$Decode$field, 'BitNeg', $author$project$ProcessGraph$decodeBitNeg)
-					])),
-			$elm$json$Json$Decode$succeed(
-				F3(
-					function (p, sum, clip) {
-						return A3(
-							$author$project$ProcessGraph$UGen,
-							p,
-							sum,
-							$author$project$ProcessGraph$clipTypeFromString(clip));
-					})))));
+var $elm_community$intdict$IntDict$Empty = {$: 'Empty'};
+var $elm_community$intdict$IntDict$empty = $elm_community$intdict$IntDict$Empty;
+var $elm$core$Basics$always = F2(
+	function (a, _v0) {
+		return a;
+	});
+var $elm_community$intdict$IntDict$Inner = function (a) {
+	return {$: 'Inner', a: a};
+};
+var $elm_community$intdict$IntDict$size = function (dict) {
+	switch (dict.$) {
+		case 'Empty':
+			return 0;
+		case 'Leaf':
+			return 1;
+		default:
+			var i = dict.a;
+			return i.size;
+	}
+};
+var $elm_community$intdict$IntDict$inner = F3(
+	function (p, l, r) {
+		var _v0 = _Utils_Tuple2(l, r);
+		if (_v0.a.$ === 'Empty') {
+			var _v1 = _v0.a;
+			return r;
+		} else {
+			if (_v0.b.$ === 'Empty') {
+				var _v2 = _v0.b;
+				return l;
+			} else {
+				return $elm_community$intdict$IntDict$Inner(
+					{
+						left: l,
+						prefix: p,
+						right: r,
+						size: $elm_community$intdict$IntDict$size(l) + $elm_community$intdict$IntDict$size(r)
+					});
+			}
+		}
+	});
 var $elm$core$Basics$composeR = F3(
 	function (f, g, x) {
 		return g(
 			f(x));
 	});
-var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$hardcoded = A2($elm$core$Basics$composeR, $elm$json$Json$Decode$succeed, $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom);
+var $elm$core$Basics$neq = _Utils_notEqual;
+var $elm$core$Bitwise$complement = _Bitwise_complement;
+var $elm$core$Bitwise$or = _Bitwise_or;
+var $elm_community$intdict$IntDict$highestBitSet = function (n) {
+	var shiftOr = F2(
+		function (i, shift) {
+			return i | (i >>> shift);
+		});
+	var n1 = A2(shiftOr, n, 1);
+	var n2 = A2(shiftOr, n1, 2);
+	var n3 = A2(shiftOr, n2, 4);
+	var n4 = A2(shiftOr, n3, 8);
+	var n5 = A2(shiftOr, n4, 16);
+	return n5 & (~(n5 >>> 1));
+};
+var $elm$core$Basics$negate = function (n) {
+	return -n;
+};
+var $elm_community$intdict$IntDict$signBit = $elm_community$intdict$IntDict$highestBitSet(-1);
+var $elm$core$Bitwise$xor = _Bitwise_xor;
+var $elm_community$intdict$IntDict$isBranchingBitSet = function (p) {
+	return A2(
+		$elm$core$Basics$composeR,
+		$elm$core$Bitwise$xor($elm_community$intdict$IntDict$signBit),
+		A2(
+			$elm$core$Basics$composeR,
+			$elm$core$Bitwise$and(p.branchingBit),
+			$elm$core$Basics$neq(0)));
+};
+var $elm_community$intdict$IntDict$higherBitMask = function (branchingBit) {
+	return branchingBit ^ (~(branchingBit - 1));
+};
+var $elm_community$intdict$IntDict$lcp = F2(
+	function (x, y) {
+		var branchingBit = $elm_community$intdict$IntDict$highestBitSet(x ^ y);
+		var mask = $elm_community$intdict$IntDict$higherBitMask(branchingBit);
+		var prefixBits = x & mask;
+		return {branchingBit: branchingBit, prefixBits: prefixBits};
+	});
+var $elm_community$intdict$IntDict$Leaf = function (a) {
+	return {$: 'Leaf', a: a};
+};
+var $elm_community$intdict$IntDict$leaf = F2(
+	function (k, v) {
+		return $elm_community$intdict$IntDict$Leaf(
+			{key: k, value: v});
+	});
+var $elm_community$intdict$IntDict$prefixMatches = F2(
+	function (p, n) {
+		return _Utils_eq(
+			n & $elm_community$intdict$IntDict$higherBitMask(p.branchingBit),
+			p.prefixBits);
+	});
+var $elm_community$intdict$IntDict$update = F3(
+	function (key, alter, dict) {
+		var join = F2(
+			function (_v2, _v3) {
+				var k1 = _v2.a;
+				var l = _v2.b;
+				var k2 = _v3.a;
+				var r = _v3.b;
+				var prefix = A2($elm_community$intdict$IntDict$lcp, k1, k2);
+				return A2($elm_community$intdict$IntDict$isBranchingBitSet, prefix, k2) ? A3($elm_community$intdict$IntDict$inner, prefix, l, r) : A3($elm_community$intdict$IntDict$inner, prefix, r, l);
+			});
+		var alteredNode = function (mv) {
+			var _v1 = alter(mv);
+			if (_v1.$ === 'Just') {
+				var v = _v1.a;
+				return A2($elm_community$intdict$IntDict$leaf, key, v);
+			} else {
+				return $elm_community$intdict$IntDict$empty;
+			}
+		};
+		switch (dict.$) {
+			case 'Empty':
+				return alteredNode($elm$core$Maybe$Nothing);
+			case 'Leaf':
+				var l = dict.a;
+				return _Utils_eq(l.key, key) ? alteredNode(
+					$elm$core$Maybe$Just(l.value)) : A2(
+					join,
+					_Utils_Tuple2(
+						key,
+						alteredNode($elm$core$Maybe$Nothing)),
+					_Utils_Tuple2(l.key, dict));
+			default:
+				var i = dict.a;
+				return A2($elm_community$intdict$IntDict$prefixMatches, i.prefix, key) ? (A2($elm_community$intdict$IntDict$isBranchingBitSet, i.prefix, key) ? A3(
+					$elm_community$intdict$IntDict$inner,
+					i.prefix,
+					i.left,
+					A3($elm_community$intdict$IntDict$update, key, alter, i.right)) : A3(
+					$elm_community$intdict$IntDict$inner,
+					i.prefix,
+					A3($elm_community$intdict$IntDict$update, key, alter, i.left),
+					i.right)) : A2(
+					join,
+					_Utils_Tuple2(
+						key,
+						alteredNode($elm$core$Maybe$Nothing)),
+					_Utils_Tuple2(i.prefix.prefixBits, dict));
+		}
+	});
+var $elm_community$intdict$IntDict$insert = F3(
+	function (key, value, dict) {
+		return A3(
+			$elm_community$intdict$IntDict$update,
+			key,
+			$elm$core$Basics$always(
+				$elm$core$Maybe$Just(value)),
+			dict);
+	});
+var $elm_community$intdict$IntDict$fromList = function (pairs) {
+	return A3(
+		$elm$core$List$foldl,
+		function (_v0) {
+			var a = _v0.a;
+			var b = _v0.b;
+			return A2($elm_community$intdict$IntDict$insert, a, b);
+		},
+		$elm_community$intdict$IntDict$empty,
+		pairs);
+};
 var $elm$json$Json$Decode$list = _Json_decodeList;
+var $author$project$ProcessGraph$decodeUGen = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'output_sends',
+	$elm$json$Json$Decode$list($author$project$ProcessGraph$decodeOutputTuple),
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'clip',
+		$elm$json$Json$Decode$string,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'sum_inputs',
+			$elm$json$Json$Decode$bool,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'process',
+				$elm$json$Json$Decode$oneOf(
+					_List_fromArray(
+						[
+							A2($elm$json$Json$Decode$field, 'Delay', $author$project$ProcessGraph$decodeDelay),
+							A2($elm$json$Json$Decode$field, 'Add', $author$project$ProcessGraph$decodeAdd),
+							A2($elm$json$Json$Decode$field, 'Mem', $author$project$ProcessGraph$decodeMem),
+							A2($elm$json$Json$Decode$field, 'Mul', $author$project$ProcessGraph$decodeMul),
+							A2($elm$json$Json$Decode$field, 'Ring', $author$project$ProcessGraph$decodeRing),
+							A2($elm$json$Json$Decode$field, 'RMS', $author$project$ProcessGraph$decodeRMS),
+							A2($elm$json$Json$Decode$field, 'Constant', $author$project$ProcessGraph$decodeConstant),
+							A2($elm$json$Json$Decode$field, 'Compressor', $author$project$ProcessGraph$decodeCompressor),
+							A2($elm$json$Json$Decode$field, 'Spike', $author$project$ProcessGraph$decodeSpike),
+							A2($elm$json$Json$Decode$field, 'Sin', $author$project$ProcessGraph$decodeSin),
+							A2($elm$json$Json$Decode$field, 'Gauss', $author$project$ProcessGraph$decodeGauss),
+							A2($elm$json$Json$Decode$field, 'SoundIn', $author$project$ProcessGraph$decodeSoundIn),
+							A2($elm$json$Json$Decode$field, 'Filter', $author$project$ProcessGraph$decodeFilter),
+							A2($elm$json$Json$Decode$field, 'SinOsc', $author$project$ProcessGraph$decodeSinOsc),
+							A2($elm$json$Json$Decode$field, 'LinCon', $author$project$ProcessGraph$decodeLinCon),
+							A2($elm$json$Json$Decode$field, 'Square', $author$project$ProcessGraph$decodeSquare),
+							A2($elm$json$Json$Decode$field, 'BitAnd', $author$project$ProcessGraph$decodeBitAnd),
+							A2($elm$json$Json$Decode$field, 'BitOr', $author$project$ProcessGraph$decodeBitOr),
+							A2($elm$json$Json$Decode$field, 'BitXOr', $author$project$ProcessGraph$decodeBitXOr),
+							A2($elm$json$Json$Decode$field, 'BitNeg', $author$project$ProcessGraph$decodeBitNeg)
+						])),
+				$elm$json$Json$Decode$succeed(
+					F4(
+						function (p, sum, clip, sends) {
+							return A4(
+								$author$project$ProcessGraph$UGen,
+								p,
+								sum,
+								$author$project$ProcessGraph$clipTypeFromString(clip),
+								$elm_community$intdict$IntDict$fromList(sends));
+						}))))));
+var $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$hardcoded = A2($elm$core$Basics$composeR, $elm$json$Json$Decode$succeed, $NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$custom);
 var $author$project$ProcessGraph$decodeGraph = A2(
 	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$hardcoded,
 	_List_Nil,
@@ -7710,6 +7889,21 @@ var $author$project$Api$getGraphForDownload = function (msg) {
 		});
 };
 var $elm$core$Debug$log = _Debug_log;
+var $elm$core$Maybe$map2 = F3(
+	function (func, ma, mb) {
+		if (ma.$ === 'Nothing') {
+			return $elm$core$Maybe$Nothing;
+		} else {
+			var a = ma.a;
+			if (mb.$ === 'Nothing') {
+				return $elm$core$Maybe$Nothing;
+			} else {
+				var b = mb.a;
+				return $elm$core$Maybe$Just(
+					A2(func, a, b));
+			}
+		}
+	});
 var $elm_community$graph$Graph$Edge = F3(
 	function (from, to, label) {
 		return {from: from, label: label, to: to};
@@ -7720,159 +7914,6 @@ var $elm_community$graph$Graph$Graph = function (a) {
 var $elm_community$graph$Graph$NodeContext = F3(
 	function (node, incoming, outgoing) {
 		return {incoming: incoming, node: node, outgoing: outgoing};
-	});
-var $elm_community$intdict$IntDict$Empty = {$: 'Empty'};
-var $elm_community$intdict$IntDict$empty = $elm_community$intdict$IntDict$Empty;
-var $elm$core$Basics$always = F2(
-	function (a, _v0) {
-		return a;
-	});
-var $elm_community$intdict$IntDict$Inner = function (a) {
-	return {$: 'Inner', a: a};
-};
-var $elm_community$intdict$IntDict$size = function (dict) {
-	switch (dict.$) {
-		case 'Empty':
-			return 0;
-		case 'Leaf':
-			return 1;
-		default:
-			var i = dict.a;
-			return i.size;
-	}
-};
-var $elm_community$intdict$IntDict$inner = F3(
-	function (p, l, r) {
-		var _v0 = _Utils_Tuple2(l, r);
-		if (_v0.a.$ === 'Empty') {
-			var _v1 = _v0.a;
-			return r;
-		} else {
-			if (_v0.b.$ === 'Empty') {
-				var _v2 = _v0.b;
-				return l;
-			} else {
-				return $elm_community$intdict$IntDict$Inner(
-					{
-						left: l,
-						prefix: p,
-						right: r,
-						size: $elm_community$intdict$IntDict$size(l) + $elm_community$intdict$IntDict$size(r)
-					});
-			}
-		}
-	});
-var $elm$core$Basics$neq = _Utils_notEqual;
-var $elm$core$Bitwise$complement = _Bitwise_complement;
-var $elm$core$Bitwise$or = _Bitwise_or;
-var $elm_community$intdict$IntDict$highestBitSet = function (n) {
-	var shiftOr = F2(
-		function (i, shift) {
-			return i | (i >>> shift);
-		});
-	var n1 = A2(shiftOr, n, 1);
-	var n2 = A2(shiftOr, n1, 2);
-	var n3 = A2(shiftOr, n2, 4);
-	var n4 = A2(shiftOr, n3, 8);
-	var n5 = A2(shiftOr, n4, 16);
-	return n5 & (~(n5 >>> 1));
-};
-var $elm$core$Basics$negate = function (n) {
-	return -n;
-};
-var $elm_community$intdict$IntDict$signBit = $elm_community$intdict$IntDict$highestBitSet(-1);
-var $elm$core$Bitwise$xor = _Bitwise_xor;
-var $elm_community$intdict$IntDict$isBranchingBitSet = function (p) {
-	return A2(
-		$elm$core$Basics$composeR,
-		$elm$core$Bitwise$xor($elm_community$intdict$IntDict$signBit),
-		A2(
-			$elm$core$Basics$composeR,
-			$elm$core$Bitwise$and(p.branchingBit),
-			$elm$core$Basics$neq(0)));
-};
-var $elm_community$intdict$IntDict$higherBitMask = function (branchingBit) {
-	return branchingBit ^ (~(branchingBit - 1));
-};
-var $elm_community$intdict$IntDict$lcp = F2(
-	function (x, y) {
-		var branchingBit = $elm_community$intdict$IntDict$highestBitSet(x ^ y);
-		var mask = $elm_community$intdict$IntDict$higherBitMask(branchingBit);
-		var prefixBits = x & mask;
-		return {branchingBit: branchingBit, prefixBits: prefixBits};
-	});
-var $elm_community$intdict$IntDict$Leaf = function (a) {
-	return {$: 'Leaf', a: a};
-};
-var $elm_community$intdict$IntDict$leaf = F2(
-	function (k, v) {
-		return $elm_community$intdict$IntDict$Leaf(
-			{key: k, value: v});
-	});
-var $elm_community$intdict$IntDict$prefixMatches = F2(
-	function (p, n) {
-		return _Utils_eq(
-			n & $elm_community$intdict$IntDict$higherBitMask(p.branchingBit),
-			p.prefixBits);
-	});
-var $elm_community$intdict$IntDict$update = F3(
-	function (key, alter, dict) {
-		var join = F2(
-			function (_v2, _v3) {
-				var k1 = _v2.a;
-				var l = _v2.b;
-				var k2 = _v3.a;
-				var r = _v3.b;
-				var prefix = A2($elm_community$intdict$IntDict$lcp, k1, k2);
-				return A2($elm_community$intdict$IntDict$isBranchingBitSet, prefix, k2) ? A3($elm_community$intdict$IntDict$inner, prefix, l, r) : A3($elm_community$intdict$IntDict$inner, prefix, r, l);
-			});
-		var alteredNode = function (mv) {
-			var _v1 = alter(mv);
-			if (_v1.$ === 'Just') {
-				var v = _v1.a;
-				return A2($elm_community$intdict$IntDict$leaf, key, v);
-			} else {
-				return $elm_community$intdict$IntDict$empty;
-			}
-		};
-		switch (dict.$) {
-			case 'Empty':
-				return alteredNode($elm$core$Maybe$Nothing);
-			case 'Leaf':
-				var l = dict.a;
-				return _Utils_eq(l.key, key) ? alteredNode(
-					$elm$core$Maybe$Just(l.value)) : A2(
-					join,
-					_Utils_Tuple2(
-						key,
-						alteredNode($elm$core$Maybe$Nothing)),
-					_Utils_Tuple2(l.key, dict));
-			default:
-				var i = dict.a;
-				return A2($elm_community$intdict$IntDict$prefixMatches, i.prefix, key) ? (A2($elm_community$intdict$IntDict$isBranchingBitSet, i.prefix, key) ? A3(
-					$elm_community$intdict$IntDict$inner,
-					i.prefix,
-					i.left,
-					A3($elm_community$intdict$IntDict$update, key, alter, i.right)) : A3(
-					$elm_community$intdict$IntDict$inner,
-					i.prefix,
-					A3($elm_community$intdict$IntDict$update, key, alter, i.left),
-					i.right)) : A2(
-					join,
-					_Utils_Tuple2(
-						key,
-						alteredNode($elm$core$Maybe$Nothing)),
-					_Utils_Tuple2(i.prefix.prefixBits, dict));
-		}
-	});
-var $elm_community$intdict$IntDict$insert = F3(
-	function (key, value, dict) {
-		return A3(
-			$elm_community$intdict$IntDict$update,
-			key,
-			$elm$core$Basics$always(
-				$elm$core$Maybe$Just(value)),
-			dict);
 	});
 var $elm$core$Basics$not = _Basics_not;
 var $elm_community$intdict$IntDict$get = F2(
@@ -8104,7 +8145,7 @@ var $elm$core$Basics$abs = function (n) {
 var $elm$core$Basics$e = _Basics_e;
 var $elm$core$Basics$pow = _Basics_pow;
 var $author$project$OutputIndices$gaussCurve = function (x) {
-	var c = 0.2;
+	var c = 0.05;
 	return A2($elm$core$Basics$pow, $elm$core$Basics$e, (x * x) / ((-2.0) * (c * c)));
 };
 var $elm$core$Basics$min = F2(
@@ -8268,15 +8309,6 @@ var $author$project$Api$setEdgeWeight = F3(
 				body: $elm$http$Http$emptyBody,
 				expect: $elm$http$Http$expectWhatever(msg),
 				url: $author$project$Api$baseUrl + ('/edge/' + ($elm$core$String$fromInt(edgeIdx) + ('/' + $elm$core$String$fromFloat(value))))
-			});
-	});
-var $author$project$Api$setOutput = F3(
-	function (msg, id, out) {
-		return $elm$http$Http$post(
-			{
-				body: $elm$http$Http$emptyBody,
-				expect: $elm$http$Http$expectWhatever(msg),
-				url: $author$project$Api$baseUrl + ('/node/' + ($elm$core$String$fromInt(id) + ('/output/' + $elm$core$String$fromInt(out))))
 			});
 	});
 var $author$project$OutputIndices$encodeSpec = function (spec) {
@@ -8689,6 +8721,52 @@ var $author$project$ProcessGraph$updateEdge = F3(
 			},
 			graph);
 	});
+var $author$project$ProcessGraph$upsertOutputSend = F2(
+	function (_v0, ugen) {
+		var k = _v0.a;
+		var v = _v0.b;
+		return A2($elm_community$intdict$IntDict$member, k, ugen.output_sends) ? _Utils_update(
+			ugen,
+			{
+				output_sends: A3(
+					$elm_community$intdict$IntDict$update,
+					k,
+					$elm$core$Basics$always(
+						$elm$core$Maybe$Just(v)),
+					ugen.output_sends)
+			}) : _Utils_update(
+			ugen,
+			{
+				output_sends: A3($elm_community$intdict$IntDict$insert, k, v, ugen.output_sends)
+			});
+	});
+var $author$project$OutputIndices$updateUGenGraph = F2(
+	function (spec, g) {
+		return A3(
+			$elm_community$graph$Graph$update,
+			spec.node,
+			$elm$core$Maybe$map(
+				function (ctx) {
+					var ugen = ctx.node.label;
+					var prevnode = ctx.node;
+					var newUgen = A2(
+						$author$project$ProcessGraph$upsertOutputSend,
+						_Utils_Tuple2(spec.output, spec.amp),
+						ugen);
+					return _Utils_update(
+						ctx,
+						{
+							node: _Utils_update(
+								prevnode,
+								{label: newUgen})
+						});
+				}),
+			g);
+	});
+var $author$project$OutputIndices$updateGraphWithSpecs = F2(
+	function (specs, g) {
+		return A3($elm$core$List$foldl, $author$project$OutputIndices$updateUGenGraph, g, specs);
+	});
 var $elm$core$Basics$round = _Basics_round;
 var $author$project$ProcessGraph$setInput = F2(
 	function (_v0, proc) {
@@ -8855,22 +8933,24 @@ var $author$project$Main$update = F2(
 				var channel = msg.a;
 				var pos = msg.b;
 				var newIndices = A3($elm$core$Array$set, channel, pos, model.outputIndices);
+				var specs = A2(
+					$elm$core$Maybe$map,
+					$author$project$OutputIndices$outputSpecs(newIndices),
+					model.graph);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
-						{outputIndices: newIndices}),
+						{
+							graph: A3($elm$core$Maybe$map2, $author$project$OutputIndices$updateGraphWithSpecs, specs, model.graph),
+							outputIndices: newIndices
+						}),
 					A2(
 						$elm$core$Maybe$withDefault,
 						$elm$core$Platform$Cmd$none,
 						A2(
 							$elm$core$Maybe$map,
-							function (g) {
-								return A2(
-									$author$project$Api$setOutputs,
-									$author$project$Main$NoOp,
-									A2($author$project$OutputIndices$outputSpecs, newIndices, g));
-							},
-							model.graph)));
+							$author$project$Api$setOutputs($author$project$Main$NoOp),
+							specs)));
 			case 'Tick':
 				return _Utils_Tuple2(
 					model,
@@ -9038,12 +9118,6 @@ var $author$project$Main$update = F2(
 				return _Utils_Tuple2(
 					model,
 					A2($author$project$Api$deleteNode, $author$project$Main$UpdatedGraph, id));
-			case 'SetOutput':
-				var id = msg.a;
-				var out = msg.b;
-				return _Utils_Tuple2(
-					model,
-					A3($author$project$Api$setOutput, $author$project$Main$UpdatedGraph, id, out));
 			case 'UpdatedGraph':
 				return _Utils_Tuple2(
 					model,
@@ -15812,8 +15886,13 @@ var $author$project$Main$slider = F2(
 			{
 				label: A2(
 					$mdgriffith$elm_ui$Element$Input$labelAbove,
-					_List_Nil,
-					$mdgriffith$elm_ui$Element$text(par.name)),
+					_List_fromArray(
+						[
+							$mdgriffith$elm_ui$Element$width(
+							$mdgriffith$elm_ui$Element$px(400))
+						]),
+					$mdgriffith$elm_ui$Element$text(
+						par.name + (' ' + $author$project$Utils$floatString(par.value)))),
 				max: 1.0,
 				min: 0.0,
 				onChange: function (v) {
@@ -15887,7 +15966,9 @@ var $author$project$Main$displayNode = F3(
 			$mdgriffith$elm_ui$Element$column,
 			_List_fromArray(
 				[
-					$mdgriffith$elm_ui$Element$width($mdgriffith$elm_ui$Element$fill)
+					$mdgriffith$elm_ui$Element$width($mdgriffith$elm_ui$Element$fill),
+					$mdgriffith$elm_ui$Element$height($mdgriffith$elm_ui$Element$fill),
+					$mdgriffith$elm_ui$Element$spacing(20)
 				]),
 			_List_fromArray(
 				[
@@ -15895,39 +15976,58 @@ var $author$project$Main$displayNode = F3(
 					$mdgriffith$elm_ui$Element$row,
 					_List_fromArray(
 						[
-							$mdgriffith$elm_ui$Element$spacing(10)
+							$mdgriffith$elm_ui$Element$spacing(20),
+							$mdgriffith$elm_ui$Element$width($mdgriffith$elm_ui$Element$fill)
 						]),
-					_List_fromArray(
-						[
-							$mdgriffith$elm_ui$Element$text(
-							$elm$core$String$fromInt(n.id) + (' ' + $author$project$ProcessGraph$ugenLabel(n.label))),
-							A3(
-							$author$project$Main$simpleStateButton,
-							'Connect',
-							$elm_community$maybe_extra$Maybe$Extra$isJust(waiting),
-							$author$project$Main$WaitingToConnect(n.id)),
-							A2(
-							$mdgriffith$elm_ui$Element$el,
-							_List_fromArray(
-								[
-									$mdgriffith$elm_ui$Element$width(
-									$mdgriffith$elm_ui$Element$px(60)),
-									$mdgriffith$elm_ui$Element$padding(5),
-									$mdgriffith$elm_ui$Element$Border$solid,
-									$mdgriffith$elm_ui$Element$Border$width(1)
-								]),
-							$mdgriffith$elm_ui$Element$text(
-								$author$project$Utils$floatString(polled))),
-							A2(
-							$author$project$Main$simpleButton,
-							'Delete',
-							$author$project$Main$DeleteNode(n.id))
-						])),
+					_Utils_ap(
+						_List_fromArray(
+							[
+								A2(
+								$mdgriffith$elm_ui$Element$el,
+								_List_fromArray(
+									[
+										$mdgriffith$elm_ui$Element$width(
+										$mdgriffith$elm_ui$Element$px(400))
+									]),
+								$mdgriffith$elm_ui$Element$text(
+									$elm$core$String$fromInt(n.id) + (' ' + $author$project$ProcessGraph$ugenLabel(n.label)))),
+								A3(
+								$author$project$Main$simpleStateButton,
+								'Connect',
+								$elm_community$maybe_extra$Maybe$Extra$isJust(waiting),
+								$author$project$Main$WaitingToConnect(n.id)),
+								A2(
+								$author$project$Main$simpleButton,
+								'Delete',
+								$author$project$Main$DeleteNode(n.id)),
+								A2(
+								$mdgriffith$elm_ui$Element$el,
+								_List_fromArray(
+									[
+										$mdgriffith$elm_ui$Element$width(
+										$mdgriffith$elm_ui$Element$px(60)),
+										$mdgriffith$elm_ui$Element$padding(5),
+										$mdgriffith$elm_ui$Element$Border$solid,
+										$mdgriffith$elm_ui$Element$Border$width(1)
+									]),
+								$mdgriffith$elm_ui$Element$text(
+									$author$project$Utils$floatString(polled)))
+							]),
+						A2(
+							$elm$core$List$map,
+							function (_v0) {
+								var out_i = _v0.a;
+								var amp = _v0.b;
+								return $mdgriffith$elm_ui$Element$text(
+									' out: ' + ($elm$core$String$fromInt(out_i) + (' amp:' + $author$project$Utils$floatString(amp))));
+							},
+							$elm_community$intdict$IntDict$toList(n.label.output_sends)))),
 					A2(
 					$mdgriffith$elm_ui$Element$row,
 					_List_fromArray(
 						[
-							$mdgriffith$elm_ui$Element$spacing(10)
+							$mdgriffith$elm_ui$Element$spacing(20),
+							$mdgriffith$elm_ui$Element$width($mdgriffith$elm_ui$Element$fill)
 						]),
 					A2(
 						$elm$core$List$map,
@@ -17026,7 +17126,14 @@ var $author$project$Main$outputSlider = F2(
 		return A2(
 			$author$project$Main$slider,
 			$author$project$Main$SetOutputs(channel),
-			A6($author$project$Parameters$Parameter, -1, v, $author$project$Parameters$Lin, 'Output 1', 0.0, 1.0));
+			A6(
+				$author$project$Parameters$Parameter,
+				-1,
+				v,
+				$author$project$Parameters$Lin,
+				'Output ' + $elm$core$String$fromInt(channel),
+				0.0,
+				1.0));
 	});
 var $author$project$Main$AddProcess = function (a) {
 	return {$: 'AddProcess', a: a};
@@ -17199,21 +17306,6 @@ var $author$project$Main$SetFilterQ = function (a) {
 var $author$project$Main$SetFilterType = function (a) {
 	return {$: 'SetFilterType', a: a};
 };
-var $elm$core$Maybe$map2 = F3(
-	function (func, ma, mb) {
-		if (ma.$ === 'Nothing') {
-			return $elm$core$Maybe$Nothing;
-		} else {
-			var a = ma.a;
-			if (mb.$ === 'Nothing') {
-				return $elm$core$Maybe$Nothing;
-			} else {
-				var b = mb.a;
-				return $elm$core$Maybe$Just(
-					A2(func, a, b));
-			}
-		}
-	});
 var $mdgriffith$elm_ui$Element$Input$Option = F2(
 	function (a, b) {
 		return {$: 'Option', a: a, b: b};
@@ -18197,6 +18289,8 @@ var $author$project$Main$processRow = function (m) {
 				A2($author$project$Main$addProcess, 'Gauss', $author$project$ProcessGraph$Gauss),
 				A2($author$project$Main$addProcess, 'RMS', $author$project$ProcessGraph$RMS),
 				A2($author$project$Main$addProcess, 'BitNeg', $author$project$ProcessGraph$BitNeg),
+				A2($author$project$Main$addProcess, 'BitOr', $author$project$ProcessGraph$BitOr),
+				A2($author$project$Main$addProcess, 'BitAnd', $author$project$ProcessGraph$BitAnd),
 				A2(
 				$author$project$Main$addProcess,
 				'SoundIn0',
@@ -19524,7 +19618,7 @@ var $elm_community$typed_svg$TypedSvg$Attributes$InPx$cy = function (value) {
 	return $elm_community$typed_svg$TypedSvg$Attributes$cy(
 		$elm_community$typed_svg$TypedSvg$Types$px(value));
 };
-var $author$project$ProcessGraph$defaultUGen = A3($author$project$ProcessGraph$UGen, $author$project$ProcessGraph$Add, true, $author$project$ProcessGraph$None);
+var $author$project$ProcessGraph$defaultUGen = A4($author$project$ProcessGraph$UGen, $author$project$ProcessGraph$Add, true, $author$project$ProcessGraph$None, $elm_community$intdict$IntDict$empty);
 var $elm_community$typed_svg$TypedSvg$line = $elm_community$typed_svg$TypedSvg$Core$node('line');
 var $elm_community$typed_svg$TypedSvg$Types$PaintNone = {$: 'PaintNone'};
 var $avh4$elm_color$Color$toCssString = function (_v0) {

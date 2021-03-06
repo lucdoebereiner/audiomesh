@@ -19,6 +19,7 @@ import Html exposing (Html)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
 import Http
+import IntDict
 import Maybe.Extra as M
 import OutputIndices
 import Parameters exposing (Mapping(..), Parameter)
@@ -26,11 +27,6 @@ import ProcessGraph exposing (..)
 import Task
 import Time
 import Utils exposing (..)
-
-
-
--- TODO
--- scope
 
 
 type alias Model =
@@ -118,7 +114,7 @@ type Msg
     | SelectNode Graph.NodeId
     | SelectEdge Int
     | DeleteNode Int
-    | SetOutput Int Int
+      --    | SetOutput Int Int
     | SetVolume Float
     | NoOp (Result Http.Error ())
     | AddProcess Process
@@ -176,9 +172,16 @@ update msg model =
             let
                 newIndices =
                     Array.set channel pos model.outputIndices
+
+                specs =
+                    Maybe.map (OutputIndices.outputSpecs newIndices) model.graph
             in
-            ( { model | outputIndices = newIndices }
-            , Maybe.map (\g -> Api.setOutputs NoOp (OutputIndices.outputSpecs newIndices g)) model.graph
+            ( { model | outputIndices = newIndices, graph = Maybe.map2 OutputIndices.updateGraphWithSpecs specs model.graph }
+            , Maybe.map
+                (Api.setOutputs
+                    NoOp
+                )
+                specs
                 |> Maybe.withDefault Cmd.none
             )
 
@@ -250,12 +253,6 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
-        -- GotOutputs res ->
-        --     case res of
-        --         Ok l ->
-        --             ( { model | outputs = l }, Cmd.none )
-        --         _ ->
-        --             ( model, Cmd.none )
         GetGraph ->
             ( model, Api.getGraph GotGraph )
 
@@ -292,9 +289,6 @@ update msg model =
 
         DeleteNode id ->
             ( model, Api.deleteNode UpdatedGraph id )
-
-        SetOutput id out ->
-            ( model, Api.setOutput UpdatedGraph id out )
 
         UpdatedGraph _ ->
             ( model, Api.getGraph GotGraph )
@@ -425,18 +419,34 @@ simpleStateButton s b msg =
 
 displayNode : Float -> Maybe Graph.NodeId -> Graph.Node UGen -> Element Msg
 displayNode polled waiting n =
-    column [ width fill ]
-        [ row [ spacing 10 ]
-            [ text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
-            , simpleStateButton "Connect"
+    column [ width fill, height fill, spacing 20 ]
+        [ row [ spacing 20, width fill ]
+            ([ el [ width (px 400) ] <| text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
+             , simpleStateButton "Connect"
                 (M.isJust waiting)
                 (WaitingToConnect n.id)
-            , el [ width (px 60), padding 5, Border.solid, Border.width 1 ] <|
+             , simpleButton "Delete" (DeleteNode n.id)
+             , el
+                [ width (px 60)
+                , padding 5
+                , Border.solid
+                , Border.width 1
+                ]
+               <|
                 text <|
                     floatString polled
-            , simpleButton "Delete" (DeleteNode n.id)
-            ]
-        , row [ spacing 10 ] <|
+             ]
+                ++ List.map
+                    (\( out_i, amp ) ->
+                        text <|
+                            " out: "
+                                ++ String.fromInt out_i
+                                ++ " amp:"
+                                ++ floatString amp
+                    )
+                    (IntDict.toList n.label.output_sends)
+            )
+        , row [ spacing 20, width fill ] <|
             List.map
                 (\p -> slider (SetProcessParameter n.id p.idx) p)
                 (processParameters
@@ -462,7 +472,7 @@ slider msg par =
             )
         ]
         { onChange = \v -> msg (Parameters.mapped { par | value = v })
-        , label = Input.labelAbove [] (text par.name)
+        , label = Input.labelAbove [ width (px 400) ] (text (par.name ++ " " ++ floatString par.value))
         , min = 0.0
         , max = 1.0
         , value = Parameters.unmapped par par.value
@@ -478,7 +488,7 @@ volumeSlider v =
 
 outputSlider : Int -> Float -> Element Msg
 outputSlider channel v =
-    slider (SetOutputs channel) (Parameter -1 v Lin "Output 1" 0.0 1.0)
+    slider (SetOutputs channel) (Parameter -1 v Lin ("Output " ++ String.fromInt channel) 0.0 1.0)
 
 
 edgesSlider : Float -> Element Msg
@@ -682,12 +692,12 @@ processRow m =
         , addProcess "Gauss" Gauss
         , addProcess "RMS" RMS
         , addProcess "BitNeg" BitNeg
+        , addProcess "BitOr" BitOr
+
+        --        , addProcess "BitXOr" BitXOr
+        , addProcess "BitAnd" BitAnd
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
-
-        -- , addProcess "BitOr" BitOr
-        -- , addProcess "BitXOr" BitXOr
-        -- , addProcess "BitAnd" BitAnd
         , delayInput m.delayLength
         , sinInput m.sinMul
         , sinOscInput m.sinOscFreq m.sinOscFreqMul
