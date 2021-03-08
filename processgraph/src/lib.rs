@@ -18,20 +18,34 @@ use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 
 const PI: f64 = f64::consts::PI;
-const SR: f64 = 44100f64;
-static FREQ_FAC: f64 = 2.0 * PI / SR;
+
+static mut SR: f64 = 44100f64;
+static mut FREQ_FAC: f64 = unsafe { 2.0 * PI / SR };
+// const SR: f64 = 44100f64;
+// static FREQ_FAC: f64 = 2.0 * PI / SR;
 const DEBUG: bool = false;
+
+pub fn set_sr(sr: f64) {
+    unsafe {
+        SR = sr;
+        FREQ_FAC = 2.0 * PI / SR;
+    }
+}
+
+fn get_sr() -> f64 {
+    unsafe { SR }
+}
 
 // TODO
 // refactor to multiple modules
 // move debug flag to main
 // softclip on filter input optional
 // variable delay times
-// input indices
 // kuramoto
 // zip
 
 // DONE
+// input indices
 // lag
 // not necessary
 // remember node index in ugen
@@ -81,6 +95,15 @@ pub enum Process {
         threshold: lag::Lag,
         ratio: lag::Lag,
         makeup: lag::Lag,
+    },
+    Ducking {
+        #[serde(skip)]
+        input_level: Vec<Process>,
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "ducking_lag")]
+        output_factor: lag::Lag,
     },
     Spike {
         #[serde(skip)]
@@ -226,9 +249,16 @@ where
 
 pub fn init_after_deserialize(process: &mut Process) {
     match process {
-        Process::Filter { ref mut filter, .. } => filter.init(),
+        Process::Filter { ref mut filter, .. } => filter.init(get_sr()),
+
         _ => (),
     }
+}
+
+fn ducking_lag() -> lag::Lag {
+    let mut dlag = lag::lag(0.0);
+    dlag.set_duration_ud(2.0, 0.25, get_sr());
+    dlag
 }
 
 // index always 0, weight always 1
@@ -263,7 +293,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         } => {
             //            let freq_in = numerical::curvelin(input.abs(), 0.0, 1.0, 1.0, freq_mul.tick(), 2.0);
             let output = phase.sin();
-            *phase += (freq.tick() + (*input * freq_mul.tick())) * FREQ_FAC;
+            *phase += (freq.tick() + (*input * freq_mul.tick())) * unsafe { FREQ_FAC };
             output
         }
         Process::Mul { inputs, .. } => inputs.iter().product(),
@@ -277,7 +307,7 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         Process::Filter {
             input,
             ref mut filter,
-        } => filter.process((*input).tanh()),
+        } => filter.process(*input),
         // TODO debug the 0.0s in here
         Process::Ring { ref mut inputs, .. } => inputs
             .iter_mut()
@@ -301,16 +331,25 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
                     * level.powf(1.0 / current_ratio))
                     / level;
                 let output = *input * fac * makeup.tick();
-                // println!(
-                //     "level {}, ratio {}, fac {}, output {}",
-                //     level, current_ratio, fac, output
-                // );
                 output
             } else {
                 let output = *input * makeup.tick();
-                //                println!("level {}, output {}", level, output);
                 output
             }
+        }
+        Process::Ducking {
+            ref mut input_level,
+            input,
+            output_factor,
+        } => {
+            let level: f64 = input_level
+                .iter_mut()
+                .map(|p| process(p, external_input))
+                .sum();
+            let mut out_target = 1.0 - (level / 0.707);
+            out_target = out_target.min(1.0).max(0.0);
+            output_factor.set_target(out_target);
+            *input * output_factor.tick()
         }
         // leaky integrate and fire
         Process::Spike {
@@ -492,13 +531,29 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
                     input_level.push(rms_proc());
                 }
                 set_or_add(input, input_value, add);
-                set_input(&mut input_level[0], 0, input_value, false);
+                set_input(&mut input_level[0], 0, input_value, add);
             }
             1 => threshold.set_target(input_value),
             2 => ratio.set_target(input_value),
             3 => makeup.set_target(input_value),
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
+
+        Process::Ducking {
+            ref mut input,
+            ref mut input_level,
+            ..
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => {
+                if input_level.len() < 1 {
+                    input_level.push(rms_proc());
+                }
+                set_input(&mut input_level[0], 0, input_value, add);
+            }
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
+
         Process::Constant { .. } => (),
         //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
         Process::SoundIn { ref mut factor, .. } => factor.set_target(input_value), // match idx {
@@ -603,7 +658,7 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
 }
 
 fn lpf1_calc_p(freq: f64) -> f64 {
-    1. - (2. * (freq / SR).tan())
+    1. - (2. * (freq / unsafe { SR }).tan())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -694,6 +749,9 @@ fn spec(process: &Process) -> ProcessSpec {
                 InputType::Amplitude,
             ],
         ),
+        Process::Ducking { .. } => {
+            procspec("ducking", ProcessType::TwoInputs, vec![InputType::Any; 2])
+        }
 
         //        Process::Noise { .. } => procspec("noise", vec![]),
         Process::Wrap { .. } => procspec("wrap", ProcessType::Processor, vec![InputType::Any; 2]),
@@ -743,11 +801,16 @@ fn clear_inputs(process: &mut Process) {
 	| Process::RMS { ref mut input, .. }
         | Process::LPF1 { ref mut input, .. }
 	| Process::LinCon { ref mut input, .. }
-	| Process::Compressor { ref mut input, .. }
 	| Process::Spike { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
-        Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+	Process::Compressor { ref mut input, ref mut input_level, .. }
+	| Process::Ducking { ref mut input, ref mut input_level, .. } => {
+	    *input = 0.0;
+	    clear_chain(input_level);
+	    //input_level.iter_mut().for_each(|i| clear_inputs(i));
+	}
+	Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
 	| Process::Ring { ref mut inputs, ref mut input_counter } => {
 	    *input_counter = 0;
 	    for i in inputs.iter_mut() {
@@ -980,9 +1043,9 @@ fn rms_proc() -> Process {
 //     })
 // }
 
-// pub fn constant(v: f64) -> UGen {
-//     UGen::new(Process::Constant { value: v })
-// }
+pub fn constant(v: f64) -> UGen {
+    UGen::new(Process::Constant { value: v })
+}
 
 // pub fn sin() -> UGen {
 //     UGen::new(Process::Sin {
@@ -1001,9 +1064,11 @@ pub fn sin_osc(freq: f64, freq_mul: f64) -> UGen {
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
-    Process::Filter {
-        input: 0.0,
-        filter: filters::Biquad::new(filter_type, freq, q, SR),
+    unsafe {
+        Process::Filter {
+            input: 0.0,
+            filter: filters::Biquad::new(filter_type, freq, q, SR),
+        }
     }
 }
 
@@ -1031,6 +1096,14 @@ pub fn bpf(freq: f64, q: f64) -> UGen {
 //         rng: SeedableRng::seed_from_u64(seed),
 //     })
 // }
+
+pub fn ducking() -> UGen {
+    UGen::new(Process::Ducking {
+        input: 0.0,
+        input_level: vec![],
+        output_factor: ducking_lag(),
+    })
+}
 
 // fn sinosc(freq: f64) -> Process {
 //     Process::SinOsc {
@@ -1117,14 +1190,24 @@ pub fn curvelin(in_min: f64, in_max: f64, out_min: f64, out_max: f64) -> UGen {
 pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>;
 
 pub struct UGenGraph {
-    pub graph: UGenGraphStructure,
+    pub graph: UGenGraphStructure, // TODO: goal, make no longer pub, all edge/node manipulations via impl
     current_listening_nodes: Vec<NodeIndex>,
 }
 
-pub fn new_graph() -> UGenGraph {
-    UGenGraph {
-        graph: StableGraph::with_capacity(100, 100),
-        current_listening_nodes: vec![],
+impl UGenGraph {
+    pub fn new() -> UGenGraph {
+        UGenGraph {
+            graph: StableGraph::with_capacity(100, 100),
+            current_listening_nodes: vec![],
+        }
+    }
+
+    pub fn connect(&mut self, from: NodeIndex, to: NodeIndex, weight: Connection) -> EdgeIndex {
+        self.graph.update_edge(from, to, weight)
+    }
+
+    pub fn add(&mut self, ugen: UGen) -> NodeIndex {
+        self.graph.add_node(ugen)
     }
 }
 
@@ -1179,9 +1262,9 @@ pub fn band_pass2(g: &mut UGenGraph, f1: f64, f2: f64, q: f64) -> (NodeIndex, No
     let low2 = g.graph.add_node(lpf(f2, q));
     let high1 = g.graph.add_node(hpf(f1, q));
     let high2 = g.graph.add_node(hpf(f1, q));
-    g.graph.add_edge(low1, low2, (0, lag::lag(1.0)));
-    g.graph.add_edge(low2, high1, (0, lag::lag(1.0)));
-    g.graph.add_edge(high1, high2, (0, lag::lag(1.0)));
+    g.connect(low1, low2, (0, lag::lag(1.0)));
+    g.connect(low2, high1, (0, lag::lag(1.0)));
+    g.connect(high1, high2, (0, lag::lag(1.0)));
     (low1, high2)
 }
 
@@ -1215,35 +1298,22 @@ pub fn filter_bank(
     let outputs = filters
         .iter()
         .map(|(input, output)| {
-            g.graph.add_edge(input_sum, *input, (0, lag::lag(1.0)));
+            g.connect(input_sum, *input, (0, lag::lag(1.0)));
             *output
         })
         .collect();
     (input_sum, outputs)
 }
 
-pub fn rnd_connections(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) {
+pub fn rnd_connections(g: &mut UGenGraph, nodes: &[NodeIndex]) {
     let mut rng = thread_rng();
     let mut shuffled = nodes.to_vec();
     shuffled.shuffle(&mut rng);
-    //    let mut edges = Vec::new();
-    for _i in 0..n_connections {
-        shuffled.iter().for_each(|&idx| {
-            rnd_connect_input(g, idx);
-            rnd_connect_output(g, idx);
-            // let w1 = rng.gen_range(0.7, 1.0);
-            // let w2 = rng.gen_range(0.7, 1.0);
-            // if let Some(to_node) = choose_with_input(g, Some(idx)) {
-            //     edges.push(g.graph.add_edge(idx, to_node, (0, lag::lag(w1))));
-            // }
-            // if does_idx_have_input(g, idx) {
-            //     edges.push(g.graph.add_edge(
-            //         *shuffled.choose(&mut rng).unwrap(),
-            //         idx,
-            //         (0, lag::lag(w2)),
-            //     ));
-        })
-    }
+    shuffled.iter().for_each(|&idx| {
+        rnd_connect_if_necessary(g, idx);
+        //rnd_connect_input(g, idx);
+        //        rnd_connect_output(g, idx);
+    })
 }
 
 fn get_spec(g: &UGenGraph, node: NodeIndex) -> Option<ProcessSpec> {
@@ -1274,7 +1344,7 @@ pub fn rnd_connect_output(g: &mut UGenGraph, new_node: NodeIndex) {
         if has_two_inputs(g, target) {
             idx = rng.gen_range(0, 2);
         };
-        g.graph.add_edge(new_node, target, (idx, lag::lag(w)));
+        g.connect(new_node, target, (idx, lag::lag(w)));
     }
 }
 
@@ -1293,17 +1363,17 @@ pub fn rnd_connect_input(g: &mut UGenGraph, new_node: NodeIndex) {
             ProcessType::Processor => {
                 if let Some(source) = shuffled.choose(&mut rng) {
                     let w = rng.gen_range(0.7, 1.0);
-                    g.graph.add_edge(*source, new_node, (0, lag::lag(w)));
+                    g.connect(*source, new_node, (0, lag::lag(w)));
                 }
             }
             ProcessType::TwoInputs | ProcessType::MultipleInputs => {
                 let w1 = rng.gen_range(0.7, 1.0);
                 let w2 = rng.gen_range(0.7, 1.0);
                 if shuffled.len() > 0 {
-                    g.graph.add_edge(shuffled[0], new_node, (0, lag::lag(w1)));
+                    g.connect(shuffled[0], new_node, (0, lag::lag(w1)));
                 };
                 if shuffled.len() > 1 {
-                    g.graph.add_edge(shuffled[1], new_node, (1, lag::lag(w2)));
+                    g.connect(shuffled[1], new_node, (1, lag::lag(w2)));
                 }
             }
             ProcessType::NoInputGenerator => (),
@@ -1324,7 +1394,7 @@ pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) ->
         let length = filtered_shuffled.len();
         for (i, &idx) in filtered_shuffled.iter().enumerate() {
             let w1 = rng.gen_range(0.7, 1.0);
-            edges.push(g.graph.add_edge(
+            edges.push(g.connect(
                 *idx,
                 *filtered_shuffled[(i + 1) % length],
                 (0, lag::lag(w1)),
@@ -1337,7 +1407,7 @@ pub fn rnd_circle(g: &mut UGenGraph, nodes: &[NodeIndex], n_connections: u32) ->
             .filter(|&idx| !does_idx_have_input(g, *idx))
             .collect();
         for &idx in generators.iter() {
-            edges.push(g.graph.add_edge(
+            edges.push(g.connect(
                 *idx,
                 **filtered_shuffled.choose(&mut rng).unwrap(),
                 (0, lag::lag(w2)),
@@ -1454,9 +1524,7 @@ pub fn connect_least_connected(graph: &mut UGenGraph) {
             .next()
         {
             let w = thread_rng().gen_range(0.7, 1.0);
-            graph
-                .graph
-                .add_edge(*first, *future_neighbor, (0, lag::lag(w)));
+            graph.connect(*first, *future_neighbor, (0, lag::lag(w)));
         }
     }
 }
@@ -1490,12 +1558,12 @@ pub fn ensure_connectivity(graph: &mut UGenGraph) {
         for disconnected_node in rest.iter() {
             let w1 = rng.gen_range(0.7, 1.0);
             let w2 = rng.gen_range(0.7, 1.0);
-            graph.graph.add_edge(
+            graph.connect(
                 disconnected_node[0],
                 *first.choose(&mut rng).unwrap(),
                 (0, lag::lag(w1)),
             );
-            graph.graph.add_edge(
+            graph.connect(
                 *first.choose(&mut rng).unwrap(),
                 disconnected_node[0],
                 (0, lag::lag(w2)),

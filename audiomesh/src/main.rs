@@ -249,7 +249,7 @@ fn handle_messages(
         UpdateMessage::Randomize => {
             graph.graph.clear_edges();
             let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
-            rnd_connections(graph, &nodes, 1);
+            rnd_connections(graph, &nodes);
             let new_flow = establish_flow(graph);
             *flow = new_flow;
         }
@@ -304,23 +304,19 @@ fn handle_messages(
             *flow = new_flow;
         }
         UpdateMessage::AddNode(node) => {
-            let idx = graph
-                .graph
-                .add_node(UGen::new(node).clip(ClipType::SoftClip));
+            let idx = graph.graph.add_node(UGen::new(node).clip(ClipType::None));
             rnd_connect_if_necessary(graph, idx);
             update_connections_and_flow(graph, flow)
         }
 
         UpdateMessage::SetGraph(g) => {
             graph.graph.clear();
-            *graph = new_graph();
+            *graph = UGenGraph::new();
             graph.graph = g;
             update_connections_and_flow(graph, flow)
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
-            let _idx = graph
-                .graph
-                .add_edge(node_from, node_to, (index as u32, lag::lag(weight)));
+            let _idx = graph.connect(node_from, node_to, (index as u32, lag::lag(weight)));
         }
         UpdateMessage::ConnectLeastConnected => {
             connect_least_connected(graph);
@@ -367,34 +363,41 @@ fn main() {
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
 
     // Create graph and init
-    let mut g = new_graph();
+    let mut g = UGenGraph::new();
 
     //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    let del1 = g.graph.add_node(delay(44100).clip(ClipType::Wrap));
+    //    let del1 = g.graph.add_node(delay(44100).clip(ClipType::Wrap));
     //    let rms = g.add_node(rms());
     //    let sinph = g.add_node(sin());
     // let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
     //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
-    let sum = g.graph.add_node(add().clip(ClipType::Wrap));
+    //  let sum = g.graph.add_node(add().clip(ClipType::Wrap));
     // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
     //    let filter1 = g.add_node(lpf(100.0, 6.0));
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    let in1 = g.graph.add_node(sound_in(0).clip(ClipType::SoftClip));
-    let in2 = g.graph.add_node(sound_in(1).clip(ClipType::SoftClip));
+    let in1 = g.add(sound_in(0).clip(ClipType::None));
+    let in2 = g.add(sound_in(1).clip(ClipType::None));
+
+    let d1 = g.add(ducking());
+    // let c1 = g.graph.add_node(constant(0.5));
+    // let c2 = g.graph.add_node(constant(0.5));
+
     // let gauss = g.add_node(gauss());
     //let ring = g.add_node(ring());
+    //    let ring = g.graph.add_node(ring());
     //    let c1 = g.add_node(constant(0.8));
     //    let c2 = g.add_node(constant(1.0));
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
     //  let sp = g.add_node(spike(0.3, 0.0001, 100));
-    let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
-    let s2 = g.graph.add_node(sin_osc(2225.0, 0.0));
-    g.graph.add_edge(s1, del1, (0, lag::lag(0.5)));
-    g.graph.add_edge(del1, sum, (0, lag::lag(0.5)));
-    g.graph.add_edge(s2, sum, (0, lag::lag(0.5)));
-    g.graph.add_edge(in1, sum, (0, lag::lag(0.5)));
-    g.graph.add_edge(in2, sum, (0, lag::lag(0.5)));
+    //let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
+    //    let s2 = g.graph.add_node(sin_osc(2225.0, 0.0));
+    // g.graph.add_edge(in1, mul, (0, lag::lag(1.0)));
+    // g.graph.add_edge(in2, mul, (1, lag::lag(1.0)));
+
+    g.connect(in1, d1, (0, lag::lag(1.0)));
+    g.connect(in2, d1, (1, lag::lag(1.0)));
+
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
     //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
@@ -425,6 +428,9 @@ fn main() {
 
     // JACK
     let (client, _status) = jack::Client::new("audiomesh", jack::ClientOptions::empty()).unwrap();
+
+    // set sampling rate in lib
+    set_sr(client.sample_rate() as f64);
 
     // Setting up output ports
     let mut out_ports = Vec::new();

@@ -94,7 +94,7 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions m =
-    Sub.batch [ Time.every 300 Tick, Time.every 4000 UpdateDrawGraph ]
+    Sub.batch [ Time.every 300 Tick, Time.every 1000 UpdateDrawGraph ]
 
 
 main =
@@ -762,9 +762,11 @@ processRow m =
     wrappedRow [ width fill, spacing 10 ]
         [ addProcess "Add" Add
         , addProcess "Mul" Mul
+        , addProcess "Softclip" Softclip
         , addProcess "Ring" Ring
         , addProcess "Gauss" Gauss
         , addProcess "RMS" RMS
+        , addProcess "Ducking" Ducking
         , addProcess "BitNeg" BitNeg
         , addProcess "BitOr" BitOr
 
@@ -890,7 +892,7 @@ view model =
                                     []
                                     ( 2000, 1600 )
                                     ( 3000, 2400 )
-                                    150.0
+                                    300.0
                             )
                             g
                             model.selectedNode

@@ -109,6 +109,8 @@ type Process
     | Delay { length : Int }
     | Add
     | Mul
+    | Softclip
+    | Ducking
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
     | Gauss
@@ -154,9 +156,8 @@ processParameters p =
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
             ]
 
-        Constant { value } ->
-            [ Parameter 1 value Lin "Value" -1.0 1.0 ]
-
+        -- Constant { value } ->
+        --     [ Parameter 1 value Lin "Value" -1.0 1.0 ]
         Filter { filterType, freq, q } ->
             [ Parameter 1 freq Exp "Freq" 5.0 4000.0, Parameter 2 q Exp "Q" 0.1 20.0 ]
 
@@ -278,6 +279,12 @@ processName p =
         Mul ->
             "Mul"
 
+        Ducking ->
+            "Ducking"
+
+        Softclip ->
+            "Softclip"
+
         Ring ->
             "Ring"
 
@@ -340,15 +347,6 @@ encodeProcess p =
         Delay i ->
             encObj p (JE.object [ ( "input", JE.int i.length ) ])
 
-        Add ->
-            encObj p (JE.object [])
-
-        Mul ->
-            encObj p (JE.object [])
-
-        Ring ->
-            encObj p (JE.object [])
-
         Filter f ->
             encObj p
                 (JE.object
@@ -357,12 +355,6 @@ encodeProcess p =
                     , ( "q", JE.float f.q )
                     ]
                 )
-
-        Gauss ->
-            encObj p (JE.object [])
-
-        RMS ->
-            encObj p (JE.object [])
 
         Sin m ->
             encObj p (JE.object [ ( "mul", JE.float m.mul ) ])
@@ -380,21 +372,6 @@ encodeProcess p =
 
         SoundIn s ->
             encObj p (JE.object [ ( "index", JE.int s.index ), ( "factor", JE.float s.factor ) ])
-
-        Square ->
-            encObj p (JE.object [])
-
-        BitNeg ->
-            encObj p (JE.object [])
-
-        BitOr ->
-            encObj p (JE.object [])
-
-        BitXOr ->
-            encObj p (JE.object [])
-
-        BitAnd ->
-            encObj p (JE.object [])
 
         LinCon l ->
             encObj p
@@ -422,6 +399,9 @@ encodeProcess p =
                     , ( "t_rest", JE.int s.tRest )
                     ]
                 )
+
+        _ ->
+            encObj p (JE.object [])
 
 
 processToString : Process -> String
@@ -495,9 +475,9 @@ decodeDelay =
         |> required "input" int
 
 
-decodeAdd : Decoder Process
-decodeAdd =
-    Decode.succeed Add
+decodeSoftclip : Decoder Process
+decodeSoftclip =
+    Decode.succeed Softclip
 
 
 decodeSoundIn : Decoder Process
@@ -507,14 +487,9 @@ decodeSoundIn =
         |> required "factor" float
 
 
-decodeMul : Decoder Process
-decodeMul =
-    Decode.succeed Mul
-
-
-decodeRing : Decoder Process
-decodeRing =
-    Decode.succeed Ring
+decodeSimpleProcess : Process -> Decoder Process
+decodeSimpleProcess p =
+    Decode.succeed p
 
 
 decodeSquare : Decoder Process
@@ -557,11 +532,6 @@ decodeSin : Decoder Process
 decodeSin =
     Decode.succeed (\m -> Sin { mul = m })
         |> required "mul" float
-
-
-decodeGauss : Decoder Process
-decodeGauss =
-    Decode.succeed Gauss
 
 
 decodeFilter : Decoder Process
@@ -649,16 +619,18 @@ decodeUGen =
         |> required "process"
             (oneOf
                 [ field "Delay" decodeDelay
-                , field "Add" decodeAdd
+                , field "Add" (decodeSimpleProcess Add)
                 , field "Mem" decodeMem
-                , field "Mul" decodeMul
-                , field "Ring" decodeRing
+                , field "Mul" (decodeSimpleProcess Mul)
+                , field "Softclip" decodeSoftclip
+                , field "Ring" (decodeSimpleProcess Ring)
                 , field "RMS" decodeRMS
                 , field "Constant" decodeConstant
                 , field "Compressor" decodeCompressor
                 , field "Spike" decodeSpike
                 , field "Sin" decodeSin
-                , field "Gauss" decodeGauss
+                , field "Ducking" (decodeSimpleProcess Ducking)
+                , field "Gauss" (decodeSimpleProcess Gauss)
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter
                 , field "SinOsc" decodeSinOsc

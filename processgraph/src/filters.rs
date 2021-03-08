@@ -80,11 +80,12 @@ impl Biquad {
             freq: lag(freq),
             q: lag(q),
         };
-        filter.init();
+        filter.init(sample_rate);
         filter
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&mut self, sr: f64) {
+        self.sample_rate = sr;
         self.update_coefficients(true);
     }
 
