@@ -379,7 +379,7 @@ fn main() {
     let in1 = g.add(sound_in(0).clip(ClipType::None));
     //    let in2 = g.add(sound_in(1).clip(ClipType::None));
 
-    let d1 = g.add(pll());
+    let d1 = g.add(resonator(400.0, 0.1));
     // let c1 = g.graph.add_node(constant(0.5));
     // let c2 = g.graph.add_node(constant(0.5));
 

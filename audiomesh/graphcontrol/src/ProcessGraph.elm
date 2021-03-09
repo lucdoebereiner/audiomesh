@@ -115,6 +115,7 @@ type Process
     | PLL { factor : Float }
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
+    | Resonator { decay : Float }
     | Gauss
     | RMS
     | Sin { mul : Float }
@@ -151,7 +152,7 @@ processParameters p =
             [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
 
         PLL { factor } ->
-            [ Parameter 1 factor Lin "Fac" 0.01 1.0 ]
+            [ Parameter 1 factor Lin "Fac" 0.1 2.0 ]
 
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]
@@ -164,7 +165,14 @@ processParameters p =
         -- Constant { value } ->
         --     [ Parameter 1 value Lin "Value" -1.0 1.0 ]
         Filter { filterType, freq, q } ->
-            [ Parameter 1 freq Exp "Freq" 5.0 4000.0, Parameter 2 q Exp "Q" 0.1 20.0 ]
+            [ Parameter 1 freq Exp "Freq" 10.0 5000.0
+            , Parameter 2 q Exp "Q" 0.1 20.0
+            ]
+
+        Resonator { decay } ->
+            [ --Parameter 1 freq Exp "Freq" 10.0 10000.0
+              Parameter 2 decay Exp "Decay" 0.001 2.0
+            ]
 
         LinCon { linconA, linconB } ->
             [ Parameter 1 linconA Exp "A" 0.001 10.0, Parameter 2 linconB Exp "B" 0.001 20.0 ]
@@ -226,6 +234,16 @@ setInput ( parIdx, val ) proc =
                 _ ->
                     proc
 
+        Resonator r ->
+            case parIdx of
+                -- 1 ->
+                --     Resonator { r | freq = val }
+                2 ->
+                    Resonator { r | decay = val }
+
+                _ ->
+                    proc
+
         LinCon l ->
             case parIdx of
                 1 ->
@@ -283,6 +301,9 @@ processName p =
 
         Add ->
             "Add"
+
+        Resonator _ ->
+            "Resonator"
 
         PLL _ ->
             "PLL"
@@ -361,6 +382,14 @@ encodeProcess p =
         Delay i ->
             encObj p (JE.object [ ( "input", JE.int i.length ) ])
 
+        Resonator r ->
+            encObj p
+                (JE.object
+                    [ ( "freq", JE.float r.freq )
+                    , ( "decay", JE.float r.decay )
+                    ]
+                )
+
         Filter f ->
             encObj p
                 (JE.object
@@ -437,6 +466,12 @@ processToString p =
                 ++ " q:"
                 ++ floatString f.q
 
+        Resonator r ->
+            "Resonator"
+                --                ++ floatString r.freq
+                ++ " decay:"
+                ++ floatString r.decay
+
         SoundIn i ->
             "SoundIn "
                 ++ String.fromInt i.index
@@ -495,11 +530,6 @@ decodeDelay =
         |> required "input" int
 
 
-decodeSoftclip : Decoder Process
-decodeSoftclip =
-    Decode.succeed Softclip
-
-
 decodeSoundIn : Decoder Process
 decodeSoundIn =
     Decode.succeed (\input f -> SoundIn { index = input, factor = f })
@@ -510,11 +540,6 @@ decodeSoundIn =
 decodeSimpleProcess : Process -> Decoder Process
 decodeSimpleProcess p =
     Decode.succeed p
-
-
-decodeSquare : Decoder Process
-decodeSquare =
-    Decode.succeed Square
 
 
 decodeBitAnd : Decoder Process
@@ -553,6 +578,13 @@ decodePLL : Decoder Process
 decodePLL =
     Decode.succeed (\f -> PLL { factor = f })
         |> required "factor" float
+
+
+decodeResonator : Decoder Process
+decodeResonator =
+    Decode.succeed (\d -> Resonator { decay = d })
+        --        |> required "freq" float
+        |> required "decay" float
 
 
 decodeFilter : Decoder Process
@@ -643,7 +675,7 @@ decodeUGen =
                 , field "Add" (decodeSimpleProcess Add)
                 , field "Mem" decodeMem
                 , field "Mul" (decodeSimpleProcess Mul)
-                , field "Softclip" decodeSoftclip
+                , field "Softclip" (decodeSimpleProcess Softclip)
                 , field "Ring" (decodeSimpleProcess Ring)
                 , field "RMS" (decodeSimpleProcess RMS)
                 , field "Constant" decodeConstant
@@ -654,11 +686,12 @@ decodeUGen =
                 , field "Gauss" (decodeSimpleProcess Gauss)
                 , field "EnvFollow" (decodeSimpleProcess EnvFollow)
                 , field "PLL" decodePLL
+                , field "Resonator" decodeResonator
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter
                 , field "SinOsc" decodeSinOsc
                 , field "LinCon" decodeLinCon
-                , field "Square" decodeSquare
+                , field "Square" (decodeSimpleProcess Square)
                 , field "BitAnd" decodeBitAnd
                 , field "BitOr" decodeBitOr
                 , field "BitXOr" decodeBitXOr

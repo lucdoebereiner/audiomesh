@@ -801,6 +801,7 @@ processRow m =
         , sinOscInput m.sinOscFreq m.sinOscFreqMul
         , linconInput m.linConA m.linConB
         , filterInput m.filterType m.filterFreq m.filterQ
+        , addProcess "Resonator" (Resonator { decay = 0.1 })
         , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
         , spikeInput m.spikeThreshold m.spikeTConst m.spikeR m.spikeTRest
         ]

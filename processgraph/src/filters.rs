@@ -212,6 +212,8 @@ impl ComplexRes {
     }
 
     pub fn process(&mut self, input: f64) -> f64 {
+        self.freq.tick();
+        self.decay.tick();
         self.update_coeff(false);
         let x = self.coeff_x * self.x - self.coeff_y * self.y + input;
         let y = self.coeff_y * self.x - self.coeff_x * self.y + input;

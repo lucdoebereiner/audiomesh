@@ -529,7 +529,6 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
         | Process::Sqrt { ref mut input }
         | Process::Mem { ref mut input, .. }
         | Process::RMS { ref mut input, .. }
-        | Process::PLL { ref mut input, .. }
         | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
         Process::PLL {
             ref mut input,
@@ -1182,6 +1181,13 @@ fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
 
 pub fn lpf(freq: f64, q: f64) -> UGen {
     UGen::new(filter(filters::FilterType::BLPF, freq, q))
+}
+
+pub fn resonator(freq: f64, decay: f64) -> UGen {
+    UGen::new(Process::Resonator {
+        input: 0.0,
+        resonator: filters::ComplexRes::new(freq, decay, get_sr()),
+    })
 }
 
 pub fn ring() -> UGen {
