@@ -377,9 +377,9 @@ fn main() {
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
     let in1 = g.add(sound_in(0).clip(ClipType::None));
-    let in2 = g.add(sound_in(1).clip(ClipType::None));
+    //    let in2 = g.add(sound_in(1).clip(ClipType::None));
 
-    let d1 = g.add(ducking());
+    let d1 = g.add(pll());
     // let c1 = g.graph.add_node(constant(0.5));
     // let c2 = g.graph.add_node(constant(0.5));
 
@@ -396,7 +396,7 @@ fn main() {
     // g.graph.add_edge(in2, mul, (1, lag::lag(1.0)));
 
     g.connect(in1, d1, (0, lag::lag(1.0)));
-    g.connect(in2, d1, (1, lag::lag(1.0)));
+    // g.connect(in2, d1, (1, lag::lag(1.0)));
 
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
     //    g.add_edge(s1, ring, (0, lag::lag(1.0)));

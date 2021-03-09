@@ -76,6 +76,11 @@ impl Lag {
         }
     }
 
+    pub fn set_factor(&mut self, factor: f64) {
+        self.factor_up = factor;
+        self.factor_down = factor;
+    }
+
     pub fn set_duration_ud(&mut self, duration_up: f64, duration_down: f64, sr: f64) {
         if duration_up == 0.0 {
             self.factor_up = 0.0;

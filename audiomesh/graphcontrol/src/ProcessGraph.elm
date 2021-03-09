@@ -111,6 +111,8 @@ type Process
     | Mul
     | Softclip
     | Ducking
+    | EnvFollow
+    | PLL { factor : Float }
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
     | Gauss
@@ -147,6 +149,9 @@ processParameters p =
 
         Sin { mul } ->
             [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
+
+        PLL { factor } ->
+            [ Parameter 1 factor Lin "Fac" 0.01 1.0 ]
 
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]
@@ -189,6 +194,9 @@ setInput ( parIdx, val ) proc =
 
         Sin _ ->
             Sin { mul = val }
+
+        PLL _ ->
+            PLL { factor = val }
 
         SoundIn s ->
             SoundIn { s | factor = val }
@@ -276,11 +284,17 @@ processName p =
         Add ->
             "Add"
 
+        PLL _ ->
+            "PLL"
+
         Mul ->
             "Mul"
 
         Ducking ->
             "Ducking"
+
+        EnvFollow ->
+            "EnvFollow"
 
         Softclip ->
             "Softclip"
@@ -359,6 +373,9 @@ encodeProcess p =
         Sin m ->
             encObj p (JE.object [ ( "mul", JE.float m.mul ) ])
 
+        PLL pll ->
+            encObj p (JE.object [ ( "factor", JE.float pll.factor ) ])
+
         SinOsc s ->
             encObj p
                 (JE.object
@@ -434,6 +451,9 @@ processToString p =
 
         Sin s ->
             "Sin " ++ floatString s.mul
+
+        PLL pll ->
+            "PLL fac: " ++ floatString pll.factor
 
         LinCon l ->
             "LinCon a: "
@@ -523,15 +543,16 @@ decodeConstant =
         |> required "value" float
 
 
-decodeRMS : Decoder Process
-decodeRMS =
-    Decode.succeed RMS
-
-
 decodeSin : Decoder Process
 decodeSin =
     Decode.succeed (\m -> Sin { mul = m })
         |> required "mul" float
+
+
+decodePLL : Decoder Process
+decodePLL =
+    Decode.succeed (\f -> PLL { factor = f })
+        |> required "factor" float
 
 
 decodeFilter : Decoder Process
@@ -624,13 +645,15 @@ decodeUGen =
                 , field "Mul" (decodeSimpleProcess Mul)
                 , field "Softclip" decodeSoftclip
                 , field "Ring" (decodeSimpleProcess Ring)
-                , field "RMS" decodeRMS
+                , field "RMS" (decodeSimpleProcess RMS)
                 , field "Constant" decodeConstant
                 , field "Compressor" decodeCompressor
                 , field "Spike" decodeSpike
                 , field "Sin" decodeSin
                 , field "Ducking" (decodeSimpleProcess Ducking)
                 , field "Gauss" (decodeSimpleProcess Gauss)
+                , field "EnvFollow" (decodeSimpleProcess EnvFollow)
+                , field "PLL" decodePLL
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter
                 , field "SinOsc" decodeSinOsc

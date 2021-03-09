@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::f64;
 
+const PI: f64 = 3.141592653589793;
+const TWOPI: f64 = 6.283185307179586;
+
 use crate::lag::*;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -140,5 +143,90 @@ impl Biquad {
                 }
             }
         }
+    }
+}
+
+// ComplexRes
+
+fn zapgremlins(x: f64) -> f64 {
+    let absx = x.abs();
+
+    if absx > 1e-15_f64 && absx < 1e+15_f64 {
+        x
+    } else {
+        0.0
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ComplexRes {
+    pub freq: Lag,
+    #[serde(skip)]
+    coeff_x: f64,
+    #[serde(skip)]
+    coeff_y: f64,
+    pub decay: Lag, // Exponential decay time constant in seconds
+    #[serde(skip)]
+    res: f64, // Filter resonance coefficient (0...1)
+    #[serde(skip)]
+    x: f64, // First state (real part)
+    #[serde(skip)]
+    y: f64, // Second state (imaginary part)
+    #[serde(skip)]
+    norm_coeff: f64, // Normalisation gain
+    #[serde(skip)]
+    ang: f64,
+    #[serde(skip_serializing)]
+    #[serde(default = "sr_default")]
+    sr: f64,
+}
+
+impl ComplexRes {
+    pub fn new(freq: f64, decay: f64, sr: f64) -> Self {
+        let mut cr = ComplexRes {
+            freq: lag(freq),
+            coeff_x: 0.0,
+            coeff_y: 0.0,
+            decay: lag(decay),
+            res: 0.0,
+            x: 0.0,
+            y: 0.0,
+            norm_coeff: 0.0,
+            ang: 0.0,
+            sr: sr,
+        };
+        cr.freq.set_factor(0.5);
+        cr.decay.set_factor(0.5);
+        cr.update_coeff(true);
+        cr
+    }
+
+    pub fn update_coeff(&mut self, force: bool) {
+        if !self.freq.is_done() || !self.decay.is_done() || force {
+            self.res = (-1.0 / (self.decay.current * self.sr)).exp();
+            self.norm_coeff = (1.0 - self.res.powi(2)) / self.res;
+            self.coeff_x = self.res * (TWOPI * self.freq.current / self.sr).cos();
+            self.coeff_y = self.res * (TWOPI * self.freq.current / self.sr).sin();
+            self.ang = (self.freq.current / self.sr) * TWOPI;
+        }
+    }
+
+    pub fn process(&mut self, input: f64) -> f64 {
+        self.update_coeff(false);
+        let x = self.coeff_x * self.x - self.coeff_y * self.y + input;
+        let y = self.coeff_y * self.x - self.coeff_x * self.y + input;
+        self.x = zapgremlins(x);
+        self.y = zapgremlins(y);
+        y * self.norm_coeff
+    }
+
+    pub fn init(&mut self, sr: f64) {
+        self.sr = sr;
+        self.update_coeff(true);
+    }
+
+    pub fn set_parameters(&mut self, freq: f64, decay: f64) {
+        self.freq.set_target(freq);
+        self.decay.set_target(decay);
     }
 }

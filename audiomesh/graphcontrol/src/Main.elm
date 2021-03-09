@@ -47,6 +47,7 @@ type alias Model =
     , filterQ : String
     , sinOscFreq : String
     , sinOscFreqMul : String
+    , pllFac : String
     , fileName : String
     , waitingToConnect : Maybe Graph.NodeId
     , lastPoll : Float
@@ -74,6 +75,7 @@ init _ =
         ""
         ""
         BLPF
+        ""
         ""
         ""
         ""
@@ -137,6 +139,7 @@ type Msg
     | SetSpikeTConst String
     | SetSpikeR String
     | SetSpikeTRest String
+    | SetPLLFac String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | DeleteEdge Int
@@ -337,6 +340,9 @@ update msg model =
 
         SetDelayLength s ->
             ( { model | delayLength = s }, Cmd.none )
+
+        SetPLLFac s ->
+            ( { model | pllFac = s }, Cmd.none )
 
         SetSinMul s ->
             ( { model | sinMul = s }, Cmd.none )
@@ -589,6 +595,20 @@ delayInput v =
         ]
 
 
+pllInput : String -> Element Msg
+pllInput v =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetPLLFac
+            , text = v
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Fac")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map (\f -> addProcess "PLL" (PLL { factor = f })) (String.toFloat v)
+        ]
+
+
 sinOscInput : String -> String -> Element Msg
 sinOscInput fr frm =
     row [ spacing 5, Border.solid, Border.width 1 ]
@@ -767,6 +787,7 @@ processRow m =
         , addProcess "Gauss" Gauss
         , addProcess "RMS" RMS
         , addProcess "Ducking" Ducking
+        , addProcess "EnvFollow" EnvFollow
         , addProcess "BitNeg" BitNeg
         , addProcess "BitOr" BitOr
 
@@ -775,6 +796,7 @@ processRow m =
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , delayInput m.delayLength
+        , pllInput m.pllFac
         , sinInput m.sinMul
         , sinOscInput m.sinOscFreq m.sinOscFreqMul
         , linconInput m.linConA m.linConB

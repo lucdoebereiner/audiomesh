@@ -105,6 +105,21 @@ pub enum Process {
         #[serde(default = "ducking_lag")]
         output_factor: lag::Lag,
     },
+    EnvFollow {
+        #[serde(skip)]
+        input_level: Vec<Process>,
+        #[serde(skip)]
+        input: f64,
+    },
+    PLL {
+        #[serde(skip)]
+        input: f64,
+        factor: lag::Lag,
+        #[serde(skip)]
+        phase: f64,
+        #[serde(default = "pll_error_lag")]
+        error: lag::Lag,
+    },
     Spike {
         #[serde(skip)]
         input: f64,
@@ -147,6 +162,12 @@ pub enum Process {
         input: f64,
         #[serde(flatten)]
         filter: filters::Biquad,
+    },
+    Resonator {
+        #[serde(skip)]
+        input: f64,
+        #[serde(flatten)]
+        resonator: filters::ComplexRes,
     },
     // Noise {
     //     rng: SmallRng,
@@ -250,6 +271,9 @@ where
 pub fn init_after_deserialize(process: &mut Process) {
     match process {
         Process::Filter { ref mut filter, .. } => filter.init(get_sr()),
+        Process::Resonator {
+            ref mut resonator, ..
+        } => resonator.init(get_sr()),
 
         _ => (),
     }
@@ -258,6 +282,12 @@ pub fn init_after_deserialize(process: &mut Process) {
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
     dlag.set_duration_ud(2.0, 0.25, get_sr());
+    dlag
+}
+
+fn pll_error_lag() -> lag::Lag {
+    let mut dlag = lag::lag(0.0);
+    dlag.set_factor(0.8);
     dlag
 }
 
@@ -296,6 +326,22 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
             *phase += (freq.tick() + (*input * freq_mul.tick())) * unsafe { FREQ_FAC };
             output
         }
+        Process::PLL {
+            input,
+            ref mut factor,
+            ref mut phase,
+            ref mut error,
+        } => {
+            let output = phase.sin();
+            *phase += error.tick() * factor.tick(); // make fac parameter
+            let signums = output.signum() * input.signum();
+            if signums > 0.0 {
+                error.set_target(0.0);
+            } else {
+                error.set_target(1.0);
+            }
+            output
+        }
         Process::Mul { inputs, .. } => inputs.iter().product(),
         Process::Add { inputs } => inputs.iter().sum(),
         Process::Square { input } => input.powf(2.0),
@@ -304,6 +350,10 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
         //        Process::Constant { ref mut value } => value.tick(),
         Process::Constant { value } => *value,
         //        Process::Map { input, func } => (func)(*input),
+        Process::Resonator {
+            input,
+            ref mut resonator,
+        } => resonator.process(*input),
         Process::Filter {
             input,
             ref mut filter,
@@ -346,10 +396,20 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
                 .iter_mut()
                 .map(|p| process(p, external_input))
                 .sum();
-            let mut out_target = 1.0 - (level / 0.707);
+            let mut out_target = 1.0 - level;
             out_target = out_target.min(1.0).max(0.0);
             output_factor.set_target(out_target);
             *input * output_factor.tick()
+        }
+        Process::EnvFollow {
+            ref mut input_level,
+            input,
+        } => {
+            let level: f64 = input_level
+                .iter_mut()
+                .map(|p| process(p, external_input))
+                .sum();
+            *input * level
         }
         // leaky integrate and fire
         Process::Spike {
@@ -374,15 +434,10 @@ fn process(proc: &mut Process, external_input: &[f64]) -> f64 {
                 *v = 0.0;
                 threshold.tick();
                 t_const.tick();
-            //                println!("output {}", output);
             } else {
                 let this_const = t_const.tick();
                 *v = *last_v + (((*last_v * -1.0) + (input.abs() * r.tick())) * this_const);
                 *last_v = *v;
-                // println!(
-                //     "after v {}, input {} , const {}, last {}",
-                //     v, *input, this_const, last_v
-                // );
                 if *v > threshold.tick() {
                     output = 1.0;
                     *t_this_rest = *t_rest;
@@ -474,7 +529,17 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
         | Process::Sqrt { ref mut input }
         | Process::Mem { ref mut input, .. }
         | Process::RMS { ref mut input, .. }
+        | Process::PLL { ref mut input, .. }
         | Process::BitNeg { ref mut input } => set_or_add(input, input_value, add),
+        Process::PLL {
+            ref mut input,
+            ref mut factor,
+            ..
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => factor.set_target(input_value),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
         Process::SinOsc {
             ref mut input,
             ref mut freq,
@@ -554,6 +619,21 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
 
+        Process::EnvFollow {
+            ref mut input,
+            ref mut input_level,
+            ..
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => {
+                if input_level.len() < 1 {
+                    input_level.push(rms_proc());
+                }
+                set_input(&mut input_level[0], 0, input_value, add);
+            }
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
+
         Process::Constant { .. } => (),
         //        Process::Map { ref mut input, .. } => set_or_add(input, input_value, add),
         Process::SoundIn { ref mut factor, .. } => factor.set_target(input_value), // match idx {
@@ -570,6 +650,16 @@ fn set_input(proc: &mut Process, idx: u32, input_value: f64, add: bool) {
             2 => filter.set_parameters(filter.freq.current, input_value),
             _ => panic!("wrong index into {}: {}", name(proc), idx),
         },
+        Process::Resonator {
+            ref mut input,
+            ref mut resonator,
+        } => match idx {
+            0 => set_or_add(input, input_value, add),
+            1 => resonator.set_parameters(input_value, resonator.decay.current),
+            2 => resonator.set_parameters(resonator.freq.current, input_value),
+            _ => panic!("wrong index into {}: {}", name(proc), idx),
+        },
+
         Process::Sin {
             ref mut input,
             ref mut mul,
@@ -673,6 +763,7 @@ pub enum InputType {
     Threshold,
     Parameter,
     Amplitude,
+    Seconds,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -725,6 +816,12 @@ fn spec(process: &Process) -> ProcessSpec {
             ProcessType::Processor,
             vec![InputType::Frequency, InputType::Factor],
         ),
+        Process::PLL { .. } => procspec(
+            "pll",
+            ProcessType::Processor,
+            vec![InputType::Any, InputType::Factor],
+        ),
+
         Process::Mul { .. } => procspec("mul", ProcessType::MultipleInputs, vec![InputType::Any]),
         Process::Ring { .. } => {
             procspec("ring", ProcessType::MultipleInputs, vec![InputType::Audio])
@@ -737,6 +834,11 @@ fn spec(process: &Process) -> ProcessSpec {
             "filter",
             ProcessType::Processor,
             vec![InputType::Audio, InputType::Frequency, InputType::Q],
+        ),
+        Process::Resonator { .. } => procspec(
+            "resonator",
+            ProcessType::MultipleInputs,
+            vec![InputType::Audio, InputType::Frequency, InputType::Seconds],
         ),
 
         Process::Compressor { .. } => procspec(
@@ -751,6 +853,9 @@ fn spec(process: &Process) -> ProcessSpec {
         ),
         Process::Ducking { .. } => {
             procspec("ducking", ProcessType::TwoInputs, vec![InputType::Any; 2])
+        }
+        Process::EnvFollow { .. } => {
+            procspec("envfollow", ProcessType::TwoInputs, vec![InputType::Any; 2])
         }
 
         //        Process::Noise { .. } => procspec("noise", vec![]),
@@ -791,6 +896,7 @@ fn clear_inputs(process: &mut Process) {
     match process {
         Process::Wrap { ref mut input, .. }
         | Process::Filter { ref mut input, .. }
+	| Process::Resonator { ref mut input, .. }
 //        | Process::Map { ref mut input, .. }
         | Process::CurveLin { ref mut input, .. }
 	| Process::Square { ref mut input }
@@ -802,9 +908,11 @@ fn clear_inputs(process: &mut Process) {
         | Process::LPF1 { ref mut input, .. }
 	| Process::LinCon { ref mut input, .. }
 	| Process::Spike { ref mut input, .. }
+	| Process::PLL { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	Process::Compressor { ref mut input, ref mut input_level, .. }
+	| Process::EnvFollow { ref mut input, ref mut input_level, .. }
 	| Process::Ducking { ref mut input, ref mut input_level, .. } => {
 	    *input = 0.0;
 	    clear_chain(input_level);
@@ -1102,6 +1210,22 @@ pub fn ducking() -> UGen {
         input: 0.0,
         input_level: vec![],
         output_factor: ducking_lag(),
+    })
+}
+
+pub fn env_follow() -> UGen {
+    UGen::new(Process::EnvFollow {
+        input: 0.0,
+        input_level: vec![],
+    })
+}
+
+pub fn pll() -> UGen {
+    UGen::new(Process::PLL {
+        input: 0.0,
+        factor: lag::lag(0.25),
+        phase: 0.0,
+        error: pll_error_lag(),
     })
 }
 
