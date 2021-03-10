@@ -1,20 +1,5 @@
 #![feature(proc_macro_hygiene, decl_macro)]
 
-// TODO
-// - export/load graph descriptions
-// - return graph on update functions (?)
-// - add specific endpoints for delays
-// - parameter setting (with endpoint)
-// - deal with sr for freqs etc
-
-// DONE
-// - get graph via serde/api
-// - set listening outputs
-// - get output indices
-// - randomize check if nodeexists
-// - edge operations via api
-// - output volume
-
 #[macro_use]
 extern crate rocket;
 
@@ -38,6 +23,7 @@ use rocket::response::content;
 //use std::mem;
 
 use processgraph::lag;
+use processgraph::process::*;
 
 enum UpdateMessage {
     Randomize,
@@ -119,15 +105,6 @@ fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: State<Globals>) {
         .unwrap()
 }
 
-// #[post("/output/<idx>/node/<id>/amp/<amp>")]
-// fn solo_output(idx: usize, id: usize, amp: f64, state: State<Globals>) {
-//     let shared_data: &Globals = state.inner();
-//     let sender = &shared_data.sender;
-//     sender
-//         .send(UpdateMessage::SetSoloOutput(idx, NodeIndex::new(id), amp))
-//         .unwrap()
-// }
-
 #[post("/node/<id>/parameter/<input>/<value>")]
 fn set_parameter(id: usize, input: u32, value: f64, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
@@ -195,19 +172,6 @@ fn most_connected(state: State<Globals>) {
     sender.send(UpdateMessage::DisconnectMostConnected).unwrap()
 }
 
-// #[get("/outputs")]
-// fn get_outputs(state: State<Globals>) -> content::Json<String> {
-//     let shared_data: &Globals = state.inner();
-//     let sender = &shared_data.sender;
-//     let receiver = &shared_data.receiver;
-//     sender.send(UpdateMessage::DumpOutputs).unwrap();
-//     match receiver.recv().unwrap() {
-//         ReturnMessage::Outputs(g) | ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => {
-//             content::Json(g)
-//         }
-//     }
-// }
-
 #[get("/graph")]
 fn get_graph(state: State<Globals>) -> content::Json<String> {
     let shared_data: &Globals = state.inner();
@@ -249,15 +213,15 @@ fn handle_messages(
         UpdateMessage::Randomize => {
             graph.graph.clear_edges();
             let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
-            rnd_connections(graph, &nodes);
-            let new_flow = establish_flow(graph);
+            graph.rnd_connections(&nodes);
+            let new_flow = graph.establish_flow();
             *flow = new_flow;
         }
         UpdateMessage::RandomCircle => {
             graph.graph.clear_edges();
             let nodes: Vec<NodeIndex> = graph.graph.node_indices().collect();
-            rnd_circle(graph, &nodes, 1);
-            let new_flow = establish_flow(graph);
+            graph.rnd_circle(&nodes, 1);
+            let new_flow = graph.establish_flow();
             *flow = new_flow;
         }
         UpdateMessage::DumpGraph => {
@@ -279,7 +243,7 @@ fn handle_messages(
 
         UpdateMessage::RemoveNode(id) => {
             graph.graph.remove_node(NodeIndex::new(id));
-            update_connections_and_flow(graph, flow)
+            graph.update_connections_and_flow(flow)
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
@@ -289,42 +253,42 @@ fn handle_messages(
         }
         UpdateMessage::RemoveEdge(id) => {
             graph.graph.remove_edge(EdgeIndex::new(id));
-            update_connections_and_flow(graph, flow)
+            graph.update_connections_and_flow(flow)
         }
         UpdateMessage::SetOutput(node, output, amp) => {
             graph.graph[node].set_output(output, amp);
-            let new_flow = establish_flow(graph);
+            let new_flow = graph.establish_flow();
             *flow = new_flow;
         }
         UpdateMessage::SetOutputs(outputs) => {
             for spec in outputs.into_iter() {
                 graph.set_output(spec);
             }
-            let new_flow = establish_flow(graph);
+            let new_flow = graph.establish_flow();
             *flow = new_flow;
         }
         UpdateMessage::AddNode(node) => {
             let idx = graph.graph.add_node(UGen::new(node).clip(ClipType::None));
-            rnd_connect_if_necessary(graph, idx);
-            update_connections_and_flow(graph, flow)
+            graph.rnd_connect_if_necessary(idx);
+            graph.update_connections_and_flow(flow)
         }
 
         UpdateMessage::SetGraph(g) => {
             graph.graph.clear();
             *graph = UGenGraph::new();
             graph.graph = g;
-            update_connections_and_flow(graph, flow)
+            graph.update_connections_and_flow(flow)
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
             let _idx = graph.connect(node_from, node_to, (index as u32, lag::lag(weight)));
         }
         UpdateMessage::ConnectLeastConnected => {
-            connect_least_connected(graph);
-            update_connections_and_flow(graph, flow)
+            graph.connect_least_connected();
+            graph.update_connections_and_flow(flow)
         }
         UpdateMessage::DisconnectMostConnected => {
-            disconnect_most_connected(graph);
-            update_connections_and_flow(graph, flow)
+            graph.disconnect_most_connected();
+            graph.update_connections_and_flow(flow)
         }
 
         UpdateMessage::SetParameter(node, idx, value) => {
@@ -376,10 +340,10 @@ fn main() {
     //    let filter1 = g.add_node(lpf(100.0, 6.0));
     //    let filter2 = g.add_node(hpf(50.0, 6.0));
     // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    let in1 = g.add(sound_in(0).clip(ClipType::None));
+    //    let in1 = g.add(sound_in(0).clip(ClipType::None));
     //    let in2 = g.add(sound_in(1).clip(ClipType::None));
 
-    let d1 = g.add(resonator(400.0, 0.1));
+    //  let d1 = g.add(resonator(400.0, 0.1));
     // let c1 = g.graph.add_node(constant(0.5));
     // let c2 = g.graph.add_node(constant(0.5));
 
@@ -395,7 +359,7 @@ fn main() {
     // g.graph.add_edge(in1, mul, (0, lag::lag(1.0)));
     // g.graph.add_edge(in2, mul, (1, lag::lag(1.0)));
 
-    g.connect(in1, d1, (0, lag::lag(1.0)));
+    //g.connect(in1, d1, (0, lag::lag(1.0)));
     // g.connect(in2, d1, (1, lag::lag(1.0)));
 
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
@@ -481,7 +445,7 @@ fn main() {
                 let input_samples: Vec<f64> =
                     ins.iter().map(|input| input[i as usize] as f64).collect();
                 let amp = amplitude.tick();
-                process_graph(&mut g, &flow, &input_samples, &mut frame_buffer);
+                g.process(&flow, &input_samples, &mut frame_buffer);
                 if i == 0 && polling {
                     println!("{}", frame_buffer[0]);
                 }

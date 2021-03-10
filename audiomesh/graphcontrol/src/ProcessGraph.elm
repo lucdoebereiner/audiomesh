@@ -115,7 +115,7 @@ type Process
     | PLL { factor : Float }
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
-    | Resonator { decay : Float }
+    | Resonator { freqFactor : Float, freqCenter : Float, decay : Float }
     | Gauss
     | RMS
     | Sin { mul : Float }
@@ -169,9 +169,10 @@ processParameters p =
             , Parameter 2 q Exp "Q" 0.1 20.0
             ]
 
-        Resonator { decay } ->
-            [ --Parameter 1 freq Exp "Freq" 10.0 10000.0
-              Parameter 2 decay Exp "Decay" 0.001 2.0
+        Resonator { freqCenter, freqFactor, decay } ->
+            [ Parameter 2 freqCenter Exp "Freq Center" 10.0 8000.0
+            , Parameter 3 freqFactor Exp "Freq Fac" 1.0 8000.0
+            , Parameter 4 decay Exp "Decay" 0.001 2.0
             ]
 
         LinCon { linconA, linconB } ->
@@ -236,9 +237,13 @@ setInput ( parIdx, val ) proc =
 
         Resonator r ->
             case parIdx of
-                -- 1 ->
-                --     Resonator { r | freq = val }
                 2 ->
+                    Resonator { r | freqCenter = val }
+
+                3 ->
+                    Resonator { r | freqFactor = val }
+
+                4 ->
                     Resonator { r | decay = val }
 
                 _ ->
@@ -385,7 +390,8 @@ encodeProcess p =
         Resonator r ->
             encObj p
                 (JE.object
-                    [ ( "freq", JE.float r.freq )
+                    [ ( "freq_center", JE.float r.freqCenter )
+                    , ( "freq_factor", JE.float r.freqFactor )
                     , ( "decay", JE.float r.decay )
                     ]
                 )
@@ -582,8 +588,16 @@ decodePLL =
 
 decodeResonator : Decoder Process
 decodeResonator =
-    Decode.succeed (\d -> Resonator { decay = d })
-        --        |> required "freq" float
+    Decode.succeed
+        (\c f d ->
+            Resonator
+                { freqCenter = c
+                , freqFactor = f
+                , decay = d
+                }
+        )
+        |> required "freq_center" float
+        |> required "freq_factor" float
         |> required "decay" float
 
 

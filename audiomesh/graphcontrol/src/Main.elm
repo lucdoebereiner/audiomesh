@@ -48,6 +48,9 @@ type alias Model =
     , sinOscFreq : String
     , sinOscFreqMul : String
     , pllFac : String
+    , resonatorFreqCenter : String
+    , resonatorFreqFactor : String
+    , resonatorDecay : String
     , fileName : String
     , waitingToConnect : Maybe Graph.NodeId
     , lastPoll : Float
@@ -75,6 +78,9 @@ init _ =
         ""
         ""
         BLPF
+        ""
+        ""
+        ""
         ""
         ""
         ""
@@ -140,6 +146,9 @@ type Msg
     | SetSpikeR String
     | SetSpikeTRest String
     | SetPLLFac String
+    | SetResonatorFreqCenter String
+    | SetResonatorFreqFactor String
+    | SetResonatorDecay String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | DeleteEdge Int
@@ -352,6 +361,15 @@ update msg model =
 
         SetLinConB s ->
             ( { model | linConB = s }, Cmd.none )
+
+        SetResonatorFreqCenter s ->
+            ( { model | resonatorFreqCenter = s }, Cmd.none )
+
+        SetResonatorFreqFactor s ->
+            ( { model | resonatorFreqFactor = s }, Cmd.none )
+
+        SetResonatorDecay s ->
+            ( { model | resonatorDecay = s }, Cmd.none )
 
         SetFilterType ft ->
             ( { model | filterType = ft }, Cmd.none )
@@ -665,6 +683,44 @@ linconInput a b =
         ]
 
 
+resonatorInput : String -> String -> String -> Element Msg
+resonatorInput c f d =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetResonatorFreqCenter
+            , text = c
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Center")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetResonatorFreqFactor
+            , text = f
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Fac")
+            }
+        , Input.text [ width (px 80) ]
+            { onChange = SetResonatorDecay
+            , text = d
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "Decay")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map3
+                (\cf ff df ->
+                    addProcess "Resonator"
+                        (Resonator
+                            { freqCenter = cf
+                            , freqFactor = ff
+                            , decay = df
+                            }
+                        )
+                )
+                (String.toFloat c)
+                (String.toFloat f)
+                (String.toFloat d)
+        ]
+
+
 compressorInput : String -> String -> String -> Element Msg
 compressorInput t r m =
     row [ spacing 5, Border.solid, Border.width 1 ]
@@ -801,7 +857,7 @@ processRow m =
         , sinOscInput m.sinOscFreq m.sinOscFreqMul
         , linconInput m.linConA m.linConB
         , filterInput m.filterType m.filterFreq m.filterQ
-        , addProcess "Resonator" (Resonator { decay = 0.1 })
+        , resonatorInput m.resonatorFreqCenter m.resonatorFreqFactor m.resonatorDecay
         , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
         , spikeInput m.spikeThreshold m.spikeTConst m.spikeR m.spikeTRest
         ]

@@ -5614,17 +5614,25 @@ var $author$project$Main$Model = function (graph) {
 													return function (filterQ) {
 														return function (sinOscFreq) {
 															return function (sinOscFreqMul) {
-																return function (fileName) {
-																	return function (waitingToConnect) {
-																		return function (lastPoll) {
-																			return function (compressorThreshold) {
-																				return function (compressorRatio) {
-																					return function (compressorMakeup) {
-																						return function (spikeThreshold) {
-																							return function (spikeTConst) {
-																								return function (spikeR) {
-																									return function (spikeTRest) {
-																										return {compressorMakeup: compressorMakeup, compressorRatio: compressorRatio, compressorThreshold: compressorThreshold, delayLength: delayLength, drawGraph: drawGraph, edgesFac: edgesFac, fileName: fileName, filterFreq: filterFreq, filterQ: filterQ, filterType: filterType, graph: graph, lastPoll: lastPoll, linConA: linConA, linConB: linConB, outputIndices: outputIndices, selectedEdge: selectedEdge, selectedNode: selectedNode, sinMul: sinMul, sinOscFreq: sinOscFreq, sinOscFreqMul: sinOscFreqMul, spikeR: spikeR, spikeTConst: spikeTConst, spikeTRest: spikeTRest, spikeThreshold: spikeThreshold, volume: volume, waitingToConnect: waitingToConnect};
+																return function (pllFac) {
+																	return function (resonatorFreqCenter) {
+																		return function (resonatorFreqFactor) {
+																			return function (resonatorDecay) {
+																				return function (fileName) {
+																					return function (waitingToConnect) {
+																						return function (lastPoll) {
+																							return function (compressorThreshold) {
+																								return function (compressorRatio) {
+																									return function (compressorMakeup) {
+																										return function (spikeThreshold) {
+																											return function (spikeTConst) {
+																												return function (spikeR) {
+																													return function (spikeTRest) {
+																														return {compressorMakeup: compressorMakeup, compressorRatio: compressorRatio, compressorThreshold: compressorThreshold, delayLength: delayLength, drawGraph: drawGraph, edgesFac: edgesFac, fileName: fileName, filterFreq: filterFreq, filterQ: filterQ, filterType: filterType, graph: graph, lastPoll: lastPoll, linConA: linConA, linConB: linConB, outputIndices: outputIndices, pllFac: pllFac, resonatorDecay: resonatorDecay, resonatorFreqCenter: resonatorFreqCenter, resonatorFreqFactor: resonatorFreqFactor, selectedEdge: selectedEdge, selectedNode: selectedNode, sinMul: sinMul, sinOscFreq: sinOscFreq, sinOscFreqMul: sinOscFreqMul, spikeR: spikeR, spikeTConst: spikeTConst, spikeTRest: spikeTRest, spikeThreshold: spikeThreshold, volume: volume, waitingToConnect: waitingToConnect};
+																													};
+																												};
+																											};
+																										};
 																									};
 																								};
 																							};
@@ -5881,9 +5889,13 @@ var $elm$json$Json$Decode$nullable = function (decoder) {
 var $author$project$ProcessGraph$decodeConnection = $elm$json$Json$Decode$nullable($author$project$ProcessGraph$decodeLink);
 var $author$project$ProcessGraph$Add = {$: 'Add'};
 var $author$project$ProcessGraph$Ducking = {$: 'Ducking'};
+var $author$project$ProcessGraph$EnvFollow = {$: 'EnvFollow'};
 var $author$project$ProcessGraph$Gauss = {$: 'Gauss'};
 var $author$project$ProcessGraph$Mul = {$: 'Mul'};
+var $author$project$ProcessGraph$RMS = {$: 'RMS'};
 var $author$project$ProcessGraph$Ring = {$: 'Ring'};
+var $author$project$ProcessGraph$Softclip = {$: 'Softclip'};
+var $author$project$ProcessGraph$Square = {$: 'Square'};
 var $author$project$ProcessGraph$UGen = F4(
 	function (process, sum_inputs, clip, output_sends) {
 		return {clip: clip, output_sends: output_sends, process: process, sum_inputs: sum_inputs};
@@ -6043,8 +6055,39 @@ var $author$project$ProcessGraph$decodeOutputTuple = A3(
 	$elm$core$Tuple$pair,
 	A2($elm$json$Json$Decode$index, 0, $elm$json$Json$Decode$int),
 	A2($elm$json$Json$Decode$index, 1, $elm$json$Json$Decode$float));
-var $author$project$ProcessGraph$RMS = {$: 'RMS'};
-var $author$project$ProcessGraph$decodeRMS = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$RMS);
+var $author$project$ProcessGraph$PLL = function (a) {
+	return {$: 'PLL', a: a};
+};
+var $author$project$ProcessGraph$decodePLL = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'factor',
+	$elm$json$Json$Decode$float,
+	$elm$json$Json$Decode$succeed(
+		function (f) {
+			return $author$project$ProcessGraph$PLL(
+				{factor: f});
+		}));
+var $author$project$ProcessGraph$Resonator = function (a) {
+	return {$: 'Resonator', a: a};
+};
+var $author$project$ProcessGraph$decodeResonator = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'decay',
+	$elm$json$Json$Decode$float,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'freq_factor',
+		$elm$json$Json$Decode$float,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'freq_center',
+			$elm$json$Json$Decode$float,
+			$elm$json$Json$Decode$succeed(
+				F3(
+					function (c, f, d) {
+						return $author$project$ProcessGraph$Resonator(
+							{decay: d, freqCenter: c, freqFactor: f});
+					})))));
 var $author$project$ProcessGraph$decodeSimpleProcess = function (p) {
 	return $elm$json$Json$Decode$succeed(p);
 };
@@ -6077,8 +6120,6 @@ var $author$project$ProcessGraph$decodeSinOsc = A3(
 					return $author$project$ProcessGraph$SinOsc(
 						{freq: f, freq_mul: m});
 				}))));
-var $author$project$ProcessGraph$Softclip = {$: 'Softclip'};
-var $author$project$ProcessGraph$decodeSoftclip = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$Softclip);
 var $author$project$ProcessGraph$SoundIn = function (a) {
 	return {$: 'SoundIn', a: a};
 };
@@ -6121,8 +6162,6 @@ var $author$project$ProcessGraph$decodeSpike = A3(
 							return $author$project$ProcessGraph$Spike(
 								{r: r, tConst: c, tRest: rest, threshold: t});
 						}))))));
-var $author$project$ProcessGraph$Square = {$: 'Square'};
-var $author$project$ProcessGraph$decodeSquare = $elm$json$Json$Decode$succeed($author$project$ProcessGraph$Square);
 var $elm_community$intdict$IntDict$Empty = {$: 'Empty'};
 var $elm_community$intdict$IntDict$empty = $elm_community$intdict$IntDict$Empty;
 var $elm$core$Basics$always = F2(
@@ -6321,12 +6360,18 @@ var $author$project$ProcessGraph$decodeUGen = A3(
 							$elm$json$Json$Decode$field,
 							'Mul',
 							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$Mul)),
-							A2($elm$json$Json$Decode$field, 'Softclip', $author$project$ProcessGraph$decodeSoftclip),
+							A2(
+							$elm$json$Json$Decode$field,
+							'Softclip',
+							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$Softclip)),
 							A2(
 							$elm$json$Json$Decode$field,
 							'Ring',
 							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$Ring)),
-							A2($elm$json$Json$Decode$field, 'RMS', $author$project$ProcessGraph$decodeRMS),
+							A2(
+							$elm$json$Json$Decode$field,
+							'RMS',
+							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$RMS)),
 							A2($elm$json$Json$Decode$field, 'Constant', $author$project$ProcessGraph$decodeConstant),
 							A2($elm$json$Json$Decode$field, 'Compressor', $author$project$ProcessGraph$decodeCompressor),
 							A2($elm$json$Json$Decode$field, 'Spike', $author$project$ProcessGraph$decodeSpike),
@@ -6339,11 +6384,20 @@ var $author$project$ProcessGraph$decodeUGen = A3(
 							$elm$json$Json$Decode$field,
 							'Gauss',
 							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$Gauss)),
+							A2(
+							$elm$json$Json$Decode$field,
+							'EnvFollow',
+							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$EnvFollow)),
+							A2($elm$json$Json$Decode$field, 'PLL', $author$project$ProcessGraph$decodePLL),
+							A2($elm$json$Json$Decode$field, 'Resonator', $author$project$ProcessGraph$decodeResonator),
 							A2($elm$json$Json$Decode$field, 'SoundIn', $author$project$ProcessGraph$decodeSoundIn),
 							A2($elm$json$Json$Decode$field, 'Filter', $author$project$ProcessGraph$decodeFilter),
 							A2($elm$json$Json$Decode$field, 'SinOsc', $author$project$ProcessGraph$decodeSinOsc),
 							A2($elm$json$Json$Decode$field, 'LinCon', $author$project$ProcessGraph$decodeLinCon),
-							A2($elm$json$Json$Decode$field, 'Square', $author$project$ProcessGraph$decodeSquare),
+							A2(
+							$elm$json$Json$Decode$field,
+							'Square',
+							$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$Square)),
 							A2($elm$json$Json$Decode$field, 'BitAnd', $author$project$ProcessGraph$decodeBitAnd),
 							A2($elm$json$Json$Decode$field, 'BitOr', $author$project$ProcessGraph$decodeBitOr),
 							A2($elm$json$Json$Decode$field, 'BitXOr', $author$project$ProcessGraph$decodeBitXOr),
@@ -7179,7 +7233,7 @@ var $author$project$Main$init = function (_v0) {
 		$author$project$Main$Model($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(
 			$elm$core$Array$fromList(
 				_List_fromArray(
-					[0.0, 0.0])))($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(0.4)(1.0)('')('')('')('')($author$project$ProcessGraph$BLPF)('')('')('')('')('graph')($elm$core$Maybe$Nothing)(0.0)('0.4')('4')('2')('0.2')('0.0001')('5')('20000'),
+					[0.0, 0.0])))($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(0.4)(1.0)('')('')('')('')($author$project$ProcessGraph$BLPF)('')('')('')('')('')('')('')('')('graph')($elm$core$Maybe$Nothing)(0.0)('0.4')('4')('2')('0.2')('0.0001')('5')('20000'),
 		$author$project$Api$getGraph($author$project$Main$GotGraph));
 };
 var $author$project$Main$Tick = function (a) {
@@ -7518,10 +7572,16 @@ var $author$project$ProcessGraph$processName = function (p) {
 			return 'Delay';
 		case 'Add':
 			return 'Add';
+		case 'Resonator':
+			return 'Resonator';
+		case 'PLL':
+			return 'PLL';
 		case 'Mul':
 			return 'Mul';
 		case 'Ducking':
 			return 'Ducking';
+		case 'EnvFollow':
+			return 'EnvFollow';
 		case 'Softclip':
 			return 'Softclip';
 		case 'Ring':
@@ -7595,6 +7655,24 @@ var $author$project$ProcessGraph$encodeProcess = function (p) {
 							'input',
 							$elm$json$Json$Encode$int(i.length))
 						])));
+		case 'Resonator':
+			var r = p.a;
+			return A2(
+				encObj,
+				p,
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'freq_center',
+							$elm$json$Json$Encode$float(r.freqCenter)),
+							_Utils_Tuple2(
+							'freq_factor',
+							$elm$json$Json$Encode$float(r.freqFactor)),
+							_Utils_Tuple2(
+							'decay',
+							$elm$json$Json$Encode$float(r.decay))
+						])));
 		case 'Filter':
 			var f = p.a;
 			return A2(
@@ -7625,6 +7703,18 @@ var $author$project$ProcessGraph$encodeProcess = function (p) {
 							_Utils_Tuple2(
 							'mul',
 							$elm$json$Json$Encode$float(m.mul))
+						])));
+		case 'PLL':
+			var pll = p.a;
+			return A2(
+				encObj,
+				p,
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'factor',
+							$elm$json$Json$Encode$float(pll.factor))
 						])));
 		case 'SinOsc':
 			var s = p.a;
@@ -8914,6 +9004,9 @@ var $author$project$ProcessGraph$setInput = F2(
 			case 'Sin':
 				return $author$project$ProcessGraph$Sin(
 					{mul: val});
+			case 'PLL':
+				return $author$project$ProcessGraph$PLL(
+					{factor: val});
 			case 'SoundIn':
 				var s = proc.a;
 				return $author$project$ProcessGraph$SoundIn(
@@ -8952,6 +9045,27 @@ var $author$project$ProcessGraph$setInput = F2(
 							_Utils_update(
 								f,
 								{q: val}));
+					default:
+						return proc;
+				}
+			case 'Resonator':
+				var r = proc.a;
+				switch (parIdx) {
+					case 2:
+						return $author$project$ProcessGraph$Resonator(
+							_Utils_update(
+								r,
+								{freqCenter: val}));
+					case 3:
+						return $author$project$ProcessGraph$Resonator(
+							_Utils_update(
+								r,
+								{freqFactor: val}));
+					case 4:
+						return $author$project$ProcessGraph$Resonator(
+							_Utils_update(
+								r,
+								{decay: val}));
 					default:
 						return proc;
 				}
@@ -9326,6 +9440,13 @@ var $author$project$Main$update = F2(
 						model,
 						{delayLength: s}),
 					$elm$core$Platform$Cmd$none);
+			case 'SetPLLFac':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{pllFac: s}),
+					$elm$core$Platform$Cmd$none);
 			case 'SetSinMul':
 				var s = msg.a;
 				return _Utils_Tuple2(
@@ -9346,6 +9467,27 @@ var $author$project$Main$update = F2(
 					_Utils_update(
 						model,
 						{linConB: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetResonatorFreqCenter':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resonatorFreqCenter: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetResonatorFreqFactor':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resonatorFreqFactor: s}),
+					$elm$core$Platform$Cmd$none);
+			case 'SetResonatorDecay':
+				var s = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{resonatorDecay: s}),
 					$elm$core$Platform$Cmd$none);
 			case 'SetFilterType':
 				var ft = msg.a;
@@ -14998,6 +15140,12 @@ var $author$project$ProcessGraph$processParameters = function (p) {
 				[
 					A6($author$project$Parameters$Parameter, 1, mul, $author$project$Parameters$Exp, 'Mul', 0.001, 10.0)
 				]);
+		case 'PLL':
+			var factor = p.a.factor;
+			return _List_fromArray(
+				[
+					A6($author$project$Parameters$Parameter, 1, factor, $author$project$Parameters$Lin, 'Fac', 0.1, 2.0)
+				]);
 		case 'SoundIn':
 			var index = p.a.index;
 			var factor = p.a.factor;
@@ -15013,20 +15161,24 @@ var $author$project$ProcessGraph$processParameters = function (p) {
 					A6($author$project$Parameters$Parameter, 1, freq, $author$project$Parameters$Exp, 'Freq', 0.001, 10000.0),
 					A6($author$project$Parameters$Parameter, 2, freq_mul, $author$project$Parameters$Exp, 'Freq Mul', 0.1, 10000.0)
 				]);
-		case 'Constant':
-			var value = p.a.value;
-			return _List_fromArray(
-				[
-					A6($author$project$Parameters$Parameter, 1, value, $author$project$Parameters$Lin, 'Value', -1.0, 1.0)
-				]);
 		case 'Filter':
 			var filterType = p.a.filterType;
 			var freq = p.a.freq;
 			var q = p.a.q;
 			return _List_fromArray(
 				[
-					A6($author$project$Parameters$Parameter, 1, freq, $author$project$Parameters$Exp, 'Freq', 5.0, 4000.0),
+					A6($author$project$Parameters$Parameter, 1, freq, $author$project$Parameters$Exp, 'Freq', 10.0, 5000.0),
 					A6($author$project$Parameters$Parameter, 2, q, $author$project$Parameters$Exp, 'Q', 0.1, 20.0)
+				]);
+		case 'Resonator':
+			var freqCenter = p.a.freqCenter;
+			var freqFactor = p.a.freqFactor;
+			var decay = p.a.decay;
+			return _List_fromArray(
+				[
+					A6($author$project$Parameters$Parameter, 2, freqCenter, $author$project$Parameters$Exp, 'Freq Center', 10.0, 8000.0),
+					A6($author$project$Parameters$Parameter, 3, freqFactor, $author$project$Parameters$Exp, 'Freq Fac', 1.0, 8000.0),
+					A6($author$project$Parameters$Parameter, 4, decay, $author$project$Parameters$Exp, 'Decay', 0.001, 2.0)
 				]);
 		case 'LinCon':
 			var linconA = p.a.linconA;
@@ -15489,6 +15641,9 @@ var $author$project$ProcessGraph$processToString = function (p) {
 		case 'Filter':
 			var f = p.a;
 			return $author$project$ProcessGraph$filterTypeToString(f.filterType) + (' freq:' + ($author$project$Utils$floatString(f.freq) + (' q:' + $author$project$Utils$floatString(f.q))));
+		case 'Resonator':
+			var r = p.a;
+			return 'Resonator' + (' decay:' + $author$project$Utils$floatString(r.decay));
 		case 'SoundIn':
 			var i = p.a;
 			return 'SoundIn ' + ($elm$core$String$fromInt(i.index) + (' fac: ' + $author$project$Utils$floatString(i.factor)));
@@ -15498,6 +15653,9 @@ var $author$project$ProcessGraph$processToString = function (p) {
 		case 'Sin':
 			var s = p.a;
 			return 'Sin ' + $author$project$Utils$floatString(s.mul);
+		case 'PLL':
+			var pll = p.a;
+			return 'PLL fac: ' + $author$project$Utils$floatString(pll.factor);
 		case 'LinCon':
 			var l = p.a;
 			return 'LinCon a: ' + ($author$project$Utils$floatString(l.linconA) + (' b: ' + $author$project$Utils$floatString(l.linconB)));
@@ -17544,6 +17702,138 @@ var $author$project$Main$linconInput = F2(
 						$elm$core$String$toFloat(b)))
 				]));
 	});
+var $author$project$Main$SetPLLFac = function (a) {
+	return {$: 'SetPLLFac', a: a};
+};
+var $author$project$Main$pllInput = function (v) {
+	return A2(
+		$mdgriffith$elm_ui$Element$row,
+		_List_fromArray(
+			[
+				$mdgriffith$elm_ui$Element$spacing(5),
+				$mdgriffith$elm_ui$Element$Border$solid,
+				$mdgriffith$elm_ui$Element$Border$width(1)
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$mdgriffith$elm_ui$Element$Input$text,
+				_List_fromArray(
+					[
+						$mdgriffith$elm_ui$Element$width(
+						$mdgriffith$elm_ui$Element$px(80))
+					]),
+				{
+					label: A2(
+						$mdgriffith$elm_ui$Element$Input$labelLeft,
+						_List_Nil,
+						$mdgriffith$elm_ui$Element$text('Fac')),
+					onChange: $author$project$Main$SetPLLFac,
+					placeholder: $elm$core$Maybe$Nothing,
+					text: v
+				}),
+				A2(
+				$elm$core$Maybe$withDefault,
+				$mdgriffith$elm_ui$Element$none,
+				A2(
+					$elm$core$Maybe$map,
+					function (f) {
+						return A2(
+							$author$project$Main$addProcess,
+							'PLL',
+							$author$project$ProcessGraph$PLL(
+								{factor: f}));
+					},
+					$elm$core$String$toFloat(v)))
+			]));
+};
+var $author$project$Main$SetResonatorDecay = function (a) {
+	return {$: 'SetResonatorDecay', a: a};
+};
+var $author$project$Main$SetResonatorFreqCenter = function (a) {
+	return {$: 'SetResonatorFreqCenter', a: a};
+};
+var $author$project$Main$SetResonatorFreqFactor = function (a) {
+	return {$: 'SetResonatorFreqFactor', a: a};
+};
+var $author$project$Main$resonatorInput = F3(
+	function (c, f, d) {
+		return A2(
+			$mdgriffith$elm_ui$Element$row,
+			_List_fromArray(
+				[
+					$mdgriffith$elm_ui$Element$spacing(5),
+					$mdgriffith$elm_ui$Element$Border$solid,
+					$mdgriffith$elm_ui$Element$Border$width(1)
+				]),
+			_List_fromArray(
+				[
+					A2(
+					$mdgriffith$elm_ui$Element$Input$text,
+					_List_fromArray(
+						[
+							$mdgriffith$elm_ui$Element$width(
+							$mdgriffith$elm_ui$Element$px(80))
+						]),
+					{
+						label: A2(
+							$mdgriffith$elm_ui$Element$Input$labelLeft,
+							_List_Nil,
+							$mdgriffith$elm_ui$Element$text('Center')),
+						onChange: $author$project$Main$SetResonatorFreqCenter,
+						placeholder: $elm$core$Maybe$Nothing,
+						text: c
+					}),
+					A2(
+					$mdgriffith$elm_ui$Element$Input$text,
+					_List_fromArray(
+						[
+							$mdgriffith$elm_ui$Element$width(
+							$mdgriffith$elm_ui$Element$px(80))
+						]),
+					{
+						label: A2(
+							$mdgriffith$elm_ui$Element$Input$labelLeft,
+							_List_Nil,
+							$mdgriffith$elm_ui$Element$text('Fac')),
+						onChange: $author$project$Main$SetResonatorFreqFactor,
+						placeholder: $elm$core$Maybe$Nothing,
+						text: f
+					}),
+					A2(
+					$mdgriffith$elm_ui$Element$Input$text,
+					_List_fromArray(
+						[
+							$mdgriffith$elm_ui$Element$width(
+							$mdgriffith$elm_ui$Element$px(80))
+						]),
+					{
+						label: A2(
+							$mdgriffith$elm_ui$Element$Input$labelLeft,
+							_List_Nil,
+							$mdgriffith$elm_ui$Element$text('Decay')),
+						onChange: $author$project$Main$SetResonatorDecay,
+						placeholder: $elm$core$Maybe$Nothing,
+						text: d
+					}),
+					A2(
+					$elm$core$Maybe$withDefault,
+					$mdgriffith$elm_ui$Element$none,
+					A4(
+						$elm$core$Maybe$map3,
+						F3(
+							function (cf, ff, df) {
+								return A2(
+									$author$project$Main$addProcess,
+									'Resonator',
+									$author$project$ProcessGraph$Resonator(
+										{decay: df, freqCenter: cf, freqFactor: ff}));
+							}),
+						$elm$core$String$toFloat(c),
+						$elm$core$String$toFloat(f),
+						$elm$core$String$toFloat(d)))
+				]));
+	});
 var $author$project$Main$SetSinMul = function (a) {
 	return {$: 'SetSinMul', a: a};
 };
@@ -17986,6 +18276,7 @@ var $author$project$Main$processRow = function (m) {
 				A2($author$project$Main$addProcess, 'Gauss', $author$project$ProcessGraph$Gauss),
 				A2($author$project$Main$addProcess, 'RMS', $author$project$ProcessGraph$RMS),
 				A2($author$project$Main$addProcess, 'Ducking', $author$project$ProcessGraph$Ducking),
+				A2($author$project$Main$addProcess, 'EnvFollow', $author$project$ProcessGraph$EnvFollow),
 				A2($author$project$Main$addProcess, 'BitNeg', $author$project$ProcessGraph$BitNeg),
 				A2($author$project$Main$addProcess, 'BitOr', $author$project$ProcessGraph$BitOr),
 				A2($author$project$Main$addProcess, 'BitAnd', $author$project$ProcessGraph$BitAnd),
@@ -18000,10 +18291,12 @@ var $author$project$Main$processRow = function (m) {
 				$author$project$ProcessGraph$SoundIn(
 					{factor: 1.0, index: 1})),
 				$author$project$Main$delayInput(m.delayLength),
+				$author$project$Main$pllInput(m.pllFac),
 				$author$project$Main$sinInput(m.sinMul),
 				A2($author$project$Main$sinOscInput, m.sinOscFreq, m.sinOscFreqMul),
 				A2($author$project$Main$linconInput, m.linConA, m.linConB),
 				A3($author$project$Main$filterInput, m.filterType, m.filterFreq, m.filterQ),
+				A3($author$project$Main$resonatorInput, m.resonatorFreqCenter, m.resonatorFreqFactor, m.resonatorDecay),
 				A3($author$project$Main$compressorInput, m.compressorThreshold, m.compressorRatio, m.compressorMakeup),
 				A4($author$project$Main$spikeInput, m.spikeThreshold, m.spikeTConst, m.spikeR, m.spikeTRest)
 			]));
