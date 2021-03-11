@@ -6,6 +6,8 @@ use serde::{Deserializer, Serializer};
 use std::f64;
 const PI: f64 = f64::consts::PI;
 
+use crate::numerical::TWOPI;
+
 static mut SR: f64 = 44100f64;
 static mut FREQ_FAC: f64 = unsafe { 2.0 * PI / SR };
 
@@ -80,8 +82,9 @@ pub enum Process {
         input: f64,
     },
     PLL {
-        #[serde(skip)]
-        input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "pll_input_filter")]
+        input: filters::OnePoleHP,
         factor: lag::Lag,
         #[serde(skip)]
         phase: f64,
@@ -329,8 +332,12 @@ fn ducking_lag() -> lag::Lag {
 
 fn pll_error_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
-    dlag.set_factor(0.8);
+    dlag.set_factor(0.6);
     dlag
+}
+
+fn pll_input_filter() -> filters::OnePoleHP {
+    filters::OnePoleHP::new(0.939)
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
@@ -389,8 +396,8 @@ impl Process {
                 ref mut error,
             } => {
                 let output = phase.sin();
-                *phase += error.tick() * factor.tick(); // make fac parameter
-                let signums = output.signum() * input.signum();
+                *phase = numerical::fmod(*phase + (error.tick() * factor.tick()), TWOPI);
+                let signums = output.signum() * input.process().signum();
                 if signums > 0.0 {
                     error.set_target(0.0);
                 } else {
@@ -585,7 +592,7 @@ impl Process {
                 ref mut factor,
                 ..
             } => match idx {
-                0 => set_or_add(input, input_value, add),
+                0 => set_or_add(&mut input.input, input_value, add),
                 1 => factor.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
@@ -942,7 +949,6 @@ impl Process {
         | Process::LPF1 { ref mut input, .. }
 	| Process::LinCon { ref mut input, .. }
 	| Process::Spike { ref mut input, .. }
-	| Process::PLL { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	Process::Compressor { ref mut input, ref mut input_level, .. }
@@ -952,6 +958,7 @@ impl Process {
 	    clear_chain(input_level);
 	    //input_level.iter_mut().for_each(|i| clear_inputs(i));
 	}
+	Process::PLL { ref mut input, .. } => input.input = 0.0,
 	Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
 	| Process::Ring { ref mut inputs, ref mut input_counter } => {
 	    *input_counter = 0;

@@ -4,14 +4,14 @@ import Array exposing (Array)
 import Graph
 import IntDict
 import Json.Encode as JE exposing (Value)
-import ProcessGraph exposing (UGenGraph, getNodes)
+import ProcessGraph exposing (UGenGraph, getNodes, isOutputProcess)
 
 
 gaussCurve : Float -> Float
 gaussCurve x =
     let
         c =
-            0.05
+            0.07
     in
     e ^ ((x * x) / (-2.0 * (c * c)))
 
@@ -76,7 +76,13 @@ outputSpecsChannel : Float -> Int -> UGenGraph -> List OutputSpec
 outputSpecsChannel pos output graph =
     let
         allNodes =
-            Graph.nodeIds graph
+            List.map .id
+                (List.filter
+                    (\n ->
+                        isOutputProcess n.label.process
+                    )
+                    (Graph.nodes graph)
+                )
     in
     List.indexedMap
         (\i n ->

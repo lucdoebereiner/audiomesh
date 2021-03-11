@@ -35,18 +35,23 @@ pub type Connection = (u32, lag::Lag);
 
 #[derive(Serialize, Deserialize)]
 pub struct UGen {
+    #[serde(skip)]
     feedback_delay: bool,
     process: Process,
+    #[serde(skip)]
     value: Option<f64>,
     #[serde(skip)]
     pub last_value: f64,
     sum_inputs: bool,
     clip: ClipType,
     output_sends: Vec<(usize, lag::Lag)>,
+    #[serde(skip_deserializing)]
+    process_type: Option<ProcessType>,
 }
 
 impl UGen {
     pub fn new(process: Process) -> Self {
+        let pt = process.spec().process_type;
         UGen {
             feedback_delay: false,
             process,
@@ -55,7 +60,12 @@ impl UGen {
             last_value: 0.0,
             clip: ClipType::None,
             output_sends: vec![],
+            process_type: Some(pt),
         }
+    }
+
+    pub fn init_after_deserialization(&mut self) {
+        self.process_type = Some(self.process.spec().process_type);
     }
 
     pub fn clip(self, clip_type: ClipType) -> Self {
@@ -155,13 +165,17 @@ impl UGenGraph {
     pub fn add(&mut self, ugen: UGen) -> NodeIndex {
         self.graph.add_node(ugen)
     }
-}
 
-pub fn set_parameter(graph: &mut UGenGraph, node_idx: NodeIndex, idx: u32, input_value: f64) {
-    //    println!("setting input {:?} to {:?}", idx, input_value);
-    if let Some(node) = graph.graph.node_weight_mut(node_idx) {
-        //  println!("found node");
-        node.process.set_input(idx as u32, input_value, false)
+    pub fn init_after_deserialization(&mut self) {
+        self.graph
+            .node_weights_mut()
+            .for_each(|u| u.process_type = Some(u.process.spec().process_type));
+    }
+
+    pub fn set_parameter(&mut self, node_idx: NodeIndex, idx: u32, input_value: f64) {
+        if let Some(node) = self.graph.node_weight_mut(node_idx) {
+            node.process.set_input(idx as u32, input_value, false)
+        }
     }
 }
 

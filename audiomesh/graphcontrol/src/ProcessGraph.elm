@@ -11,6 +11,7 @@ module ProcessGraph exposing
     , defaultUGen
     , encodeProcess
     , getNodes
+    , isOutputProcess
     , mkGraph
     , mulAllEdges
     , nextEdge
@@ -132,6 +133,22 @@ type Process
     | Spike { threshold : Float, tConst : Float, r : Float, tRest : Int }
 
 
+isOutputProcess : Process -> Bool
+isOutputProcess p =
+    case p of
+        Delay _ ->
+            False
+
+        RMS ->
+            False
+
+        SoundIn _ ->
+            False
+
+        _ ->
+            True
+
+
 
 -- type alias Parameter =
 --     { idx : Int
@@ -152,7 +169,7 @@ processParameters p =
             [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
 
         PLL { factor } ->
-            [ Parameter 1 factor Lin "Fac" 0.1 2.0 ]
+            [ Parameter 1 factor Exp "Fac" 0.05 2.0 ]
 
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]

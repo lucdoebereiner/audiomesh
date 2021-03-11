@@ -268,7 +268,9 @@ fn handle_messages(
             *flow = new_flow;
         }
         UpdateMessage::AddNode(node) => {
-            let idx = graph.graph.add_node(UGen::new(node).clip(ClipType::None));
+            let mut ugen = UGen::new(node).clip(ClipType::None);
+            ugen.init_after_deserialization();
+            let idx = graph.graph.add_node(ugen);
             graph.rnd_connect_if_necessary(idx);
             graph.update_connections_and_flow(flow)
         }
@@ -277,6 +279,7 @@ fn handle_messages(
             graph.graph.clear();
             *graph = UGenGraph::new();
             graph.graph = g;
+            graph.init_after_deserialization();
             graph.update_connections_and_flow(flow)
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
@@ -292,7 +295,7 @@ fn handle_messages(
         }
 
         UpdateMessage::SetParameter(node, idx, value) => {
-            processgraph::set_parameter(graph, NodeIndex::new(node), idx, value);
+            graph.set_parameter(NodeIndex::new(node), idx, value);
         }
 
         _ => (),

@@ -1,10 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::f64;
 
-const PI: f64 = 3.141592653589793;
-const TWOPI: f64 = 6.283185307179586;
-
 use crate::lag::*;
+use crate::numerical::TWOPI;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct BiquadCoefficients {
@@ -230,5 +228,33 @@ impl ComplexRes {
     pub fn set_parameters(&mut self, freq: f64, decay: f64) {
         self.freq.set_target(freq);
         self.decay.set_target(decay);
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct OnePoleHP {
+    pub input: f64,
+    last_in: f64,
+    last_out: f64,
+    x: f64,
+}
+
+impl OnePoleHP {
+    pub fn new(x: f64) -> Self {
+        OnePoleHP {
+            input: 0.0,
+            last_in: 0.0,
+            last_out: 0.0,
+            x: x,
+        }
+    }
+    pub fn process(&mut self) -> f64 {
+        let a0 = ((1.0 + self.x) / 2.0) * self.input;
+        let a1 = ((-1.0 * (1.0 + self.x)) / 2.0) * self.last_in;
+        let b = self.last_out * self.x;
+        let output = a0 + a1 + b;
+        self.last_out = output;
+        self.last_in = self.input;
+        output
     }
 }

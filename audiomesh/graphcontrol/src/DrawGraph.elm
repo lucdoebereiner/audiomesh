@@ -161,6 +161,19 @@ linkElement selectedEdge graph msg edge =
                     ]
                 ]
                 []
+            , text_
+                [ textAnchor AnchorMiddle
+                , x x3
+                , y y3
+                ]
+                [ a
+                    [ fontSize (Em 2)
+                    , fontFamily [ "Inconsolata" ]
+                    , stroke (Paint Color.lightGray)
+                    , fontWeight FontWeightBolder
+                    ]
+                    [ text (String.fromInt link.index) ]
+                ]
             ]
 
 

@@ -1,3 +1,13 @@
+pub const PI: f64 = 3.141592653589793;
+pub const TWOPI: f64 = 6.283185307179586;
+
+#[inline]
+pub fn fmod(numer: f64, denom: f64) -> f64 {
+    let rquot = (numer / denom).floor();
+    numer - rquot * denom
+}
+
+#[inline]
 pub fn modulo(input: f64, hi: f64) -> f64 {
     let mut result = input;
     let lo = 0.;
@@ -21,6 +31,7 @@ pub fn modulo(input: f64, hi: f64) -> f64 {
     return result - hi * (result / hi).floor();
 }
 
+#[inline]
 pub fn wrap(input: f64, lo: f64, hi: f64) -> f64 {
     let mut range = 0.;
     let mut input = input;
@@ -47,6 +58,7 @@ pub fn wrap(input: f64, lo: f64, hi: f64) -> f64 {
     return input - range * ((input - lo) / range).floor();
 }
 
+#[inline]
 fn linexp(x: f64, a: f64, b: f64, c: f64, d: f64) -> f64 {
     if x <= a {
         return c;
@@ -57,6 +69,7 @@ fn linexp(x: f64, a: f64, b: f64, c: f64, d: f64) -> f64 {
     (d / c).powf((x - a) / (b - a)) * c
 }
 
+#[inline]
 pub fn curvelin(x: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64, curve: f64) -> f64 {
     if x <= in_min {
         out_max
@@ -71,23 +84,28 @@ pub fn curvelin(x: f64, in_min: f64, in_max: f64, out_min: f64, out_max: f64, cu
     }
 }
 
+#[inline]
 pub fn gauss_curve(x: f64) -> f64 {
     let c = 0.5;
     ((x * x) / (-2.0 * (c * c))).exp()
 }
 
+#[inline]
 pub fn bit_neg(input: f64) -> f64 {
     f64::from_bits(input.to_bits().wrapping_neg()) // / f64::MAX * 2.0 - 1.0
 }
 
+#[inline]
 pub fn bit_or(input1: f64, input2: f64) -> f64 {
     f64::from_bits(input1.to_bits() | input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
+#[inline]
 pub fn bit_xor(input1: f64, input2: f64) -> f64 {
     f64::from_bits(input1.to_bits() ^ input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
+#[inline]
 pub fn bit_and(input1: f64, input2: f64) -> f64 {
     f64::from_bits(input1.to_bits() & input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
