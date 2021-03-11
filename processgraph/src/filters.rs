@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::f64;
 
 use crate::lag::*;
-use crate::numerical::TWOPI;
+use crate::numerical::{zapgremlins, TWOPI};
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct BiquadCoefficients {
@@ -145,16 +145,6 @@ impl Biquad {
 }
 
 // ComplexRes
-
-fn zapgremlins(x: f64) -> f64 {
-    let absx = x.abs();
-
-    if absx > 1e-15_f64 && absx < 1e+15_f64 {
-        x
-    } else {
-        0.0
-    }
-}
 
 // fn cr_default_freq() -> Lag {
 //     let mut l = lag(0.0);

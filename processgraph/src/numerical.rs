@@ -7,6 +7,16 @@ pub fn fmod(numer: f64, denom: f64) -> f64 {
     numer - rquot * denom
 }
 
+pub fn zapgremlins(x: f64) -> f64 {
+    let absx = x.abs();
+
+    if absx > 1e-15_f64 && absx < 1e+15_f64 {
+        x
+    } else {
+        0.0
+    }
+}
+
 #[inline]
 pub fn modulo(input: f64, hi: f64) -> f64 {
     let mut result = input;

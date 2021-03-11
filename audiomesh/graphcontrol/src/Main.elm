@@ -532,7 +532,7 @@ slider msg par =
                     , Attr.min "0.0"
                     , Attr.max "1.0"
                     , Attr.class "slider"
-                    , Attr.step "0.005"
+                    , Attr.step "0.004"
                     , Attr.value <| String.fromFloat (Parameters.unmapped par par.value)
                     , Events.onInput
                         (\v ->
@@ -847,6 +847,7 @@ processRow m =
         , addProcess "BitAnd" BitAnd
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
+        , addProcess "VanDerPol" (VanDerPol { e = 0.001, frac = 0.001 })
         , delayInput m.delayLength
         , pllInput m.pllFac
         , sinInput m.sinMul

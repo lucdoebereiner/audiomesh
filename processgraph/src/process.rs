@@ -6,7 +6,7 @@ use serde::{Deserializer, Serializer};
 use std::f64;
 const PI: f64 = f64::consts::PI;
 
-use crate::numerical::TWOPI;
+use crate::numerical::{zapgremlins, TWOPI};
 
 static mut SR: f64 = 44100f64;
 static mut FREQ_FAC: f64 = unsafe { 2.0 * PI / SR };
@@ -66,6 +66,16 @@ pub enum Process {
         ratio: lag::Lag,
         makeup: lag::Lag,
     },
+    VanDerPol {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip)]
+        x: f64,
+        #[serde(skip)]
+        y: f64,
+        frac: lag::Lag,
+        e: lag::Lag,
+    },
     Ducking {
         #[serde(skip)]
         input_level: Vec<Process>,
@@ -88,6 +98,7 @@ pub enum Process {
         factor: lag::Lag,
         #[serde(skip)]
         phase: f64,
+        #[serde(skip_serializing)]
         #[serde(default = "pll_error_lag")]
         error: lag::Lag,
     },
@@ -332,12 +343,12 @@ fn ducking_lag() -> lag::Lag {
 
 fn pll_error_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
-    dlag.set_factor(0.6);
+    dlag.set_factor(0.4);
     dlag
 }
 
 fn pll_input_filter() -> filters::OnePoleHP {
-    filters::OnePoleHP::new(0.939)
+    filters::OnePoleHP::new(0.94)
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
@@ -388,6 +399,28 @@ impl Process {
                 let output = phase.sin();
                 *phase += (freq.tick() + (*input * freq_mul.tick())) * unsafe { FREQ_FAC };
                 output
+            }
+            Process::VanDerPol {
+                input,
+                ref mut x,
+                ref mut y,
+                ref mut frac,
+                ref mut e,
+            } => {
+                let mut d_x = *y;
+                let mut d_y = (e.tick() * *y * (1.0 - (*x).powi(2))) - *x + (*input * 0.5);
+                let f = frac.tick();
+                d_x = zapgremlins(d_x * f);
+                d_y = zapgremlins(d_y * f);
+                if d_x.abs() > 10.0 {
+                    d_x = 0.0;
+                }
+                if d_y.abs() > 10.0 {
+                    d_y = 0.0;
+                }
+                *x = *x + d_x;
+                *y = *y + d_y;
+                *x
             }
             Process::PLL {
                 input,
@@ -592,6 +625,17 @@ impl Process {
             } => match idx {
                 0 => set_or_add(&mut input.input, input_value, add),
                 1 => factor.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+            Process::VanDerPol {
+                ref mut input,
+                ref mut e,
+                ref mut frac,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => e.set_target(input_value),
+                2 => frac.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::SinOsc {
@@ -823,6 +867,11 @@ impl Process {
                 ProcessType::NoInputGenerator,
                 vec![InputType::Index, InputType::Factor],
             ),
+            Process::VanDerPol { .. } => procspec(
+                "vanderpool",
+                ProcessType::Processor,
+                vec![InputType::Audio, InputType::Factor, InputType::Factor],
+            ),
             Process::Sin { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Phase]),
             Process::SinOsc { .. } => procspec(
                 "sinosc",
@@ -946,6 +995,7 @@ impl Process {
         | Process::LPF1 { ref mut input, .. }
 	| Process::LinCon { ref mut input, .. }
 	| Process::Spike { ref mut input, .. }
+	| Process::VanDerPol { ref mut input, .. }
         | Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	Process::Compressor { ref mut input, ref mut input_level, .. }

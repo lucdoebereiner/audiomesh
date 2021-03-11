@@ -113,6 +113,7 @@ type Process
     | Mul
     | Softclip
     | Ducking
+    | VanDerPol { e : Float, frac : Float }
     | EnvFollow
     | PLL { factor : Float }
     | Ring
@@ -180,6 +181,11 @@ processParameters p =
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
             ]
 
+        VanDerPol { e, frac } ->
+            [ Parameter 1 e Exp "E" 0.001 2
+            , Parameter 2 frac Exp "Frac" 0.0001 0.8
+            ]
+
         -- Constant { value } ->
         --     [ Parameter 1 value Lin "Value" -1.0 1.0 ]
         Filter { filterType, freq, q } ->
@@ -227,6 +233,17 @@ setInput ( parIdx, val ) proc =
 
         SoundIn s ->
             SoundIn { s | factor = val }
+
+        VanDerPol s ->
+            case parIdx of
+                1 ->
+                    VanDerPol { s | e = val }
+
+                2 ->
+                    VanDerPol { s | frac = val }
+
+                _ ->
+                    proc
 
         SinOsc s ->
             case parIdx of
@@ -324,6 +341,9 @@ processName p =
 
         Add ->
             "Add"
+
+        VanDerPol _ ->
+            "VanDerPol"
 
         Resonator _ ->
             "Resonator"
@@ -437,6 +457,14 @@ encodeProcess p =
                     ]
                 )
 
+        VanDerPol s ->
+            encObj p
+                (JE.object
+                    [ ( "e", JE.float s.e )
+                    , ( "frac", JE.float s.frac )
+                    ]
+                )
+
         Constant c ->
             encObj p (JE.object [ ( "value", JE.float c.value ) ])
 
@@ -482,6 +510,9 @@ processToString p =
 
         Delay d ->
             "Delay length:" ++ String.fromInt d.length
+
+        VanDerPol v ->
+            "VanDerPol e:" ++ String.fromFloat v.e
 
         Filter f ->
             filterTypeToString f.filterType
@@ -559,6 +590,13 @@ decodeSoundIn =
     Decode.succeed (\input f -> SoundIn { index = input, factor = f })
         |> required "index" int
         |> required "factor" float
+
+
+decodeVanDerPol : Decoder Process
+decodeVanDerPol =
+    Decode.succeed (\e f -> VanDerPol { e = e, frac = f })
+        |> required "e" float
+        |> required "frac" float
 
 
 decodeSimpleProcess : Process -> Decoder Process
@@ -752,6 +790,7 @@ decodeUGen =
                 , field "Gauss" (decodeSimpleProcess Gauss)
                 , field "EnvFollow" (decodeSimpleProcess EnvFollow)
                 , field "PLL" decodePLL
+                , field "VanDerPol" decodeVanDerPol
                 , field "Resonator" decodeResonator
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter
