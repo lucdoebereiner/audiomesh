@@ -326,7 +326,7 @@ fn rms_chain() -> Vec<Process> {
 
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
-    dlag.set_duration_ud(2.0, 0.25, get_sr());
+    dlag.set_duration_ud(3.0, 0.15, get_sr());
     dlag
 }
 
@@ -465,7 +465,7 @@ impl Process {
                     .iter_mut()
                     .map(|p| p.process(external_input))
                     .sum();
-                let mut out_target = 1.0 - level;
+                let mut out_target = 1.0 - (level / 0.707);
                 out_target = out_target.min(1.0).max(0.0);
                 output_factor.set_target(out_target);
                 *input * output_factor.tick()
@@ -478,7 +478,7 @@ impl Process {
                     .iter_mut()
                     .map(|p| p.process(external_input))
                     .sum();
-                *input * level
+                *input * (level / 0.707)
             }
             // leaky integrate and fire
             Process::Spike {

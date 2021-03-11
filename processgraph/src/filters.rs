@@ -165,6 +165,7 @@ fn zapgremlins(x: f64) -> f64 {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ComplexRes {
     //    #[serde(default = "cr_default_freq")]
+    #[serde(skip)]
     pub freq: f64,
     #[serde(skip)]
     coeff_x: f64,

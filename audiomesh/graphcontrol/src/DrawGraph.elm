@@ -220,8 +220,7 @@ inputButton msg ( xp, yp ) i =
             [ a
                 [ fontSize (Em 2)
                 , fontFamily [ "Inconsolata" ]
-
-                --                , onClick (msg node.id)
+                , onClick (msg i)
                 , cursor CursorPointer
                 ]
                 [ text <| String.fromInt i ]

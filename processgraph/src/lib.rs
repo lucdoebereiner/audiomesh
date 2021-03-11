@@ -150,6 +150,13 @@ pub struct UGenGraph {
     current_listening_nodes: Vec<NodeIndex>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct OutputSpec {
+    node: usize,
+    output: usize,
+    amp: f64,
+}
+
 impl UGenGraph {
     pub fn new() -> UGenGraph {
         UGenGraph {
@@ -177,16 +184,6 @@ impl UGenGraph {
             node.process.set_input(idx as u32, input_value, false)
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct OutputSpec {
-    node: usize,
-    output: usize,
-    amp: f64,
-}
-
-impl UGenGraph {
     pub fn set_output(&mut self, spec: OutputSpec) {
         self.graph[NodeIndex::new(spec.node)].set_output(spec.output, spec.amp)
     }
@@ -266,27 +263,35 @@ impl UGenGraph {
         shuffled.shuffle(&mut rng);
 
         // input
-        if let Some(spec) = self.get_spec(new_node) {
-            match spec.process_type {
-                ProcessType::Processor => {
-                    if let Some(source) = shuffled.choose(&mut rng) {
-                        //                    let w = rng.gen_range(0.7, 1.0);
-                        self.connect(*source, new_node, (0, lag::lag(1.0)));
-                    }
-                }
-                ProcessType::TwoInputs | ProcessType::MultipleInputs => {
-                    // let w1 = rng.gen_range(0.7, 1.0);
-                    // let w2 = rng.gen_range(0.7, 1.0);
-                    if shuffled.len() > 0 {
-                        self.connect(shuffled[0], new_node, (0, lag::lag(1.0)));
-                    };
-                    if shuffled.len() > 1 {
-                        self.connect(shuffled[1], new_node, (1, lag::lag(1.0)));
-                    }
-                }
-                ProcessType::NoInputGenerator => (),
-            }
-        }
+
+        self.lacking_input_edges(new_node).iter().for_each(|i| {
+            if shuffled.len() > (*i as usize) {
+                self.connect(shuffled[(*i as usize)], new_node, (*i, lag::lag(1.0)));
+            };
+        })
+
+        // if let Some(spec) = self.get_spec(new_node) {
+        //     match spec.process_type {
+        //         ProcessType::Processor => {
+        //             if let Some(source) = shuffled.choose(&mut rng) {
+        //                 //                    let w = rng.gen_range(0.7, 1.0);
+        //                 self.connect(*source, new_node, (0, lag::lag(1.0)));
+        //             }
+        //         }
+        //         ProcessType::TwoInputs | ProcessType::MultipleInputs => {
+        // 	    let lacking = self.lacking_input_edges.iter().for_each()
+        //             // let w1 = rng.gen_range(0.7, 1.0);
+        //             // let w2 = rng.gen_range(0.7, 1.0);
+        //             if shuffled.len() > 0 {
+        //                 self.connect(shuffled[0], new_node, (0, lag::lag(1.0)));
+        //             };
+        //             if shuffled.len() > 1 {
+        //                 self.connect(shuffled[1], new_node, (1, lag::lag(1.0)));
+        //             }
+        //         }
+        //         ProcessType::NoInputGenerator => (),
+        //     }
+        // }
     }
 
     pub fn rnd_circle(&mut self, nodes: &[NodeIndex], n_connections: u32) -> Vec<EdgeIndex> {
@@ -333,17 +338,51 @@ impl UGenGraph {
         }
     }
 
-    fn does_idx_have_sufficient_inputs(&self, node: NodeIndex) -> bool {
+    fn lacking_input_edges(&self, node: NodeIndex) -> Vec<u32> {
+        let mut lacking_indices: Vec<u32> = vec![];
         if let Some(u) = self.graph.node_weight(node) {
-            let n = self.graph.neighbors_directed(node, Incoming).count();
+            let incoming_edges: Vec<u32> = self
+                .graph
+                .edges_directed(node, Incoming)
+                .map(|e| {
+                    let (idx, _) = e.weight();
+                    *idx
+                })
+                .collect();
             match u.process.spec().process_type {
-                ProcessType::NoInputGenerator => true,
-                ProcessType::TwoInputs | ProcessType::MultipleInputs => n >= 2,
-                ProcessType::Processor => n >= 1,
+                ProcessType::NoInputGenerator => (),
+                ProcessType::TwoInputs | ProcessType::MultipleInputs => {
+                    if !incoming_edges.contains(&0) {
+                        lacking_indices.push(0);
+                    }
+                    if !incoming_edges.contains(&1) {
+                        lacking_indices.push(1);
+                    }
+                }
+                ProcessType::Processor => {
+                    if !incoming_edges.contains(&0) {
+                        lacking_indices.push(0);
+                    }
+                }
             }
+            lacking_indices
         } else {
-            false
+            lacking_indices
         }
+    }
+
+    fn does_idx_have_sufficient_inputs(&self, node: NodeIndex) -> bool {
+        self.lacking_input_edges(node).is_empty()
+        // if let Some(u) = self.graph.node_weight(node) {
+        //     let n = self.graph.neighbors_directed(node, Incoming).count();
+        //     match u.process.spec().process_type {
+        //         ProcessType::NoInputGenerator => true,
+        //         ProcessType::TwoInputs | ProcessType::MultipleInputs => n >= 2,
+        //         ProcessType::Processor => n >= 1,
+        //     }
+        // } else {
+        //     false
+        // }
     }
 
     fn does_idx_have_sufficient_outputs(&self, node: NodeIndex) -> bool {
