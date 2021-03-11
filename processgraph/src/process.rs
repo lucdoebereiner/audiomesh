@@ -420,9 +420,7 @@ impl Process {
                 ref mut freq_factor,
                 ref mut freq_center,
             } => {
-                resonator
-                    .freq
-                    .set_target(freq_center.tick() + (freq_factor.tick() * *freq_mod));
+                resonator.freq = freq_center.tick() + (freq_factor.tick() * *freq_mod);
                 resonator.process(*input)
             }
             Process::Filter {
@@ -717,7 +715,7 @@ impl Process {
                 1 => set_or_add(freq_mod, input_value, add),
                 2 => freq_center.set_target(input_value),
                 3 => freq_factor.set_target(input_value),
-                4 => resonator.set_parameters(resonator.freq.current, input_value),
+                4 => resonator.set_parameters(resonator.freq, input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
 
@@ -937,7 +935,6 @@ impl Process {
         match self {
         Process::Wrap { ref mut input, .. }
         | Process::Filter { ref mut input, .. }
-	| Process::Resonator { ref mut input, .. }
 //        | Process::Map { ref mut input, .. }
         | Process::CurveLin { ref mut input, .. }
 	| Process::Square { ref mut input }
@@ -957,7 +954,11 @@ impl Process {
 	    *input = 0.0;
 	    clear_chain(input_level);
 	    //input_level.iter_mut().for_each(|i| clear_inputs(i));
-	}
+	},
+	Process::Resonator { ref mut input, ref mut freq_mod, .. } => {
+		*input = 0.0;
+		*freq_mod = 0.0;
+	},
 	Process::PLL { ref mut input, .. } => input.input = 0.0,
 	Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
 	| Process::Ring { ref mut inputs, ref mut input_counter } => {

@@ -6,15 +6,16 @@ import Graph exposing (Edge, Graph, Node, NodeId)
 import Html exposing (Html)
 import IntDict
 import List exposing (range)
-import ProcessGraph exposing (Link, UGen, UGenGraph, defaultUGen, mkGraph, ugenLabel)
+import Maybe.Extra as M
+import ProcessGraph exposing (Link, ProcessType(..), UGen, UGenGraph, defaultUGen, mkGraph, ugenLabel)
 import Scale exposing (SequentialScale)
 import Scale.Color
 import TypedSvg exposing (a, circle, ellipse, g, line, polygon, polyline, rect, svg, text_, title)
-import TypedSvg.Attributes exposing (class, cursor, fill, fontFamily, fontSize, fontWeight, height, noFill, points, stroke, textAnchor, viewBox, width, xlinkHref)
+import TypedSvg.Attributes exposing (class, cursor, fill, fillOpacity, fontFamily, fontSize, fontWeight, height, noFill, points, stroke, textAnchor, viewBox, width, xlinkHref)
 import TypedSvg.Attributes.InPx exposing (cx, cy, r, rx, ry, strokeWidth, x, x1, x2, y, y1, y2)
 import TypedSvg.Core exposing (Svg, attribute, text)
 import TypedSvg.Events exposing (onClick)
-import TypedSvg.Types exposing (AnchorAlignment(..), Cursor(..), FontWeight(..), Length(..), Paint(..), px)
+import TypedSvg.Types exposing (AnchorAlignment(..), Cursor(..), FontWeight(..), Length(..), Opacity(..), Paint(..), px)
 
 
 type alias Entity =
@@ -200,10 +201,71 @@ nodeSize size node =
         [ title [] [ text node.value.name ] ]
 
 
-nodeElement selectedId msg outputs node =
+inputButton : (Int -> msg) -> ( Float, Float ) -> Int -> Svg msg
+inputButton msg ( xp, yp ) i =
+    g []
+        [ rect
+            [ x xp
+            , y (yp + 10.0)
+            , width (px 35)
+            , height (px 35)
+            , strokeWidth 1.0
+            , stroke (Paint Color.black)
+            , fill (Paint Color.white)
+            , cursor CursorPointer
+            , onClick (msg i)
+            ]
+            []
+        , text_ [ textAnchor AnchorMiddle, x (xp + 17.5), y (yp + 35) ]
+            [ a
+                [ fontSize (Em 2)
+                , fontFamily [ "Inconsolata" ]
+
+                --                , onClick (msg node.id)
+                , cursor CursorPointer
+                ]
+                [ text <| String.fromInt i ]
+            ]
+        ]
+
+
+nodeElement : Maybe Int -> (Int -> msg) -> Maybe (Int -> Int -> msg) -> Node Entity -> Svg msg
+nodeElement selectedId msg connectToMsg node =
     let
         thisNode =
             ugenLabel node.label.value
+
+        procInputs =
+            case selectedId of
+                Nothing ->
+                    []
+
+                Just selected ->
+                    if selected /= node.id then
+                        case connectToMsg of
+                            Just m ->
+                                case node.label.value.process_type of
+                                    NoInputGenerator ->
+                                        []
+
+                                    Processor ->
+                                        [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
+
+                                    TwoInputs ->
+                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                                        ]
+
+                                    MultipleInputs ->
+                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                                        ]
+
+                            Nothing ->
+                                []
+
+                    else
+                        []
 
         ( weight, color ) =
             if selectedId == Just node.id then
@@ -213,24 +275,26 @@ nodeElement selectedId msg outputs node =
                 ( FontWeightNormal, Color.black )
     in
     g []
-        [ ellipse
+        ([ ellipse
             ([ rx 130
              , ry 25
              , cx node.label.x
              , cy node.label.y
-             , cursor CursorPointer
-             , onClick (msg node.id)
              , stroke (Paint color) --(Paint Color.black)
+             , strokeWidth 1.0
+             , fill (Paint Color.white)
              ]
-                ++ (if List.member node.id outputs then
-                        [ strokeWidth 3.0, fill (Paint Color.grey) ]
+                ++ (if M.isNothing connectToMsg then
+                        [ cursor CursorPointer
+                        , onClick (msg node.id)
+                        ]
 
                     else
-                        [ strokeWidth 1.0, fill (Paint Color.white) ]
+                        []
                    )
             )
             []
-        , text_ [ textAnchor AnchorMiddle, x node.label.x, y (node.label.y + 5) ]
+         , text_ [ textAnchor AnchorMiddle, x node.label.x, y (node.label.y + 5) ]
             [ a
                 [ fontSize (Em 1)
                 , fontFamily [ "Inconsolata" ]
@@ -240,7 +304,9 @@ nodeElement selectedId msg outputs node =
                 ]
                 [ text thisNode ]
             ]
-        ]
+         ]
+            ++ procInputs
+        )
 
 
 viewGraph :
@@ -249,17 +315,17 @@ viewGraph :
     -> Maybe Int
     -> (Int -> msg)
     -> (Int -> msg)
-    -> List Int
+    -> Maybe (Int -> Int -> msg)
     -> ( Float, Float )
     -> Graph Entity Link
     -> Html msg
-viewGraph ( w, h ) selectedNode selectedEdge nodeSelectMsg linkSelectMsg outputs ( boxWidth, boxHeight ) model =
+viewGraph ( w, h ) selectedNode selectedEdge nodeSelectMsg linkSelectMsg connectMsg ( boxWidth, boxHeight ) model =
     svg [ width (Px w), height (Px h), viewBox 0 0 boxWidth boxHeight ]
         [ g [ class [ "links" ] ] <|
             List.map (linkElement selectedEdge model linkSelectMsg) <|
                 Graph.edges model
         , g [ class [ "nodes" ] ] <|
-            List.map (nodeElement selectedNode nodeSelectMsg outputs) <|
+            List.map (nodeElement selectedNode nodeSelectMsg connectMsg) <|
                 Graph.nodes model
         ]
 
@@ -270,17 +336,17 @@ view :
     -> Maybe Int
     -> (Int -> msg)
     -> (Int -> msg)
-    -> List Int
+    -> Maybe (Int -> Int -> msg)
     -> ( Float, Float )
     -> ( Float, Float )
     -> Float
     -> Html msg
-view graph selectedNode selectedEdge nodeSelectMsg linkSelectMsg outputs ( width, height ) ( boxWidth, boxHeight ) dist =
+view graph selectedNode selectedEdge nodeSelectMsg linkSelectMsg connectMsg ( width, height ) ( boxWidth, boxHeight ) dist =
     viewGraph ( width, height )
         selectedNode
         selectedEdge
         nodeSelectMsg
         linkSelectMsg
-        outputs
+        connectMsg
         ( boxWidth, boxHeight )
         (init graph dist ( boxWidth, boxHeight ))

@@ -5,6 +5,7 @@ module ProcessGraph exposing
     , FilterType(..)
     , Link
     , Process(..)
+    , ProcessType(..)
     , UGen
     , UGenGraph
     , decodeGraph
@@ -189,7 +190,7 @@ processParameters p =
         Resonator { freqCenter, freqFactor, decay } ->
             [ Parameter 2 freqCenter Exp "Freq Center" 10.0 8000.0
             , Parameter 3 freqFactor Exp "Freq Fac" 1.0 8000.0
-            , Parameter 4 decay Exp "Decay" 0.001 2.0
+            , Parameter 4 decay Exp "Decay" 0.001 0.1
             ]
 
         LinCon { linconA, linconB } ->
@@ -664,11 +665,38 @@ decodeSpike =
         |> required "t_rest" int
 
 
+type ProcessType
+    = NoInputGenerator
+    | Processor
+    | TwoInputs
+    | MultipleInputs
+
+
+processTypeFromString : String -> ProcessType
+processTypeFromString s =
+    case s of
+        "NoInputGenerator" ->
+            NoInputGenerator
+
+        "Processor" ->
+            Processor
+
+        "TwoInputs" ->
+            TwoInputs
+
+        "MultipleInputs" ->
+            MultipleInputs
+
+        _ ->
+            Processor
+
+
 type alias UGen =
     { process : Process
     , sum_inputs : Bool
     , clip : ClipType
     , output_sends : IntDict Float
+    , process_type : ProcessType
     }
 
 
@@ -688,7 +716,7 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen Add True None IntDict.empty
+    UGen Add True None IntDict.empty Processor
 
 
 decodeOutputTuple =
@@ -699,7 +727,14 @@ decodeOutputTuple =
 
 decodeUGen : Decoder UGen
 decodeUGen =
-    Decode.succeed (\p sum clip sends -> UGen p sum (clipTypeFromString clip) (IntDict.fromList sends))
+    Decode.succeed
+        (\p sum clip sends pt ->
+            UGen p
+                sum
+                (clipTypeFromString clip)
+                (IntDict.fromList sends)
+                (processTypeFromString pt)
+        )
         |> required "process"
             (oneOf
                 [ field "Delay" decodeDelay
@@ -732,6 +767,7 @@ decodeUGen =
         |> required "sum_inputs" bool
         |> required "clip" string
         |> required "output_sends" (list decodeOutputTuple)
+        |> required "process_type" string
 
 
 type alias Link =

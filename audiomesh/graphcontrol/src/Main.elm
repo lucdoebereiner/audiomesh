@@ -162,6 +162,7 @@ type Msg
     | LoadGraph
     | FileSelected File
     | WaitingToConnect Graph.NodeId
+    | Connect Graph.NodeId Graph.NodeId Int
     | Tick Time.Posix
     | GotPoll (Result Http.Error Float)
     | SelectPrevNode
@@ -320,7 +321,6 @@ update msg model =
             ( model, Api.getGraph GotGraph )
 
         SelectNode id ->
-            -- todo make weight and input variable
             case model.waitingToConnect of
                 Just i ->
                     ( { model | waitingToConnect = Nothing }
@@ -330,12 +330,12 @@ update msg model =
                 Nothing ->
                     ( { model | selectedNode = Just id }, Cmd.none )
 
+        Connect from to idx ->
+            ( { model | waitingToConnect = Nothing }
+            , Api.postEdge UpdatedGraph from to ( idx, 1.0 )
+            )
+
         SelectEdge id ->
-            -- let
-            --     n =
-            --         Maybe.map Graph.edges model.graph
-            --             |> Maybe.andThen (find (\e -> e.label.id == id))
-            -- in
             ( { model | selectedEdge = Just id }, Cmd.none )
 
         DeleteNode id ->
@@ -968,10 +968,10 @@ view model =
                                     e
                                     SelectNode
                                     SelectEdge
-                                    []
-                                    ( 2000, 1600 )
-                                    ( 3000, 2400 )
-                                    300.0
+                                    (Maybe.map Connect model.waitingToConnect)
+                                    ( 1800, 1400 )
+                                    ( 2600, 2000 )
+                                    320.0
                             )
                             g
                             model.selectedNode
