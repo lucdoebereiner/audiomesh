@@ -1,4 +1,4 @@
-module OutputIndices exposing (OutputSpec, encodeSpec, outputSpecs, updateGraphWithSpecs, updateUGenGraph)
+module OutputIndices exposing (OutputSpec, ampForIndex, encodeSpec, outputSpecs, updateGraphWithSpecs, updateUGenGraph)
 
 import Array exposing (Array)
 import Graph
@@ -11,23 +11,27 @@ gaussCurve : Float -> Float
 gaussCurve x =
     let
         c =
-            0.07
+            0.23
     in
     e ^ ((x * x) / (-2.0 * (c * c)))
 
 
 ampForIndex pos n index =
-    let
-        norm1 =
-            toFloat index / toFloat n
+    if n <= 1 then
+        1.0
 
-        norm2 =
-            toFloat (index + n) / toFloat n
+    else
+        let
+            norm1 =
+                toFloat index / toFloat n
 
-        dist =
-            min (abs (pos - norm1)) (abs (pos - norm2))
-    in
-    gaussCurve dist
+            norm2 =
+                toFloat (index + n) / toFloat n
+
+            dist =
+                min (abs (pos - norm1)) (abs (pos - norm2))
+        in
+        gaussCurve dist
 
 
 type alias OutputSpec =

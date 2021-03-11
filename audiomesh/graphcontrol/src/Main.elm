@@ -282,10 +282,6 @@ update msg model =
             ( model, Api.disconnectMostConnected UpdatedGraph )
 
         GotGraph res ->
-            let
-                _ =
-                    Debug.log "got graph" res
-            in
             case res of
                 Ok g ->
                     ( { model | graph = Just (mkGraph g) }, Cmd.none )

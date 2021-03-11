@@ -502,19 +502,44 @@ impl UGenGraph {
         let components = self.collect_components();
         let mut rng = thread_rng();
         if let Some((first, rest)) = components.split_first() {
-            for disconnected_node in rest.iter() {
-                //            let w1 = rng.gen_range(0.7, 1.0);
-                //           let w2 = rng.gen_range(0.7, 1.0);
-                self.connect(
-                    disconnected_node[0],
-                    *first.choose(&mut rng).unwrap(),
-                    (0, lag::lag(1.0)),
-                );
-                self.connect(
-                    *first.choose(&mut rng).unwrap(),
-                    disconnected_node[0],
-                    (0, lag::lag(2.0)),
-                );
+            for disconnected_component in rest.iter() {
+                let first_nodes: Vec<&NodeIndex> = first
+                    .iter()
+                    .filter(|&u| {
+                        if let Some(ugen) = self.graph.node_weight(*u) {
+                            ugen.process.spec().process_type != ProcessType::NoInputGenerator
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+
+                let rest_nodes: Vec<&NodeIndex> = disconnected_component
+                    .iter()
+                    .filter(|&u| {
+                        if let Some(ugen) = self.graph.node_weight(*u) {
+                            ugen.process.spec().process_type != ProcessType::NoInputGenerator
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+
+                match (first_nodes.choose(&mut rng), rest_nodes.choose(&mut rng)) {
+                    (Some(f), Some(r)) => {
+                        self.connect(**f, **r, (0, lag::lag(1.0)));
+                        ()
+                    }
+                    _ => (),
+                }
+
+                match (first_nodes.choose(&mut rng), rest_nodes.choose(&mut rng)) {
+                    (Some(f), Some(r)) => {
+                        self.connect(**r, **f, (0, lag::lag(1.0)));
+                        ()
+                    }
+                    _ => (),
+                }
             }
         }
     }
