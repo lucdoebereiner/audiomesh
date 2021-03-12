@@ -847,7 +847,7 @@ processRow m =
         , addProcess "BitAnd" BitAnd
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
-        , addProcess "VanDerPol" (VanDerPol { e = 0.001, frac = 0.001 })
+        , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03 })
         , delayInput m.delayLength
         , pllInput m.pllFac
         , sinInput m.sinMul

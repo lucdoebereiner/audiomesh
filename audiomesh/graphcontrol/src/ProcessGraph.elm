@@ -182,8 +182,8 @@ processParameters p =
             ]
 
         VanDerPol { e, frac } ->
-            [ Parameter 1 e Exp "E" 0.001 2
-            , Parameter 2 frac Exp "Frac" 0.0001 0.8
+            [ Parameter 1 e Exp "E" 0.05 20
+            , Parameter 2 frac Exp "dt" 0.001 0.9
             ]
 
         -- Constant { value } ->

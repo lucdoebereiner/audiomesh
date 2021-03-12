@@ -75,6 +75,9 @@ pub enum Process {
         y: f64,
         frac: lag::Lag,
         e: lag::Lag,
+        #[serde(skip_serializing)]
+        #[serde(default = "dc_remove_filter")]
+        output: filters::OnePoleHP,
     },
     Ducking {
         #[serde(skip)]
@@ -93,7 +96,7 @@ pub enum Process {
     },
     PLL {
         #[serde(skip_serializing)]
-        #[serde(default = "pll_input_filter")]
+        #[serde(default = "dc_remove_filter")]
         input: filters::OnePoleHP,
         factor: lag::Lag,
         #[serde(skip)]
@@ -347,7 +350,7 @@ fn pll_error_lag() -> lag::Lag {
     dlag
 }
 
-fn pll_input_filter() -> filters::OnePoleHP {
+fn dc_remove_filter() -> filters::OnePoleHP {
     filters::OnePoleHP::new(0.94)
 }
 
@@ -406,21 +409,42 @@ impl Process {
                 ref mut y,
                 ref mut frac,
                 ref mut e,
+                ref mut output,
             } => {
-                let mut d_x = *y;
-                let mut d_y = (e.tick() * *y * (1.0 - (*x).powi(2))) - *x + (*input * 0.5);
+                let this_e = e.tick();
                 let f = frac.tick();
-                d_x = zapgremlins(d_x * f);
-                d_y = zapgremlins(d_y * f);
-                if d_x.abs() > 10.0 {
+
+                let mut d_x_n = *y;
+                let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x + (*input);
+
+                d_x_n = zapgremlins(d_x_n);
+                d_y_n = zapgremlins(d_y_n);
+
+                let x_1 = *x + (d_x_n * f);
+                let y_1 = *y + (d_y_n * f);
+
+                let mut d_x_1 = x_1;
+                let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1 + (*input);
+
+                d_x_1 = zapgremlins(d_x_1);
+                d_y_1 = zapgremlins(d_y_1);
+
+                let mut d_x = ((d_x_n + d_x_1) / 2.0) * f;
+                let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
+
+                //hard reset
+                if d_x.abs() > 100.0 || d_y.abs() > 100.0 {
+                    //                    println!("reset vdp x{} y{}", d_x, d_y);
                     d_x = 0.0;
-                }
-                if d_y.abs() > 10.0 {
                     d_y = 0.0;
+                    *x = 0.0;
+                    *y = 0.0;
                 }
+
                 *x = *x + d_x;
                 *y = *y + d_y;
-                *x
+                output.input = *x * 0.5;
+                output.process()
             }
             Process::PLL {
                 input,
