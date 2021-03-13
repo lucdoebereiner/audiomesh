@@ -113,8 +113,9 @@ type Process
     | Mul
     | Softclip
     | Ducking
-    | VanDerPol { e : Float, frac : Float }
+    | VanDerPol { e : Float, frac : Float, a : Float }
     | EnvFollow
+    | Env { min_target : Float, max_target : Float, max_n : Float }
     | PLL { factor : Float }
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
@@ -181,9 +182,16 @@ processParameters p =
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
             ]
 
-        VanDerPol { e, frac } ->
+        VanDerPol { e, frac, a } ->
             [ Parameter 1 e Exp "E" 0.05 20
             , Parameter 2 frac Exp "dt" 0.001 0.9
+            , Parameter 3 a Exp "a" 0.001 10.0
+            ]
+
+        Env { min_target, max_target, max_n } ->
+            [ Parameter 1 min_target Exp "Min" 0.0001 0.5
+            , Parameter 2 max_target Exp "Max" 0.1 0.9
+            , Parameter 3 max_n Exp "N" 0.5 20.0
             ]
 
         -- Constant { value } ->
@@ -242,6 +250,9 @@ setInput ( parIdx, val ) proc =
                 2 ->
                     VanDerPol { s | frac = val }
 
+                3 ->
+                    VanDerPol { s | a = val }
+
                 _ ->
                     proc
 
@@ -266,6 +277,20 @@ setInput ( parIdx, val ) proc =
 
                 2 ->
                     Filter { f | q = val }
+
+                _ ->
+                    proc
+
+        Env e ->
+            case parIdx of
+                1 ->
+                    Env { e | min_target = val }
+
+                2 ->
+                    Env { e | max_target = val }
+
+                3 ->
+                    Env { e | max_n = val }
 
                 _ ->
                     proc
@@ -360,6 +385,9 @@ processName p =
         EnvFollow ->
             "EnvFollow"
 
+        Env _ ->
+            "Env"
+
         Softclip ->
             "Softclip"
 
@@ -425,6 +453,15 @@ encodeProcess p =
         Delay i ->
             encObj p (JE.object [ ( "input", JE.int i.length ) ])
 
+        Env e ->
+            encObj p
+                (JE.object
+                    [ ( "min_target", JE.float e.min_target )
+                    , ( "max_target", JE.float e.max_target )
+                    , ( "max_n", JE.float e.max_n )
+                    ]
+                )
+
         Resonator r ->
             encObj p
                 (JE.object
@@ -462,6 +499,7 @@ encodeProcess p =
                 (JE.object
                     [ ( "e", JE.float s.e )
                     , ( "frac", JE.float s.frac )
+                    , ( "a", JE.float s.a )
                     ]
                 )
 
@@ -594,9 +632,25 @@ decodeSoundIn =
 
 decodeVanDerPol : Decoder Process
 decodeVanDerPol =
-    Decode.succeed (\e f -> VanDerPol { e = e, frac = f })
+    Decode.succeed (\e f a -> VanDerPol { e = e, frac = f, a = a })
         |> required "e" float
         |> required "frac" float
+        |> required "a" float
+
+
+decodeEnv : Decoder Process
+decodeEnv =
+    Decode.succeed
+        (\min max n ->
+            Env
+                { min_target = min
+                , max_target = max
+                , max_n = n
+                }
+        )
+        |> required "min_target" float
+        |> required "max_target" float
+        |> required "max_n" float
 
 
 decodeSimpleProcess : Process -> Decoder Process
@@ -782,6 +836,7 @@ decodeUGen =
                 , field "Softclip" (decodeSimpleProcess Softclip)
                 , field "Ring" (decodeSimpleProcess Ring)
                 , field "RMS" (decodeSimpleProcess RMS)
+                , field "Env" decodeEnv
                 , field "Constant" decodeConstant
                 , field "Compressor" decodeCompressor
                 , field "Spike" decodeSpike

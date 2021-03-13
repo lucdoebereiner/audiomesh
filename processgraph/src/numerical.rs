@@ -68,6 +68,7 @@ pub fn wrap(input: f64, lo: f64, hi: f64) -> f64 {
     return input - range * ((input - lo) / range).floor();
 }
 
+#[allow(dead_code)]
 #[inline]
 fn linexp(x: f64, a: f64, b: f64, c: f64, d: f64) -> f64 {
     if x <= a {

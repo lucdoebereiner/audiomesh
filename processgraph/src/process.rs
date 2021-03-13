@@ -1,3 +1,4 @@
+use crate::compenv::*;
 use crate::filters;
 use crate::lag;
 use crate::numerical;
@@ -66,6 +67,15 @@ pub enum Process {
         ratio: lag::Lag,
         makeup: lag::Lag,
     },
+    Env {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip)]
+        input_level: Vec<Process>,
+        #[serde(flatten)]
+        //        #[serde(default = "comp_env_default")]
+        comp_env: CompEnv,
+    },
     VanDerPol {
         #[serde(skip)]
         input: f64,
@@ -75,6 +85,7 @@ pub enum Process {
         y: f64,
         frac: lag::Lag,
         e: lag::Lag,
+        a: lag::Lag,
         #[serde(skip_serializing)]
         #[serde(default = "dc_remove_filter")]
         output: filters::OnePoleHP,
@@ -287,6 +298,10 @@ fn rms_proc() -> Process {
     }
 }
 
+// fn comp_env_default() -> CompEnv {
+//     CompEnv::new(0.6, 0.001, get_sr() as usize * 4)
+// }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum InputType {
     Any,
@@ -409,13 +424,15 @@ impl Process {
                 ref mut y,
                 ref mut frac,
                 ref mut e,
+                ref mut a,
                 ref mut output,
             } => {
                 let this_e = e.tick();
                 let f = frac.tick();
+                let this_a = a.tick();
 
                 let mut d_x_n = *y;
-                let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x + (*input);
+                let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x + (*input * this_a);
 
                 d_x_n = zapgremlins(d_x_n);
                 d_y_n = zapgremlins(d_y_n);
@@ -423,8 +440,8 @@ impl Process {
                 let x_1 = *x + (d_x_n * f);
                 let y_1 = *y + (d_y_n * f);
 
-                let mut d_x_1 = x_1;
-                let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1 + (*input);
+                let mut d_x_1 = y_1;
+                let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1 + (*input * this_a);
 
                 d_x_1 = zapgremlins(d_x_1);
                 d_y_1 = zapgremlins(d_y_1);
@@ -433,7 +450,7 @@ impl Process {
                 let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
 
                 //hard reset
-                if d_x.abs() > 100.0 || d_y.abs() > 100.0 {
+                if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
                     //                    println!("reset vdp x{} y{}", d_x, d_y);
                     d_x = 0.0;
                     d_y = 0.0;
@@ -460,7 +477,19 @@ impl Process {
                 } else {
                     error.set_target(1.0);
                 }
-                output
+                output * 0.7
+            }
+            Process::Env {
+                input,
+                ref mut input_level,
+                ref mut comp_env,
+            } => {
+                let level: f64 = input_level
+                    .iter_mut()
+                    .map(|p| p.process(external_input))
+                    .sum();
+                comp_env.process(level / 0.707);
+                *input * comp_env.fac
             }
             Process::Mul { inputs, .. } => inputs.iter().product(),
             Process::Add { inputs } => inputs.iter().sum(),
@@ -655,11 +684,13 @@ impl Process {
                 ref mut input,
                 ref mut e,
                 ref mut frac,
+                ref mut a,
                 ..
             } => match idx {
                 0 => set_or_add(input, input_value, add),
                 1 => e.set_target(input_value),
                 2 => frac.set_target(input_value),
+                3 => a.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::SinOsc {
@@ -725,7 +756,24 @@ impl Process {
                 3 => makeup.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
-
+            Process::Env {
+                ref mut input,
+                ref mut input_level,
+                ref mut comp_env,
+                ..
+            } => match idx {
+                0 => {
+                    if input_level.len() < 1 {
+                        input_level.push(rms_proc());
+                    }
+                    set_or_add(input, input_value, add);
+                    input_level[0].set_input(0, input_value, add);
+                }
+                1 => comp_env.min_target = input_value,
+                2 => comp_env.max_target = input_value,
+                3 => comp_env.max_n = input_value,
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
             Process::Ducking {
                 ref mut input,
                 ref mut input_level,
@@ -894,9 +942,15 @@ impl Process {
             Process::VanDerPol { .. } => procspec(
                 "vanderpool",
                 ProcessType::Processor,
-                vec![InputType::Audio, InputType::Factor, InputType::Factor],
+                vec![
+                    InputType::Audio,
+                    InputType::Factor,
+                    InputType::Factor,
+                    InputType::Amplitude,
+                ],
             ),
             Process::Sin { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Phase]),
+            Process::Env { .. } => procspec("sin", ProcessType::Processor, vec![InputType::Audio]),
             Process::SinOsc { .. } => procspec(
                 "sinosc",
                 ProcessType::Processor,
@@ -1020,9 +1074,10 @@ impl Process {
 	| Process::LinCon { ref mut input, .. }
 	| Process::Spike { ref mut input, .. }
 	| Process::VanDerPol { ref mut input, .. }
-        | Process::BitNeg { ref mut input } => *input = 0.0,
+	| Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	Process::Compressor { ref mut input, ref mut input_level, .. }
+	| Process::Env { ref mut input, ref mut input_level, .. }
 	| Process::EnvFollow { ref mut input, ref mut input_level, .. }
 	| Process::Ducking { ref mut input, ref mut input_level, .. } => {
 	    *input = 0.0;

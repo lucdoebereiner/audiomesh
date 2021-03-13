@@ -840,6 +840,13 @@ processRow m =
         , addProcess "RMS" RMS
         , addProcess "Ducking" Ducking
         , addProcess "EnvFollow" EnvFollow
+        , addProcess "Env"
+            (Env
+                { min_target = 0.001
+                , max_target = 0.6
+                , max_n = 4.0
+                }
+            )
         , addProcess "BitNeg" BitNeg
         , addProcess "BitOr" BitOr
 
@@ -847,7 +854,7 @@ processRow m =
         , addProcess "BitAnd" BitAnd
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
-        , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03 })
+        , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03, a = 1.0 })
         , delayInput m.delayLength
         , pllInput m.pllFac
         , sinInput m.sinMul

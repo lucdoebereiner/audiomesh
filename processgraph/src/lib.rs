@@ -1,3 +1,4 @@
+mod compenv;
 mod filters;
 pub mod lag;
 pub mod process;
