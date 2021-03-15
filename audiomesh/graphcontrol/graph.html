@@ -42,11 +42,48 @@
 	<div id="elm-main"></div>
     </body>
     <script>
-
-
      var app = Elm.Main.init({
 	 flags: {},
 	 node: document.getElementById('elm-main')
      });
+
+     let output = null;
+     
+     // Midi Control
+     navigator.requestMIDIAccess()
+	      .then(onMIDISuccess, onMIDIFailure);
+
+     function onMIDISuccess(midiAccess) {
+	 for (var input of midiAccess.inputs.values())
+             input.onmidimessage = getMIDIMessage;
+
+	 const outputs = midiAccess.outputs.values();
+	 for(const output of outputs) {
+	     if (output.name == "BCF2000 MIDI 1") {
+		 //console.log(output);
+		 midiOutput = output;
+	     }
+	 }
+     }
+
+     function getMIDIMessage(midiMessage) {
+	 //console.log(midiMessage);
+	 app.ports.midiCC.send(parseMidiMessage(midiMessage));
+     }
+
+     function parseMidiMessage(message) {
+	 return {
+	     channel: message.data[0] & 0xf,
+	     controller: message.data[1],
+	     value: message.data[2] / 127
+	 }
+     }
+     
+     function onMIDIFailure() {
+	 console.log('Could not access your MIDI devices.');
+     }
+
+   //  setTimeout(() => midiOutput.send([176, 89, 0]), 3000); 
+     
     </script>
 </html>

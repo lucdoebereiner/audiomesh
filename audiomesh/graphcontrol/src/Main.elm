@@ -1,4 +1,4 @@
-module Main exposing (Msg(..), main, update, view)
+port module Main exposing (Msg(..), main, update, view)
 
 --import Html exposing (Html, button, div, span, text)
 
@@ -21,6 +21,8 @@ import Html.Events as Events exposing (onClick)
 import Html.Lazy as Lazy
 import Http
 import IntDict
+import Json.Decode as Dec
+import Json.Decode.Pipeline exposing (required)
 import Maybe.Extra as M
 import OutputIndices
 import Parameters exposing (Mapping(..), Parameter)
@@ -102,7 +104,36 @@ init _ =
 
 subscriptions : Model -> Sub Msg
 subscriptions m =
-    Sub.batch [ Time.every 300 Tick, Time.every 1000 UpdateDrawGraph ]
+    Sub.batch
+        [ Time.every 300 Tick
+        , Time.every 1000 UpdateDrawGraph
+        , midiCC (ReceivedMidi << decodeMidiCC)
+        ]
+
+
+
+--
+
+
+type alias MidiCC =
+    { channel : Int, controller : Int, value : Float }
+
+
+port midiCC : (Dec.Value -> msg) -> Sub msg
+
+
+decodeMidiCC : Dec.Value -> Result Dec.Error MidiCC
+decodeMidiCC =
+    Dec.decodeValue
+        (Dec.succeed (\c co v -> { channel = c, controller = co, value = v })
+            |> required "channel" Dec.int
+            |> required "controller" Dec.int
+            |> required "value" Dec.float
+        )
+
+
+
+--
 
 
 main =
@@ -170,6 +201,7 @@ type Msg
     | SelectPrevEdge
     | SelectNextEdge
     | UpdateDrawGraph Time.Posix
+    | ReceivedMidi (Result Dec.Error MidiCC)
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -189,6 +221,13 @@ find predicate list =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ReceivedMidi m ->
+            let
+                _ =
+                    Debug.log "midi" m
+            in
+            ( model, Cmd.none )
+
         UpdateDrawGraph g ->
             ( { model | drawGraph = model.graph }, Cmd.none )
 
