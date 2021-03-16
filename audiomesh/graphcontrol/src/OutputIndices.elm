@@ -11,7 +11,7 @@ gaussCurve : Float -> Float
 gaussCurve x =
     let
         c =
-            0.23
+            0.28
     in
     e ^ ((x * x) / (-2.0 * (c * c)))
 

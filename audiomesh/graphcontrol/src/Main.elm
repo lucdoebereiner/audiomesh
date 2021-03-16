@@ -133,33 +133,83 @@ decodeMidiCC =
         )
 
 
-midiDict : Dict Int (( Maybe (Graph.Node UGen), Float ) -> Msg)
-midiDict =
+midiDict : Maybe (Graph.Node UGen) -> Dict Int (Float -> Msg)
+midiDict node =
     let
         nodeAmp =
-            \( node, val ) ->
+            \val ->
                 case node of
                     Nothing ->
                         NoMsg
 
                     Just n ->
                         SetNodeOutputAmp n.id val
+
+        processPars =
+            case node of
+                Nothing ->
+                    [ \_ -> NoMsg ]
+
+                Just n ->
+                    List.map
+                        (\p ->
+                            \v ->
+                                SetProcessParameter n.id
+                                    p.idx
+                                    (Parameters.mapped { p | value = v })
+                        )
+                        (processParameters
+                            n.label.process
+                        )
     in
-    Dict.fromList
-        [ ( 81
-          , \( _, v ) ->
+    Dict.fromList <|
+        [ ( 73
+          , \v ->
+                if v > 0.5 then
+                    SelectPrevNode
+
+                else
+                    NoMsg
+          )
+        , ( 74
+          , \v ->
+                if v > 0.5 then
+                    SelectNextNode
+
+                else
+                    NoMsg
+          )
+        , ( 75
+          , \v ->
+                if v > 0.5 then
+                    SelectPrevEdge
+
+                else
+                    NoMsg
+          )
+        , ( 76
+          , \v ->
+                if v > 0.5 then
+                    SelectNextEdge
+
+                else
+                    NoMsg
+          )
+        , ( 81
+          , \v ->
                 SetVolume
                     (Parameters.linexp v 0.0 1.0 0.0001 1.0)
           )
         , ( 82
-          , \( _, v ) ->
+          , \v ->
                 SetEdgeFac
                     (Parameters.linexp v 0.0 1.0 0.05 5.0)
           )
-        , ( 83, \( _, v ) -> SetOutputs 0 v )
-        , ( 84, \( _, v ) -> SetOutputs 1 v )
+        , ( 83, \v -> SetOutputs 0 v )
+        , ( 84, \v -> SetOutputs 1 v )
         , ( 85, nodeAmp )
         ]
+            ++ List.indexedMap (\i p -> ( i + 86, p )) processPars
 
 
 
@@ -275,8 +325,8 @@ update msg model =
                     getSelectedNode model
 
                 ( newModel, cmds ) =
-                    Dict.get m.controller midiDict
-                        |> Maybe.map (\ms -> update (ms ( selectedNode, m.value )) model)
+                    Dict.get m.controller (midiDict selectedNode)
+                        |> Maybe.map (\ms -> update (ms m.value) model)
                         |> Maybe.withDefault ( model, Cmd.none )
             in
             ( newModel, cmds )
