@@ -192,7 +192,7 @@ processParameters p =
         Env { min_target, max_target, max_n } ->
             [ Parameter 1 min_target Exp "Min" 0.0001 0.5
             , Parameter 2 max_target Exp "Max" 0.1 0.9
-            , Parameter 3 max_n Exp "N" 0.5 20.0
+            , Parameter 3 max_n Exp "Sec" 0.5 20.0
             ]
 
         -- Constant { value } ->

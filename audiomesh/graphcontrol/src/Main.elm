@@ -1038,7 +1038,7 @@ showSelectedEdge model =
             row [ spacing 10 ]
                 [ text ("Link weight: " ++ floatString l.label.strength)
                 , slider (SetEdgeWeight l.label.id)
-                    (Parameter -1 l.label.strength Exp "weight" 0.01 2.0)
+                    (Parameter -1 l.label.strength Exp "weight" 0.01 3.0)
                 , simpleButton "Delete" (DeleteEdge l.label.id)
                 ]
         )

@@ -68,8 +68,10 @@ impl CompEnv {
                         self.state_counter += 1;
                         //self.n = (self.n - 1).max(1);
                     }
-                    self.fac *=
-                        (self.target / adjusted_input).powf(1.0 / ((self.n as f64) / 1.5).max(1.0));
+                    self.fac *= (self.target / adjusted_input)
+                        .powf(1.0 / ((self.n - self.state_counter) as f64).max(1.0))
+                    //                        .powf(1.0 / self.n as f64)
+                    //.max(1.0);
                 }
                 CompEnvState::Sustain => {
                     if self.state_counter >= self.n {
@@ -79,7 +81,7 @@ impl CompEnv {
                     }
                     self.state_counter += 1;
                     self.fac *=
-                        (self.target / adjusted_input).powf(1.0 / ((self.n as f64) / 2.0).max(1.0));
+                        (self.target / adjusted_input).powf(1.0 / ((self.n as f64) / 4.0).max(1.0));
                 }
                 CompEnvState::Decay => {
                     //                    println!("decay input {}", adjusted_input);
@@ -92,8 +94,9 @@ impl CompEnv {
                         self.state_counter += 1;
                         //self.n = (self.n - 1).max(1);
                     }
-                    self.fac *=
-                        (self.target / adjusted_input).powf(1.0 / ((self.n as f64) / 1.5).max(1.0));
+                    self.fac *= (self.target / adjusted_input)
+                        .powf(1.0 / ((self.n - self.state_counter) as f64).max(1.0))
+                    // .max(1.0);
                 }
             }
         }
