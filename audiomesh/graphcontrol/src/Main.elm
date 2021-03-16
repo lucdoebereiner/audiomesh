@@ -5,6 +5,7 @@ port module Main exposing (Msg(..), main, update, view)
 import Api
 import Array exposing (Array)
 import Browser
+import Dict exposing (Dict)
 import DrawGraph
 import Element exposing (..)
 import Element.Background as Background
@@ -132,6 +133,35 @@ decodeMidiCC =
         )
 
 
+midiDict : Dict Int (( Maybe (Graph.Node UGen), Float ) -> Msg)
+midiDict =
+    let
+        nodeAmp =
+            \( node, val ) ->
+                case node of
+                    Nothing ->
+                        NoMsg
+
+                    Just n ->
+                        SetNodeOutputAmp n.id val
+    in
+    Dict.fromList
+        [ ( 81
+          , \( _, v ) ->
+                SetVolume
+                    (Parameters.linexp v 0.0 1.0 0.0001 1.0)
+          )
+        , ( 82
+          , \( _, v ) ->
+                SetEdgeFac
+                    (Parameters.linexp v 0.0 1.0 0.05 5.0)
+          )
+        , ( 83, \( _, v ) -> SetOutputs 0 v )
+        , ( 84, \( _, v ) -> SetOutputs 1 v )
+        , ( 85, nodeAmp )
+        ]
+
+
 
 --
 
@@ -149,6 +179,7 @@ type Msg
     = GotGraph (Result Http.Error BackendGraph)
     | GetGraph
     | SetOutputs Int Float
+    | SetNodeOutputAmp Graph.NodeId Float
     | Randomize
     | RandomCircle
     | Randomized (Result Http.Error ())
@@ -183,7 +214,7 @@ type Msg
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | DeleteEdge Int
-    | MulAllEdgeWeights Float
+    | SetEdgeFac Float
     | ConnectLeastConnected
     | DisconnectMostConnected
     | DownloadGraph
@@ -218,13 +249,42 @@ find predicate list =
                 find predicate rest
 
 
+getSelectedNode model =
+    Maybe.andThen
+        (\id ->
+            Maybe.andThen (Graph.get id) model.graph
+                |> Maybe.map .node
+        )
+        model.selectedNode
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ReceivedMidi m ->
+        SetNodeOutputAmp id amp ->
+            ( { model | graph = Maybe.map (ProcessGraph.updateOutputAmp id amp) model.graph }
+            , Api.setNodeOutputAmp NoOp id amp
+            )
+
+        ReceivedMidi (Ok m) ->
             let
                 _ =
                     Debug.log "midi" m
+
+                selectedNode =
+                    getSelectedNode model
+
+                ( newModel, cmds ) =
+                    Dict.get m.controller midiDict
+                        |> Maybe.map (\ms -> update (ms ( selectedNode, m.value )) model)
+                        |> Maybe.withDefault ( model, Cmd.none )
+            in
+            ( newModel, cmds )
+
+        ReceivedMidi (Err m) ->
+            let
+                _ =
+                    Debug.log "midi error" m
             in
             ( model, Cmd.none )
 
@@ -326,6 +386,10 @@ update msg model =
                     ( { model | graph = Just (mkGraph g) }, Cmd.none )
 
                 _ ->
+                    let
+                        _ =
+                            Debug.log "problem with graph" res
+                    in
                     ( model, Cmd.none )
 
         GotDownloadGraph res ->
@@ -473,25 +537,8 @@ update msg model =
         DeleteEdge e ->
             ( model, Api.deleteEdge UpdatedGraph e )
 
-        MulAllEdgeWeights f ->
-            ( { model
-                | -- graph = Maybe.map (mulAllEdges f) model.graph
-                  edgesFac = f
-              }
-            , Maybe.map
-                (\g ->
-                    Cmd.batch <|
-                        List.map
-                            (\e ->
-                                Api.setEdgeWeight NoOp
-                                    e.label.id
-                                    (e.label.strength * f)
-                            )
-                            (Graph.edges g)
-                )
-                model.graph
-                |> Maybe.withDefault Cmd.none
-            )
+        SetEdgeFac f ->
+            ( { model | edgesFac = f }, Api.setEdgeFac NoOp f )
 
 
 simpleButton : String -> msg -> Element msg
@@ -540,6 +587,7 @@ displayNode polled waiting n =
                <|
                 text <|
                     floatString polled
+             , slider (SetNodeOutputAmp n.id) (Parameter -1 n.label.output_amp Exp "OutputAmp" 0.001 2.0)
              ]
                 ++ List.map
                     (\( out_i, amp ) ->
@@ -626,7 +674,7 @@ outputSlider channel v =
 
 edgesSlider : Float -> Element Msg
 edgesSlider e =
-    slider MulAllEdgeWeights (Parameter -1 e Exp "Edge fac" 0.05 5.0)
+    slider SetEdgeFac (Parameter -1 e Exp "Edge fac" 0.05 5.0)
 
 
 addProcess : String -> Process -> Element Msg
@@ -952,12 +1000,7 @@ view : Model -> Html Msg
 view model =
     let
         selectedNode =
-            Maybe.andThen
-                (\id ->
-                    Maybe.andThen (Graph.get id) model.graph
-                        |> Maybe.map .node
-                )
-                model.selectedNode
+            getSelectedNode model
     in
     layout
         [ spacing 10

@@ -19,7 +19,7 @@ pub fn set_sr(sr: f64) {
     }
 }
 
-fn get_sr() -> f64 {
+pub fn get_sr() -> f64 {
     unsafe { SR }
 }
 

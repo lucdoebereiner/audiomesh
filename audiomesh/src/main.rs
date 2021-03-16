@@ -35,12 +35,14 @@ enum UpdateMessage {
     AddNode(Process),
     RemoveEdge(usize),
     SetEdgeWeight(usize, f64),
+    SetEdgeFac(f64),
     SetOutput(NodeIndex, usize, f64),
     SetOutputs(Vec<OutputSpec>),
     SetVolume(f64),
     ConnectLeastConnected,
     DisconnectMostConnected,
     SetParameter(usize, u32, f64),
+    SetOutputAmp(NodeIndex, f64),
     PollNode(NodeIndex),
 }
 
@@ -96,6 +98,15 @@ fn node_output(id: usize, output: usize, amp: f64, state: State<Globals>) {
         .unwrap()
 }
 
+#[post("/node/<id>/outputamp/<amp>")]
+fn node_output_amp(id: usize, amp: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender
+        .send(UpdateMessage::SetOutputAmp(NodeIndex::new(id), amp))
+        .unwrap()
+}
+
 #[post("/outputs", data = "<specvec>")]
 fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
@@ -119,6 +130,13 @@ fn remove_edge(id: usize, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::RemoveEdge(id)).unwrap()
+}
+
+#[post("/edgefac/<fac>")]
+fn set_edge_fac(fac: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::SetEdgeFac(fac)).unwrap()
 }
 
 #[post("/edge/<id>/<weight>")]
@@ -241,9 +259,18 @@ fn handle_messages(
             }
         }
 
+        UpdateMessage::SetOutputAmp(node, amp) => {
+            if let Some(ugen) = graph.graph.node_weight_mut(node) {
+                ugen.output_amp.set_target(amp)
+            }
+        }
+
         UpdateMessage::RemoveNode(id) => {
             graph.graph.remove_node(NodeIndex::new(id));
             graph.update_connections_and_flow(flow)
+        }
+        UpdateMessage::SetEdgeFac(fac) => {
+            graph.set_edge_fac(fac);
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
@@ -490,7 +517,9 @@ fn main() {
                 poll_node,
                 set_graph,
                 random_circle,
-                set_outputs
+                set_outputs,
+                set_edge_fac,
+                node_output_amp
             ],
         )
         .attach(cors)

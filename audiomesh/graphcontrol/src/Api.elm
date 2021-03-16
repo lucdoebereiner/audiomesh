@@ -12,7 +12,9 @@ module Api exposing
     , postGraph
     , randomCircle
     , randomize
+    , setEdgeFac
     , setEdgeWeight
+    , setNodeOutputAmp
     , setOutputs
     , setParameter
     , setVolume
@@ -97,6 +99,20 @@ setParameter msg ugenIdx parameter value =
         }
 
 
+setNodeOutputAmp : (Result Http.Error () -> msg) -> Int -> Float -> Cmd msg
+setNodeOutputAmp msg ugenIdx amp =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/node/"
+                ++ String.fromInt ugenIdx
+                ++ "/outputamp/"
+                ++ String.fromFloat amp
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
 setEdgeWeight : (Result Http.Error () -> msg) -> Int -> Float -> Cmd msg
 setEdgeWeight msg edgeIdx value =
     Http.post
@@ -115,6 +131,15 @@ setVolume : (Result Http.Error () -> msg) -> Float -> Cmd msg
 setVolume msg amp =
     Http.post
         { url = baseUrl ++ "/volume/" ++ String.fromFloat amp
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setEdgeFac : (Result Http.Error () -> msg) -> Float -> Cmd msg
+setEdgeFac msg amp =
+    Http.post
+        { url = baseUrl ++ "/edgefac/" ++ String.fromFloat amp
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }

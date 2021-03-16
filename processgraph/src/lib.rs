@@ -48,6 +48,7 @@ pub struct UGen {
     output_sends: Vec<(usize, lag::Lag)>,
     #[serde(skip_deserializing)]
     process_type: Option<ProcessType>,
+    pub output_amp: lag::Lag,
 }
 
 impl UGen {
@@ -62,11 +63,13 @@ impl UGen {
             clip: ClipType::None,
             output_sends: vec![],
             process_type: Some(pt),
+            output_amp: lag::lag(1.0),
         }
     }
 
     pub fn init_after_deserialization(&mut self) {
         self.process_type = Some(self.process.spec().process_type);
+        self.output_amp.set_duration(2.0, get_sr());
     }
 
     pub fn clip(self, clip_type: ClipType) -> Self {
@@ -89,9 +92,7 @@ impl UGen {
             None => self.output_sends.push((idx, lag::lag(amp))),
         }
     }
-}
 
-impl UGen {
     fn process(&mut self, input: &[f64]) -> f64 {
         match self.value {
             Some(v) => v,
@@ -117,12 +118,13 @@ impl UGen {
         self.value = None
     }
 
-    fn set_input_with_connection(&mut self, connection: (u32, f64), value: f64) {
+    fn set_input_with_connection(&mut self, connection: (u32, f64), value: f64, edge_fac: f64) {
         let (idx, weight) = connection;
         if unsafe { DEBUG } {
             println!("setting input of [{:?}] to {}", self, value)
         }
-        self.process.set_input(idx, value * weight, self.sum_inputs);
+        self.process
+            .set_input(idx, value * weight * edge_fac, self.sum_inputs);
         if unsafe { DEBUG } {
             println!("having set [{:?}]", self)
         }
@@ -148,6 +150,7 @@ pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>
 
 pub struct UGenGraph {
     pub graph: UGenGraphStructure, // TODO: goal, make no longer pub, all edge/node manipulations via impl
+    edge_fac: lag::Lag,
     current_listening_nodes: Vec<NodeIndex>,
 }
 
@@ -160,10 +163,17 @@ pub struct OutputSpec {
 
 impl UGenGraph {
     pub fn new() -> UGenGraph {
+        let mut ef = lag::lag(1.0);
+        ef.set_duration(2.0, get_sr());
         UGenGraph {
             graph: StableGraph::with_capacity(100, 100),
+            edge_fac: ef,
             current_listening_nodes: vec![],
         }
+    }
+
+    pub fn set_edge_fac(&mut self, f: f64) {
+        self.edge_fac.set_target(f);
     }
 
     pub fn connect(&mut self, from: NodeIndex, to: NodeIndex, weight: Connection) -> EdgeIndex {
@@ -175,6 +185,7 @@ impl UGenGraph {
     }
 
     pub fn init_after_deserialization(&mut self) {
+        self.edge_fac.set_duration(2.0, get_sr());
         self.graph
             .node_weights_mut()
             .for_each(|u| u.process_type = Some(u.process.spec().process_type));
@@ -263,36 +274,11 @@ impl UGenGraph {
             .collect();
         shuffled.shuffle(&mut rng);
 
-        // input
-
         self.lacking_input_edges(new_node).iter().for_each(|i| {
             if shuffled.len() > (*i as usize) {
                 self.connect(shuffled[(*i as usize)], new_node, (*i, lag::lag(1.0)));
             };
         })
-
-        // if let Some(spec) = self.get_spec(new_node) {
-        //     match spec.process_type {
-        //         ProcessType::Processor => {
-        //             if let Some(source) = shuffled.choose(&mut rng) {
-        //                 //                    let w = rng.gen_range(0.7, 1.0);
-        //                 self.connect(*source, new_node, (0, lag::lag(1.0)));
-        //             }
-        //         }
-        //         ProcessType::TwoInputs | ProcessType::MultipleInputs => {
-        // 	    let lacking = self.lacking_input_edges.iter().for_each()
-        //             // let w1 = rng.gen_range(0.7, 1.0);
-        //             // let w2 = rng.gen_range(0.7, 1.0);
-        //             if shuffled.len() > 0 {
-        //                 self.connect(shuffled[0], new_node, (0, lag::lag(1.0)));
-        //             };
-        //             if shuffled.len() > 1 {
-        //                 self.connect(shuffled[1], new_node, (1, lag::lag(1.0)));
-        //             }
-        //         }
-        //         ProcessType::NoInputGenerator => (),
-        //     }
-        // }
     }
 
     pub fn rnd_circle(&mut self, nodes: &[NodeIndex], n_connections: u32) -> Vec<EdgeIndex> {
@@ -581,7 +567,7 @@ impl UGenGraph {
     }
 
     /// Calls a ugen and sends result to connected ugens
-    pub fn call_and_output(&mut self, idx: NodeIndex, input: &[f64]) {
+    pub fn call_and_output(&mut self, idx: NodeIndex, input: &[f64], edge_fac: f64) {
         match self.graph.node_weight_mut(idx) {
             Some(ugen) => {
                 let output = ugen.process(input);
@@ -596,9 +582,8 @@ impl UGenGraph {
                             (*idx, w.current)
                         }); // deref to stop borrowing
                     match edge {
-                        Some(connection) => {
-                            self.graph[neighbor_idx].set_input_with_connection(connection, output)
-                        }
+                        Some(connection) => self.graph[neighbor_idx]
+                            .set_input_with_connection(connection, output, edge_fac),
                         None => (),
                     }
                 }
@@ -614,14 +599,15 @@ impl UGenGraph {
         output_buffer: &mut [f64],
     ) {
         flow.iter()
-            .for_each(|&idx| self.call_and_output(idx, input_buffer));
+            .for_each(|&idx| self.call_and_output(idx, input_buffer, self.edge_fac.current));
 
         output_buffer.iter_mut().for_each(|x| *x = 0.0);
 
         for ugen in self.graph.node_weights_mut() {
             let current_value = ugen.value.unwrap_or(0.0);
             for (out_i, amp_out) in ugen.output_sends.iter_mut() {
-                output_buffer[*out_i % output_buffer.len()] += current_value * amp_out.tick();
+                output_buffer[*out_i % output_buffer.len()] +=
+                    current_value * ugen.output_amp.tick() * amp_out.tick();
             }
         }
         for &i in flow {
@@ -637,6 +623,7 @@ impl UGenGraph {
             w.tick();
             ()
         }
+        self.edge_fac.tick();
     }
 }
 

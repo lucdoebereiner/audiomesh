@@ -23,6 +23,7 @@ module ProcessGraph exposing
     , setInput
     , ugenLabel
     , updateEdge
+    , updateOutputAmp
     , updateProcessParameter
     , upsertOutputSend
     )
@@ -789,6 +790,7 @@ type alias UGen =
     , clip : ClipType
     , output_sends : IntDict Float
     , process_type : ProcessType
+    , output_amp : Float
     }
 
 
@@ -808,7 +810,7 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen Add True None IntDict.empty Processor
+    UGen Add True None IntDict.empty Processor 1.0
 
 
 decodeOutputTuple =
@@ -820,12 +822,13 @@ decodeOutputTuple =
 decodeUGen : Decoder UGen
 decodeUGen =
     Decode.succeed
-        (\p sum clip sends pt ->
+        (\p sum clip sends pt a ->
             UGen p
                 sum
                 (clipTypeFromString clip)
                 (IntDict.fromList sends)
                 (processTypeFromString pt)
+                a
         )
         |> required "process"
             (oneOf
@@ -862,6 +865,7 @@ decodeUGen =
         |> required "clip" string
         |> required "output_sends" (list decodeOutputTuple)
         |> required "process_type" string
+        |> required "output_amp" float
 
 
 type alias Link =
@@ -1117,6 +1121,24 @@ updateProcessParameter id ( parIdx, val ) graph =
                         { node | label = { ugen | process = p } }
                 in
                 { ugenCtx | node = newNode }
+            )
+        )
+        graph
+
+
+updateOutputAmp : Graph.NodeId -> Float -> UGenGraph -> UGenGraph
+updateOutputAmp nodeId amp graph =
+    Graph.update nodeId
+        (Maybe.map
+            (\ctx ->
+                let
+                    node =
+                        ctx.node
+
+                    ugen =
+                        node.label
+                in
+                { ctx | node = { node | label = { ugen | output_amp = amp } } }
             )
         )
         graph
