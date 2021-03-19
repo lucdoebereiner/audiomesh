@@ -107,7 +107,7 @@ subscriptions : Model -> Sub Msg
 subscriptions m =
     Sub.batch
         [ Time.every 300 Tick
-        , Time.every 1000 UpdateDrawGraph
+        , Time.every 500 UpdateDrawGraph
         , midiCC (ReceivedMidi << decodeMidiCC)
         ]
 
@@ -133,8 +133,8 @@ decodeMidiCC =
         )
 
 
-midiDict : Maybe (Graph.Node UGen) -> Dict Int (Float -> Msg)
-midiDict node =
+midiDict : ( Maybe (Graph.Node UGen), Maybe (Graph.Edge Link) ) -> Dict Int (Float -> Msg)
+midiDict ( node, edge ) =
     let
         nodeAmp =
             \val ->
@@ -143,7 +143,7 @@ midiDict node =
                         NoMsg
 
                     Just n ->
-                        SetNodeOutputAmp n.id val
+                        SetNodeOutputAmp n.id (Parameters.linexp val 0.0 1.0 0.001 2.0)
 
         processPars =
             case node of
@@ -161,9 +161,15 @@ midiDict node =
                         (processParameters
                             n.label.process
                         )
+
+        edgeW =
+            \v ->
+                Maybe.map (\e -> SetEdgeWeight e.label.id (Parameters.linexp v 0.0 1.0 0.001 5.0))
+                    edge
+                    |> Maybe.withDefault NoMsg
     in
     Dict.fromList <|
-        [ ( 73
+        [ ( 29
           , \v ->
                 if v > 0.5 then
                     SelectPrevNode
@@ -171,7 +177,7 @@ midiDict node =
                 else
                     NoMsg
           )
-        , ( 74
+        , ( 30
           , \v ->
                 if v > 0.5 then
                     SelectNextNode
@@ -179,7 +185,7 @@ midiDict node =
                 else
                     NoMsg
           )
-        , ( 75
+        , ( 31
           , \v ->
                 if v > 0.5 then
                     SelectPrevEdge
@@ -187,7 +193,7 @@ midiDict node =
                 else
                     NoMsg
           )
-        , ( 76
+        , ( 32
           , \v ->
                 if v > 0.5 then
                     SelectNextEdge
@@ -195,21 +201,22 @@ midiDict node =
                 else
                     NoMsg
           )
-        , ( 81
+        , ( 0
           , \v ->
                 SetVolume
                     (Parameters.linexp v 0.0 1.0 0.0001 1.0)
           )
-        , ( 82
+        , ( 1
           , \v ->
                 SetEdgeFac
                     (Parameters.linexp v 0.0 1.0 0.05 5.0)
           )
-        , ( 83, \v -> SetOutputs 0 v )
-        , ( 84, \v -> SetOutputs 1 v )
-        , ( 85, nodeAmp )
+        , ( 2, \v -> SetOutputs 0 v )
+        , ( 3, \v -> SetOutputs 1 v )
+        , ( 4, nodeAmp )
+        , ( 15, edgeW )
         ]
-            ++ List.indexedMap (\i p -> ( i + 86, p )) processPars
+            ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
 
 
 
@@ -324,8 +331,11 @@ update msg model =
                 selectedNode =
                     getSelectedNode model
 
+                selectedEdge =
+                    getSelectedEdge model
+
                 ( newModel, cmds ) =
-                    Dict.get m.controller (midiDict selectedNode)
+                    Dict.get m.controller (midiDict ( selectedNode, selectedEdge ))
                         |> Maybe.map (\ms -> update (ms m.value) model)
                         |> Maybe.withDefault ( model, Cmd.none )
             in
@@ -977,6 +987,7 @@ processRow m =
         , addProcess "RMS" RMS
         , addProcess "Ducking" Ducking
         , addProcess "EnvFollow" EnvFollow
+        , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
         , addProcess "Env"
             (Env
                 { min_target = 0.001
@@ -1022,23 +1033,27 @@ readFile file =
     Task.perform GraphJsonLoaded (File.toString file)
 
 
+getSelectedEdge model =
+    Maybe.andThen
+        (\id ->
+            Maybe.map Graph.edges model.graph
+                |> Maybe.andThen (find (\ed -> ed.label.id == id))
+        )
+        model.selectedEdge
+
+
 showSelectedEdge : Model -> Element Msg
 showSelectedEdge model =
     let
         e =
-            Maybe.andThen
-                (\id ->
-                    Maybe.map Graph.edges model.graph
-                        |> Maybe.andThen (find (\ed -> ed.label.id == id))
-                )
-                model.selectedEdge
+            getSelectedEdge model
     in
     Maybe.map
         (\l ->
             row [ spacing 10 ]
                 [ text ("Link weight: " ++ floatString l.label.strength)
                 , slider (SetEdgeWeight l.label.id)
-                    (Parameter -1 l.label.strength Exp "weight" 0.01 3.0)
+                    (Parameter -1 l.label.strength Exp "weight" 0.001 5.0)
                 , simpleButton "Delete" (DeleteEdge l.label.id)
                 ]
         )

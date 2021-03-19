@@ -33,8 +33,8 @@ pub fn lag(init: f64) -> Lag {
     Lag {
         current: init,
         target: init,
-        factor_up: 0.99997,
-        factor_down: 0.99997,
+        factor_up: 0.99998,
+        factor_down: 0.99998,
     }
 }
 

@@ -247,10 +247,18 @@ nodeElement selectedId msg connectToMsg node =
                                     NoInputGenerator ->
                                         []
 
-                                    Processor ->
+                                    TransparentProcessor ->
+                                        [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
+
+                                    OpaqueProcessor ->
                                         [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
 
                                     TwoInputs ->
+                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                                        ]
+
+                                    SidechainEnv ->
                                         [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
                                         , inputButton (m node.id) ( node.label.x, node.label.y ) 1
                                         ]

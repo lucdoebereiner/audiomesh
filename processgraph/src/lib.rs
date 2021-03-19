@@ -2,6 +2,7 @@ mod compenv;
 mod filters;
 pub mod lag;
 pub mod process;
+pub mod tapdelay;
 use crate::process::*;
 //use petgraph::stable_graph::StableGraph;
 //use petgraph::graph::Graph;
@@ -239,7 +240,10 @@ impl UGenGraph {
 
     fn has_two_inputs(&self, node: NodeIndex) -> bool {
         self.get_spec(node)
-            .map(|s| s.process_type == ProcessType::TwoInputs)
+            .map(|s| {
+                s.process_type == ProcessType::TwoInputs
+                    || s.process_type == ProcessType::SidechainEnv
+            })
             .unwrap_or(false)
     }
 
@@ -254,12 +258,18 @@ impl UGenGraph {
 
     fn rnd_connect_output(&mut self, new_node: NodeIndex) {
         let mut rng = thread_rng();
+        let is_noinput =
+            self.graph[new_node].process.spec().process_type == ProcessType::NoInputGenerator;
         // output
-        if let Some(target) = self.choose_with_input(Some(new_node)) {
+        if let Some(target) = self.choose_with_input(Some(new_node), is_noinput) {
             //            let w = rng.gen_range(0.7, 1.0);
             let mut idx: u32 = 0;
             if self.has_two_inputs(target) {
-                idx = rng.gen_range(0, 2);
+                if is_noinput {
+                    idx = 1;
+                } else {
+                    idx = rng.gen_range(0, 2);
+                }
             };
             self.connect(new_node, target, (idx, lag::lag(1.0)));
         }
@@ -338,7 +348,9 @@ impl UGenGraph {
                 .collect();
             match u.process.spec().process_type {
                 ProcessType::NoInputGenerator => (),
-                ProcessType::TwoInputs | ProcessType::MultipleInputs => {
+                ProcessType::TwoInputs
+                | ProcessType::MultipleInputs
+                | ProcessType::SidechainEnv => {
                     if !incoming_edges.contains(&0) {
                         lacking_indices.push(0);
                     }
@@ -346,7 +358,7 @@ impl UGenGraph {
                         lacking_indices.push(1);
                     }
                 }
-                ProcessType::Processor => {
+                ProcessType::TransparentProcessor | ProcessType::OpaqueProcessor => {
                     if !incoming_edges.contains(&0) {
                         lacking_indices.push(0);
                     }
@@ -378,11 +390,25 @@ impl UGenGraph {
     }
 
     // guarantees that choosen idx is a process with input
-    fn choose_with_input(&self, exclude: Option<NodeIndex>) -> Option<NodeIndex> {
+    fn choose_with_input(
+        &self,
+        exclude: Option<NodeIndex>,
+        exclude_transparent: bool,
+    ) -> Option<NodeIndex> {
         let mut rng = thread_rng();
         let with_input: Vec<NodeIndex> = self
             .graph
             .node_references()
+            .filter_map(|(idx, u)| {
+                if (exclude_transparent
+                    && !(u.process.spec().process_type == ProcessType::TransparentProcessor))
+                    || !exclude_transparent
+                {
+                    Some((idx, u))
+                } else {
+                    None
+                }
+            })
             .filter_map(|(idx, u)| {
                 if !(u.process.spec().process_type == ProcessType::NoInputGenerator) {
                     match exclude {

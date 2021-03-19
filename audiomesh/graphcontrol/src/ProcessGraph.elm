@@ -110,6 +110,7 @@ clipTypeFromString s =
 type Process
     = Mem { lastValue : Float }
     | Delay { length : Int }
+    | VarDelay { delay : Float, maxdelay : Float }
     | Add
     | Mul
     | Softclip
@@ -178,6 +179,9 @@ processParameters p =
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]
 
+        VarDelay { delay } ->
+            [ Parameter 1 delay Lin "Delay" 0.0 7.0 ]
+
         SinOsc { freq, freq_mul } ->
             [ Parameter 1 freq Exp "Freq" 0.001 10000.0
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
@@ -242,6 +246,9 @@ setInput ( parIdx, val ) proc =
 
         SoundIn s ->
             SoundIn { s | factor = val }
+
+        VarDelay d ->
+            VarDelay { d | delay = val }
 
         VanDerPol s ->
             case parIdx of
@@ -365,6 +372,9 @@ processName p =
         Delay _ ->
             "Delay"
 
+        VarDelay _ ->
+            "VarDelay"
+
         Add ->
             "Add"
 
@@ -453,6 +463,14 @@ encodeProcess p =
 
         Delay i ->
             encObj p (JE.object [ ( "input", JE.int i.length ) ])
+
+        VarDelay d ->
+            encObj p
+                (JE.object
+                    [ ( "delay", JE.float d.delay )
+                    , ( "maxdelay", JE.float d.maxdelay )
+                    ]
+                )
 
         Env e ->
             encObj p
@@ -550,6 +568,9 @@ processToString p =
         Delay d ->
             "Delay length:" ++ String.fromInt d.length
 
+        VarDelay d ->
+            "VarDelay d:" ++ floatString d.delay
+
         VanDerPol v ->
             "VanDerPol e:" ++ String.fromFloat v.e
 
@@ -622,6 +643,13 @@ decodeDelay : Decoder Process
 decodeDelay =
     Decode.succeed (\l -> Delay { length = l })
         |> required "input" int
+
+
+decodeVarDelay : Decoder Process
+decodeVarDelay =
+    Decode.succeed (\d m -> VarDelay { delay = d, maxdelay = m })
+        |> required "delay" float
+        |> required "maxdelay" float
 
 
 decodeSoundIn : Decoder Process
@@ -760,9 +788,11 @@ decodeSpike =
 
 type ProcessType
     = NoInputGenerator
-    | Processor
     | TwoInputs
     | MultipleInputs
+    | TransparentProcessor
+    | OpaqueProcessor
+    | SidechainEnv
 
 
 processTypeFromString : String -> ProcessType
@@ -771,8 +801,14 @@ processTypeFromString s =
         "NoInputGenerator" ->
             NoInputGenerator
 
-        "Processor" ->
-            Processor
+        "TransparentProcessor" ->
+            TransparentProcessor
+
+        "OpaqueProcessor" ->
+            OpaqueProcessor
+
+        "SidechainEnv" ->
+            SidechainEnv
 
         "TwoInputs" ->
             TwoInputs
@@ -781,7 +817,7 @@ processTypeFromString s =
             MultipleInputs
 
         _ ->
-            Processor
+            OpaqueProcessor
 
 
 type alias UGen =
@@ -810,7 +846,7 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen Add True None IntDict.empty Processor 1.0
+    UGen Add True None IntDict.empty OpaqueProcessor 1.0
 
 
 decodeOutputTuple =
@@ -833,6 +869,7 @@ decodeUGen =
         |> required "process"
             (oneOf
                 [ field "Delay" decodeDelay
+                , field "VarDelay" decodeVarDelay
                 , field "Add" (decodeSimpleProcess Add)
                 , field "Mem" decodeMem
                 , field "Mul" (decodeSimpleProcess Mul)
