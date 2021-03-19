@@ -198,7 +198,11 @@ impl UGenGraph {
         }
     }
     pub fn set_output(&mut self, spec: OutputSpec) {
-        self.graph[NodeIndex::new(spec.node)].set_output(spec.output, spec.amp)
+        match self.graph.node_weight_mut(NodeIndex::new(spec.node)) {
+            None => (),
+            Some(node) => node.set_output(spec.output, spec.amp),
+        }
+        //self.graph[NodeIndex::new(spec.node)].set_output(spec.output, spec.amp)
     }
 
     // returns true if it had to update

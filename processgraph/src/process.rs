@@ -589,7 +589,7 @@ impl Process {
             } => {
                 let mut output = 0.0;
                 if *t_rest_counter > 0 {
-                    let pulse_width = *t_this_rest as f64 / 8.0;
+                    let pulse_width = *t_this_rest as f64 / 20.0;
                     let offset = (*t_this_rest - 1) as f64 / 2.0;
                     output = (((*t_rest_counter as f64 - offset) / pulse_width).powf(2.0) * -1.0)
                         .exp()
@@ -601,10 +601,11 @@ impl Process {
                     t_const.tick();
                 } else {
                     let this_const = t_const.tick();
-                    *v = *last_v + (((*last_v * -1.0) + (input.abs() * r.tick())) * this_const);
+                    *v = *last_v
+                        + (((*last_v * -1.0 * 0.01) + (input.abs() * r.tick())) * this_const);
                     *last_v = *v;
                     if *v > threshold.tick() {
-                        output = 1.0;
+                        //output = 1.0;
                         *t_this_rest = *t_rest;
                         *t_rest_counter = *t_rest;
                     }

@@ -386,6 +386,9 @@ update msg model =
 
                 specs =
                     Maybe.map (OutputIndices.outputSpecs newIndices) model.graph
+
+                -- _ =
+                --     Debug.log "set outputs" specs
             in
             ( { model | outputIndices = newIndices, graph = Maybe.map2 OutputIndices.updateGraphWithSpecs specs model.graph }
             , Maybe.map
