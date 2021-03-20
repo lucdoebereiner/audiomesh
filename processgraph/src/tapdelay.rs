@@ -57,6 +57,7 @@ where
 
 impl TapDelay {
     pub fn new(length_sec: f64) -> TapDelay {
+        //        println!("tap length {}", length_sec * get_sr());
         TapDelay {
             readers: vec![],
             writer: 0,
@@ -78,6 +79,9 @@ impl TapDelay {
 
     fn clean_zero_readers(&mut self) {
         self.readers.retain(|(_, l)| l.current != 0.0);
+        if self.readers.is_empty() {
+            self.set_delay(0.0);
+        }
     }
 
     pub fn set_delay(&mut self, delay_secs: f64) {

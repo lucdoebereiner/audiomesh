@@ -22,7 +22,8 @@ module ProcessGraph exposing
     , processParameters
     , setInput
     , ugenLabel
-    , updateEdge
+    , updateEdgeDelay
+    , updateEdgeWeight
     , updateOutputAmp
     , updateProcessParameter
     , upsertOutputSend
@@ -35,6 +36,7 @@ import Json.Decode as Decode
     exposing
         ( Decoder
         , array
+        , at
         , bool
         , field
         , float
@@ -45,7 +47,7 @@ import Json.Decode as Decode
         , oneOf
         , string
         )
-import Json.Decode.Pipeline exposing (hardcoded, required)
+import Json.Decode.Pipeline exposing (custom, hardcoded, required)
 import Json.Encode as JE exposing (Value)
 import List.Extra as L
 import Parameters exposing (Mapping(..), Parameter)
@@ -908,6 +910,7 @@ decodeUGen =
 type alias Link =
     { index : Int
     , strength : Float
+    , delay : { delay : Float, maxdelay : Float }
     , id : Int
     }
 
@@ -919,32 +922,45 @@ type alias Connection =
     }
 
 
-type IntOrFloatArray
+type IntOrLink
     = IntElement Int
-    | FloatArray (Array Float)
+    | LinkObj Link
 
 
-decodeIntElement : Decoder IntOrFloatArray
+decodeIntElement : Decoder IntOrLink
 decodeIntElement =
     Decode.map IntElement int
 
 
-decodeFloatArray : Decoder IntOrFloatArray
-decodeFloatArray =
-    Decode.map FloatArray (array float)
+decodeLinkObj : Decoder Link
+decodeLinkObj =
+    Decode.succeed
+        (\idx w d m ->
+            Link idx w { delay = d, maxdelay = m } -1
+        )
+        |> required "input_idx" int
+        |> required "weight" float
+        |> custom (at [ "delay", "delay" ] float)
+        |> custom (at [ "delay", "maxdelay" ] float)
 
 
-decodeLink : Decoder (Array IntOrFloatArray)
+
+-- decodeFloatArray : Decoder IntOrFloatArray
+-- decodeFloatArray =
+--     Decode.map FloatArray (array float)
+
+
+decodeLink : Decoder (Array IntOrLink)
 decodeLink =
-    array (oneOf [ decodeFloatArray, decodeIntElement ])
+    array (oneOf [ Decode.map LinkObj decodeLinkObj, decodeIntElement ])
 
 
-decodeConnection : Decoder (Maybe (Array IntOrFloatArray))
+decodeConnection : Decoder (Maybe (Array IntOrLink))
 decodeConnection =
     nullable decodeLink
 
 
-connectionFromArray : Array IntOrFloatArray -> Int -> Maybe Connection
+connectionFromArray : Array IntOrLink -> Int -> Maybe Connection
 connectionFromArray ar id =
     let
         getInt =
@@ -964,22 +980,21 @@ connectionFromArray ar id =
         toM =
             getInt <| Array.get 1 ar
 
-        idxStrength =
-            Maybe.map (\a -> ( Array.get 0 a, Array.get 1 a )) <|
-                Maybe.andThen
-                    (\a ->
-                        case a of
-                            FloatArray f ->
-                                Just f
+        linkObjM =
+            Maybe.andThen
+                (\a ->
+                    case a of
+                        LinkObj l ->
+                            Just l
 
-                            _ ->
-                                Nothing
-                    )
-                    (Array.get 2 ar)
+                        _ ->
+                            Nothing
+                )
+                (Array.get 2 ar)
     in
-    case ( fromM, toM, idxStrength ) of
-        ( Just from, Just to, Just ( Just idx, Just strength ) ) ->
-            Just <| Connection from to (Link (floor idx) strength id)
+    case ( fromM, toM, linkObjM ) of
+        ( Just from, Just to, Just linkObj ) ->
+            Just <| Connection from to { linkObj | id = id }
 
         _ ->
             Nothing
@@ -1002,7 +1017,7 @@ type alias BackendGraph =
     }
 
 
-connectionsFromArrays : List (Maybe (Array IntOrFloatArray)) -> Int -> List Connection
+connectionsFromArrays : List (Maybe (Array IntOrLink)) -> Int -> List Connection
 connectionsFromArrays arrays idx =
     case arrays of
         [] ->
@@ -1181,12 +1196,32 @@ updateOutputAmp nodeId amp graph =
         graph
 
 
-updateEdge : Int -> Float -> UGenGraph -> UGenGraph
-updateEdge edgeId weight graph =
+updateEdgeWeight : Int -> Float -> UGenGraph -> UGenGraph
+updateEdgeWeight edgeId weight graph =
     Graph.mapEdges
         (\e ->
             if e.id == edgeId then
                 { e | strength = weight }
+
+            else
+                e
+        )
+        graph
+
+
+updateEdgeDelay : Int -> Float -> UGenGraph -> UGenGraph
+updateEdgeDelay edgeId d graph =
+    Graph.mapEdges
+        (\e ->
+            if e.id == edgeId then
+                let
+                    delay =
+                        e.delay
+
+                    newDelay =
+                        { delay | delay = d }
+                in
+                { e | delay = newDelay }
 
             else
                 e

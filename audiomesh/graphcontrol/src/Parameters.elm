@@ -99,7 +99,7 @@ explin x a b c d =
                 0.001
 
             else
-                c
+                a
     in
     if x <= a then
         c

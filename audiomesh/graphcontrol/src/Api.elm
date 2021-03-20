@@ -12,6 +12,7 @@ module Api exposing
     , postGraph
     , randomCircle
     , randomize
+    , setEdgeDelay
     , setEdgeFac
     , setEdgeWeight
     , setNodeOutputAmp
@@ -120,7 +121,21 @@ setEdgeWeight msg edgeIdx value =
             baseUrl
                 ++ "/edge/"
                 ++ String.fromInt edgeIdx
-                ++ "/"
+                ++ "/weight/"
+                ++ String.fromFloat value
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setEdgeDelay : (Result Http.Error () -> msg) -> Int -> Float -> Cmd msg
+setEdgeDelay msg edgeIdx value =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/edge/"
+                ++ String.fromInt edgeIdx
+                ++ "/delay/"
                 ++ String.fromFloat value
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg

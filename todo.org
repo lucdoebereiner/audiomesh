@@ -1,0 +1,110 @@
+* TODO graph synth rust [52/94]
+- [X] audio input
+- [X] volume output
+- [X] strategy for adding nodes
+- [X] strategy removing nodes
+- [X] add edges to least connected
+- [X] remove edges from most connected
+- [X] parameters
+- [-] lags on parameters
+  - [X] filter
+  - [X] lpf
+  - [X] sinosc
+  - [X] sinph
+  - [ ] wrap
+- [X] de/serialization test, with lags, especially filters
+- [X] linear congruential
+- [X] elm encoder/decoder
+  - [X] elm decoder
+  - [X] elm encoder
+- [X] adding nodes via elm
+- [X] parameters via elm
+- [X] setting weight 
+- [X] graph operations via elm
+- [X] log/exp scaling of sliders
+- [X] lag on weight changes 
+- [X] create edges
+- [X] poll from api
+- [X] check spike pulses
+- [X] check spike negative input ?
+- [X] stetoscope (fade in between different outputs)
+- [X] init from scratch (empty graph and no outputs)
+- [X] random ring connections
+- [X] saving/loading graph setups
+- [X] smarter node adding (check type of process)
+  - [X] connecting binary processes
+  - [X] connecting multi input processes
+  - [X] make flow check deal with noinput and multiinput
+- [X] see which output channel something is
+- [X] show volume (number) and edge fac
+- [X] make recursive edges selectable
+- [X] cycle through nodes and edges
+- [X] check front end performance
+- [X] sr from jack
+- [X] fix multiple edges for same nodes
+- [X] calculate lag time
+- [X] sin osc freq mod (connection to other parameters and mapping) in network
+- [X] ring with lpf'ed signals
+- [X] compressors
+- [X] integrate and fire
+- [X] soundin with mul
+- [X] ducking
+- [X] 2 input env follower applied to another sound
+- [X] phase locked loop
+- [X] modulatable filter
+- [X] keep ugens from output
+- [X] manually connect specific output/input (other than first)
+- [X] fm with carrier and factor
+- [X] van der pol
+- [X] separate output amp for each process (for main out)
+- [X] midi ctrl via elm
+- [X] connection logic for soundin
+- [X] make delays variable (as taps)
+- [X] linexp with zero
+- [X] edges having delays, lp, weight
+- [-] edges midi control
+  - [X] single control
+  - [ ] control lag
+  - [ ] multiple control
+  - [ ] incoming/outgoing control
+  - [ ] randomize
+- [ ] accumulation on tapdelay
+- [ ] fold, (shift and gain parameters)
+- [ ] pll mod outputing freq and connection logic 
+- [ ] compenv rest time, sustain portion
+- [ ] spike durations flexible (derive from input)
+- [ ] slow compression
+- [ ] spike ducking 
+- [ ] spike envs (make sparse)
+- [ ] sanitize output
+- [ ] output compressor
+- [ ] list of processes for easier selection
+- [ ] send state to midi controller
+- [ ] learning (some persistent trace)
+- [ ] types of output and conversion when linking
+- [ ] kaneko
+- [ ] exchange process with another
+- [ ] fade in/out when adding/removing process
+- [ ] record process for later looping/addition as separate process
+- [ ] (other) mod vcf, cytomic svf
+- [ ] other waveshapers (musicdsp)
+- [ ] halfwave stuff
+- [ ] gates, threshold
+- [ ] lock parts of patch from rnd
+- [ ] temporary connections
+- [ ] comparison
+- [ ] slew env ala serge (lag2)
+- [ ] s and hp
+- [ ] hopf
+- [ ] comb filter
+- [ ] kuramoto
+- [ ] variable lag times
+- [ ] subgraphs
+- [ ] duffing
+- [ ] reset graph
+- [ ] dynamically change clipping function
+- [ ] variations/evolving graph setups
+- [ ] fix visual scaling of graph in elm
+- [ ] scope
+- [ ] remeber output values
+- [ ] delay on every input(?)

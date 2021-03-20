@@ -205,9 +205,11 @@ impl Connection {
 
     pub fn tick(&mut self) -> f64 {
         if !self.processed {
+            self.processed = true;
             self.output
                 .set_target(self.delay.process(self.input) * self.weight.tick());
-            self.output.tick()
+            let out = self.output.tick();
+            out
         } else {
             self.current()
         }

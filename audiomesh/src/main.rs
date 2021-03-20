@@ -35,6 +35,7 @@ enum UpdateMessage {
     AddNode(Process),
     RemoveEdge(usize),
     SetEdgeWeight(usize, f64),
+    SetEdgeDelay(usize, f64),
     SetEdgeFac(f64),
     SetOutput(NodeIndex, usize, f64),
     SetOutputs(Vec<OutputSpec>),
@@ -139,13 +140,20 @@ fn set_edge_fac(fac: f64, state: State<Globals>) {
     sender.send(UpdateMessage::SetEdgeFac(fac)).unwrap()
 }
 
-#[post("/edge/<id>/<weight>")]
+#[post("/edge/<id>/weight/<weight>")]
 fn set_edge_weight(id: usize, weight: f64, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
         .send(UpdateMessage::SetEdgeWeight(id, weight))
         .unwrap()
+}
+
+#[post("/edge/<id>/delay/<delay>")]
+fn set_edge_delay(id: usize, delay: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::SetEdgeDelay(id, delay)).unwrap()
 }
 
 #[post("/edge/<id_from>/<id_to>/<weight>/<index>")]
@@ -275,10 +283,15 @@ fn handle_messages(
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
                 e.set_weight(w)
-                //let (_, weight) = e;
-                //weight.set_target(w)
             }
         }
+
+        UpdateMessage::SetEdgeDelay(id, d) => {
+            if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
+                e.set_delay(d)
+            }
+        }
+
         UpdateMessage::RemoveEdge(id) => {
             graph.graph.remove_edge(EdgeIndex::new(id));
             graph.update_connections_and_flow(flow)
@@ -363,7 +376,7 @@ fn main() {
     //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
     //    let del1 = g.graph.add_node(delay(44100).clip(ClipType::Wrap));
     //    let rms = g.add_node(rms());
-    //    let sinph = g.add_node(sin());
+    // let sinph = g.graph.add_node(sin());
     // let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
     //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
     //  let sum = g.graph.add_node(add().clip(ClipType::Wrap));
@@ -385,12 +398,12 @@ fn main() {
     //    let c2 = g.add_node(constant(1.0));
     //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
     //  let sp = g.add_node(spike(0.3, 0.0001, 100));
-    //let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
+    //    let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
     //    let s2 = g.graph.add_node(sin_osc(2225.0, 0.0));
     // g.graph.add_edge(in1, mul, (0, lag::lag(1.0)));
     // g.graph.add_edge(in2, mul, (1, lag::lag(1.0)));
 
-    //g.connect(in1, d1, (0, lag::lag(1.0)));
+    //  g.connect(s1, sinph, Connection::new(0, 1.0));
     // g.connect(in2, d1, (1, lag::lag(1.0)));
 
     //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
@@ -520,7 +533,8 @@ fn main() {
                 random_circle,
                 set_outputs,
                 set_edge_fac,
-                node_output_amp
+                node_output_amp,
+                set_edge_delay
             ],
         )
         .attach(cors)

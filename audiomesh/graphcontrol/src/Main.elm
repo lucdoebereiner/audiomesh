@@ -143,7 +143,7 @@ midiDict ( node, edge ) =
                         NoMsg
 
                     Just n ->
-                        SetNodeOutputAmp n.id (Parameters.linexp val 0.0 1.0 0.001 2.0)
+                        SetNodeOutputAmp n.id (Parameters.linexp val 0.0 1.0 0.0 2.0)
 
         processPars =
             case node of
@@ -164,7 +164,21 @@ midiDict ( node, edge ) =
 
         edgeW =
             \v ->
-                Maybe.map (\e -> SetEdgeWeight e.label.id (Parameters.linexp v 0.0 1.0 0.001 5.0))
+                Maybe.map
+                    (\e ->
+                        SetEdgeWeight e.label.id
+                            (Parameters.linexp v 0.0 1.0 0.0 5.0)
+                    )
+                    edge
+                    |> Maybe.withDefault NoMsg
+
+        edgeD =
+            \v ->
+                Maybe.map
+                    (\e ->
+                        SetEdgeDelay e.label.id
+                            (Parameters.linexp v 0.0 1.0 0.0 6.0)
+                    )
                     edge
                     |> Maybe.withDefault NoMsg
     in
@@ -204,7 +218,7 @@ midiDict ( node, edge ) =
         , ( 0
           , \v ->
                 SetVolume
-                    (Parameters.linexp v 0.0 1.0 0.0001 1.0)
+                    (Parameters.linexp v 0.0 1.0 0.0 1.0)
           )
         , ( 1
           , \v ->
@@ -214,6 +228,7 @@ midiDict ( node, edge ) =
         , ( 2, \v -> SetOutputs 0 v )
         , ( 3, \v -> SetOutputs 1 v )
         , ( 4, nodeAmp )
+        , ( 14, edgeD )
         , ( 15, edgeW )
         ]
             ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
@@ -270,6 +285,7 @@ type Msg
     | SetResonatorDecay String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
+    | SetEdgeDelay Int Float
     | DeleteEdge Int
     | SetEdgeFac Float
     | ConnectLeastConnected
@@ -592,8 +608,13 @@ update msg model =
 
         --            ( model, Cmd.none )
         SetEdgeWeight edgeId weight ->
-            ( { model | graph = Maybe.map (updateEdge edgeId weight) model.graph }
+            ( { model | graph = Maybe.map (updateEdgeWeight edgeId weight) model.graph }
             , Api.setEdgeWeight NoOp edgeId weight
+            )
+
+        SetEdgeDelay edgeId delay ->
+            ( { model | graph = Maybe.map (updateEdgeDelay edgeId delay) model.graph }
+            , Api.setEdgeDelay NoOp edgeId delay
             )
 
         DeleteEdge e ->
@@ -633,48 +654,49 @@ simpleStateButton s b msg =
 
 displayNode : Float -> Maybe Graph.NodeId -> Graph.Node UGen -> Element Msg
 displayNode polled waiting n =
-    column [ width fill, height fill, spacing 20 ]
-        [ row [ spacing 20, width fill ]
-            ([ el [ width (px 400) ] <| text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
-             , simpleStateButton "Connect"
-                (M.isJust waiting)
-                (WaitingToConnect n.id)
-             , simpleButton "Delete" (DeleteNode n.id)
-             , el
-                [ width (px 60)
-                , padding 5
-                , Border.solid
-                , Border.width 1
-                ]
-               <|
-                text <|
-                    floatString polled
-             , slider (SetNodeOutputAmp n.id)
-                (Parameter -1
-                    n.label.output_amp
-                    Exp
-                    "OutputAmp"
-                    0.0
-                    2.0
-                )
-             ]
-                ++ List.map
-                    (\( out_i, amp ) ->
-                        text <|
-                            " out: "
-                                ++ String.fromInt out_i
-                                ++ " amp:"
-                                ++ floatString amp
+    el [ padding 10, Border.width 1, Border.solid ] <|
+        column [ width fill, height fill, spacing 20 ]
+            [ row [ spacing 20, width fill ]
+                ([ el [ width (px 400) ] <| text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
+                 , simpleStateButton "Connect"
+                    (M.isJust waiting)
+                    (WaitingToConnect n.id)
+                 , simpleButton "Delete" (DeleteNode n.id)
+                 , el
+                    [ width (px 60)
+                    , padding 5
+                    , Border.solid
+                    , Border.width 1
+                    ]
+                   <|
+                    text <|
+                        floatString polled
+                 , slider (SetNodeOutputAmp n.id)
+                    (Parameter -1
+                        n.label.output_amp
+                        Exp
+                        "OutputAmp"
+                        0.0
+                        2.0
                     )
-                    (IntDict.toList n.label.output_sends)
-            )
-        , row [ spacing 20, width fill ] <|
-            List.map
-                (\p -> slider (SetProcessParameter n.id p.idx) p)
-                (processParameters
-                    n.label.process
+                 ]
+                    ++ List.map
+                        (\( out_i, amp ) ->
+                            text <|
+                                " out: "
+                                    ++ String.fromInt out_i
+                                    ++ " amp:"
+                                    ++ floatString amp
+                        )
+                        (IntDict.toList n.label.output_sends)
                 )
-        ]
+            , row [ spacing 20, width fill ] <|
+                List.map
+                    (\p -> slider (SetProcessParameter n.id p.idx) p)
+                    (processParameters
+                        n.label.process
+                    )
+            ]
 
 
 slider : (Float -> Msg) -> Parameter -> Element Msg
@@ -1059,12 +1081,15 @@ showSelectedEdge model =
     in
     Maybe.map
         (\l ->
-            row [ spacing 10 ]
-                [ text ("Link weight: " ++ floatString l.label.strength)
-                , slider (SetEdgeWeight l.label.id)
-                    (Parameter -1 l.label.strength Exp "weight" 0.001 5.0)
-                , simpleButton "Delete" (DeleteEdge l.label.id)
-                ]
+            el [ padding 10, Border.width 1, Border.solid ] <|
+                row [ spacing 10 ]
+                    [ --text ("Link weight: " ++ floatString l.label.strength)
+                      slider (SetEdgeWeight l.label.id)
+                        (Parameter -1 l.label.strength Exp "weight" 0.0 5.0)
+                    , slider (SetEdgeDelay l.label.id)
+                        (Parameter -1 l.label.delay.delay Exp "Delay" 0.0 6.0)
+                    , simpleButton "Delete" (DeleteEdge l.label.id)
+                    ]
         )
         e
         |> Maybe.withDefault none
@@ -1101,8 +1126,8 @@ view model =
                  ]
                     ++ List.map (\( i, f ) -> outputSlider i f) (Array.toIndexedList model.outputIndices)
                 )
-            , showSelectedEdge model
             , processRow model
+            , showSelectedEdge model
             , Maybe.withDefault
                 none
                 (Maybe.map
