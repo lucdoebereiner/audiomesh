@@ -364,7 +364,7 @@ fn rms_chain() -> Vec<Process> {
 
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
-    dlag.set_duration_ud(1.0, 0.15, get_sr());
+    dlag.set_duration_ud(1.0, 0.15);
     dlag
 }
 

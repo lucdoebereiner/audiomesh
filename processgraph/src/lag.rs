@@ -1,5 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::get_sr;
+
 const LOG001: f64 = -6.90775527898; //0.001_f64.ln();
 
 #[derive(Debug)]
@@ -39,9 +41,9 @@ pub fn lag(init: f64) -> Lag {
 }
 
 impl Lag {
-    pub fn new(current: f64, duration: f64, sr: f64) -> Self {
+    pub fn new(current: f64, duration: f64) -> Self {
         let mut l = lag(current);
-        l.set_duration(duration, sr);
+        l.set_duration(duration);
         l
     }
 
@@ -66,13 +68,13 @@ impl Lag {
         self.target = new_target
     }
 
-    pub fn set_duration(&mut self, duration: f64, sr: f64) {
+    pub fn set_duration(&mut self, duration: f64) {
         if duration == 0.0 {
             self.factor_up = 0.0;
             self.factor_down = 0.0;
         } else {
-            self.factor_up = (LOG001 / (duration * sr)).exp();
-            self.factor_down = (LOG001 / (duration * sr)).exp();
+            self.factor_up = (LOG001 / (duration * get_sr())).exp();
+            self.factor_down = (LOG001 / (duration * get_sr())).exp();
         }
     }
 
@@ -81,7 +83,8 @@ impl Lag {
         self.factor_down = factor;
     }
 
-    pub fn set_duration_ud(&mut self, duration_up: f64, duration_down: f64, sr: f64) {
+    pub fn set_duration_ud(&mut self, duration_up: f64, duration_down: f64) {
+        let sr = get_sr();
         if duration_up == 0.0 {
             self.factor_up = 0.0;
         } else {

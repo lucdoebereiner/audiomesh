@@ -274,8 +274,9 @@ fn handle_messages(
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
-                let (_, weight) = e;
-                weight.set_target(w)
+                e.set_weight(w)
+                //let (_, weight) = e;
+                //weight.set_target(w)
             }
         }
         UpdateMessage::RemoveEdge(id) => {
@@ -310,7 +311,7 @@ fn handle_messages(
             graph.update_connections_and_flow(flow)
         }
         UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
-            let _idx = graph.connect(node_from, node_to, (index as u32, lag::lag(weight)));
+            let _idx = graph.connect(node_from, node_to, Connection::new(index as u32, weight));
         }
         UpdateMessage::ConnectLeastConnected => {
             graph.connect_least_connected();

@@ -171,19 +171,19 @@ processParameters p =
             [ Parameter 1 lastValue Lin "Last" -1.0 1.0 ]
 
         Sin { mul } ->
-            [ Parameter 1 mul Exp "Mul" 0.001 10.0 ]
+            [ Parameter 1 mul Exp "Mul" 0.0 10.0 ]
 
         PLL { factor } ->
             [ Parameter 1 factor Exp "Fac" 0.05 2.0 ]
 
         SoundIn { index, factor } ->
-            [ Parameter 1 factor Exp "Fac" 0.01 10.0 ]
+            [ Parameter 1 factor Exp "Fac" 0.0 10.0 ]
 
         VarDelay { delay } ->
-            [ Parameter 1 delay Lin "Delay" 0.0 7.0 ]
+            [ Parameter 1 delay Exp "Delay" 0.0 7.0 ]
 
         SinOsc { freq, freq_mul } ->
-            [ Parameter 1 freq Exp "Freq" 0.001 10000.0
+            [ Parameter 1 freq Exp "Freq" 0.0 10000.0
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
             ]
 
@@ -194,7 +194,7 @@ processParameters p =
             ]
 
         Env { min_target, max_target, max_n } ->
-            [ Parameter 1 min_target Exp "Min" 0.0001 0.5
+            [ Parameter 1 min_target Exp "Min" 0.0 0.5
             , Parameter 2 max_target Exp "Max" 0.1 0.9
             , Parameter 3 max_n Exp "Sec" 0.5 20.0
             ]
@@ -223,7 +223,7 @@ processParameters p =
 
         Spike { threshold, tConst, r, tRest } ->
             [ Parameter 1 threshold Exp "Threshold" 0.01 0.9
-            , Parameter 2 tConst Exp "T Const" 0.00001 0.5
+            , Parameter 2 tConst Exp "T Const" 0.00001 0.3
             , Parameter 3 r Exp "R" 0.1 20
             , Parameter 4 (toFloat tRest) Exp "Rest" 10 40000
             ]

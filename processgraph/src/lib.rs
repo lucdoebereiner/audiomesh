@@ -3,7 +3,9 @@ mod filters;
 pub mod lag;
 pub mod process;
 pub mod tapdelay;
+use crate::lag::Lag;
 use crate::process::*;
+use crate::tapdelay::TapDelay;
 //use petgraph::stable_graph::StableGraph;
 //use petgraph::graph::Graph;
 use petgraph::stable_graph::*;
@@ -31,9 +33,6 @@ pub enum ClipType {
     SoftClip,
     Wrap,
 }
-
-// index and weight
-pub type Connection = (u32, lag::Lag);
 
 #[derive(Serialize, Deserialize)]
 pub struct UGen {
@@ -70,7 +69,7 @@ impl UGen {
 
     pub fn init_after_deserialization(&mut self) {
         self.process_type = Some(self.process.spec().process_type);
-        self.output_amp.set_duration(2.0, get_sr());
+        self.output_amp.set_duration(2.0);
     }
 
     pub fn clip(self, clip_type: ClipType) -> Self {
@@ -119,13 +118,12 @@ impl UGen {
         self.value = None
     }
 
-    fn set_input_with_connection(&mut self, connection: (u32, f64), value: f64, edge_fac: f64) {
-        let (idx, weight) = connection;
+    fn set_input_with_connection(&mut self, connection: (u32, f64)) {
+        let (idx, value) = connection;
         if unsafe { DEBUG } {
             println!("setting input of [{:?}] to {}", self, value)
         }
-        self.process
-            .set_input(idx, value * weight * edge_fac, self.sum_inputs);
+        self.process.set_input(idx, value, self.sum_inputs);
         if unsafe { DEBUG } {
             println!("having set [{:?}]", self)
         }
@@ -147,6 +145,80 @@ impl fmt::Debug for UGen {
     }
 }
 
+// index and weight
+//pub type Connection = (u32, lag::Lag);
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Connection {
+    input_idx: u32,
+    weight: Lag,
+    delay: TapDelay,
+    #[serde(skip)]
+    pub input: f64,
+    #[serde(skip_serializing)]
+    #[serde(default = "connection_default_lag")]
+    output: Lag,
+    #[serde(skip_serializing)]
+    #[serde(default = "default_false")]
+    processed: bool,
+}
+
+fn connection_default_lag() -> lag::Lag {
+    let mut clag = lag::lag(0.0);
+    clag.set_factor(0.0);
+    clag
+}
+
+fn default_false() -> bool {
+    false
+}
+
+impl Connection {
+    pub fn new(idx: u32, w: f64) -> Connection {
+        let mut out = lag::lag(0.0);
+        out.set_factor(0.0);
+        Connection {
+            input_idx: idx,
+            weight: lag::lag(w),
+            delay: TapDelay::new(7.0),
+            input: 0.0,
+            output: out,
+            processed: false,
+        }
+    }
+
+    pub fn current(&self) -> f64 {
+        self.output.current
+    }
+
+    pub fn set_delay(&mut self, del: f64) {
+        self.delay.set_delay(del)
+    }
+
+    pub fn set_lag(&mut self, dur: f64) {
+        self.output.set_duration(dur);
+    }
+
+    pub fn set_weight(&mut self, weight: f64) {
+        self.weight.set_target(weight);
+    }
+
+    pub fn tick(&mut self) -> f64 {
+        if !self.processed {
+            self.output
+                .set_target(self.delay.process(self.input) * self.weight.tick());
+            self.output.tick()
+        } else {
+            self.current()
+        }
+    }
+
+    pub fn reset_after_process(&mut self) {
+        self.input = 0.0;
+        self.processed = false;
+    }
+}
+
 pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>;
 
 pub struct UGenGraph {
@@ -165,7 +237,7 @@ pub struct OutputSpec {
 impl UGenGraph {
     pub fn new() -> UGenGraph {
         let mut ef = lag::lag(1.0);
-        ef.set_duration(2.0, get_sr());
+        ef.set_duration(2.0);
         UGenGraph {
             graph: StableGraph::with_capacity(100, 100),
             edge_fac: ef,
@@ -186,7 +258,7 @@ impl UGenGraph {
     }
 
     pub fn init_after_deserialization(&mut self) {
-        self.edge_fac.set_duration(2.0, get_sr());
+        self.edge_fac.set_duration(2.0);
         self.graph
             .node_weights_mut()
             .for_each(|u| u.process_type = Some(u.process.spec().process_type));
@@ -194,7 +266,7 @@ impl UGenGraph {
 
     pub fn set_parameter(&mut self, node_idx: NodeIndex, idx: u32, input_value: f64) {
         if let Some(node) = self.graph.node_weight_mut(node_idx) {
-            node.process.set_input(idx as u32, input_value, false)
+            node.process.set_input(idx, input_value, false)
         }
     }
     pub fn set_output(&mut self, spec: OutputSpec) {
@@ -275,7 +347,7 @@ impl UGenGraph {
                     idx = rng.gen_range(0, 2);
                 }
             };
-            self.connect(new_node, target, (idx, lag::lag(1.0)));
+            self.connect(new_node, target, Connection::new(idx, 1.0));
         }
     }
 
@@ -290,7 +362,7 @@ impl UGenGraph {
 
         self.lacking_input_edges(new_node).iter().for_each(|i| {
             if shuffled.len() > (*i as usize) {
-                self.connect(shuffled[(*i as usize)], new_node, (*i, lag::lag(1.0)));
+                self.connect(shuffled[(*i as usize)], new_node, Connection::new(*i, 1.0));
             };
         })
     }
@@ -311,7 +383,7 @@ impl UGenGraph {
                 edges.push(self.connect(
                     *idx,
                     *filtered_shuffled[(i + 1) % length],
-                    (0, lag::lag(1.0)),
+                    Connection::new(0, 1.0),
                 ));
             }
 
@@ -324,7 +396,7 @@ impl UGenGraph {
                 edges.push(self.connect(
                     *idx,
                     **filtered_shuffled.choose(&mut rng).unwrap(),
-                    (0, lag::lag(1.0)),
+                    Connection::new(0, 1.0),
                 ))
             }
         }
@@ -345,10 +417,7 @@ impl UGenGraph {
             let incoming_edges: Vec<u32> = self
                 .graph
                 .edges_directed(node, Incoming)
-                .map(|e| {
-                    let (idx, _) = e.weight();
-                    *idx
-                })
+                .map(|e| e.weight().input_idx)
                 .collect();
             match u.process.spec().process_type {
                 ProcessType::NoInputGenerator => (),
@@ -376,16 +445,6 @@ impl UGenGraph {
 
     fn does_idx_have_sufficient_inputs(&self, node: NodeIndex) -> bool {
         self.lacking_input_edges(node).is_empty()
-        // if let Some(u) = self.graph.node_weight(node) {
-        //     let n = self.graph.neighbors_directed(node, Incoming).count();
-        //     match u.process.spec().process_type {
-        //         ProcessType::NoInputGenerator => true,
-        //         ProcessType::TwoInputs | ProcessType::MultipleInputs => n >= 2,
-        //         ProcessType::Processor => n >= 1,
-        //     }
-        // } else {
-        //     false
-        // }
     }
 
     fn does_idx_have_sufficient_outputs(&self, node: NodeIndex) -> bool {
@@ -488,7 +547,7 @@ impl UGenGraph {
                 .next()
             {
                 //let w = thread_rng().gen_range(0.7, 1.0);
-                self.connect(*first, *future_neighbor, (0, lag::lag(1.0)));
+                self.connect(*first, *future_neighbor, Connection::new(0, 1.0));
             }
         }
     }
@@ -544,7 +603,7 @@ impl UGenGraph {
 
                 match (first_nodes.choose(&mut rng), rest_nodes.choose(&mut rng)) {
                     (Some(f), Some(r)) => {
-                        self.connect(**f, **r, (0, lag::lag(1.0)));
+                        self.connect(**f, **r, Connection::new(0, 1.0));
                         ()
                     }
                     _ => (),
@@ -552,7 +611,7 @@ impl UGenGraph {
 
                 match (first_nodes.choose(&mut rng), rest_nodes.choose(&mut rng)) {
                     (Some(f), Some(r)) => {
-                        self.connect(**r, **f, (0, lag::lag(1.0)));
+                        self.connect(**r, **f, Connection::new(0, 1.0));
                         ()
                     }
                     _ => (),
@@ -606,14 +665,18 @@ impl UGenGraph {
                     let edge = self
                         .graph
                         .find_edge(idx, neighbor_idx)
-                        .and_then(|e| self.graph.edge_weight(e))
+                        .and_then(|e| self.graph.edge_weight_mut(e))
+                        //                        .as_deref_mut()
                         .map(|e| {
-                            let (idx, w) = &*e;
-                            (*idx, w.current)
+                            //                            let this_connection = &*e;
+                            e.input = e.input + output;
+                            (e.input_idx, e.tick() * edge_fac)
+                            //                            (*idx, w.current)
                         }); // deref to stop borrowing
                     match edge {
-                        Some(connection) => self.graph[neighbor_idx]
-                            .set_input_with_connection(connection, output, edge_fac),
+                        Some(connection) => {
+                            self.graph[neighbor_idx].set_input_with_connection(connection)
+                        }
                         None => (),
                     }
                 }
@@ -649,9 +712,7 @@ impl UGenGraph {
             }
         }
         for e in self.graph.edge_weights_mut() {
-            let (_, w) = e;
-            w.tick();
-            ()
+            e.reset_after_process()
         }
         self.edge_fac.tick();
     }

@@ -73,6 +73,14 @@ linlin x a b c d =
 
 linexp : Float -> Float -> Float -> Float -> Float -> Float
 linexp x a b c d =
+    let
+        c_shifted =
+            if c == 0.0 then
+                0.001
+
+            else
+                c
+    in
     if x <= a then
         c
 
@@ -80,11 +88,19 @@ linexp x a b c d =
         d
 
     else
-        (d / c) ^ ((x - a) / (b - a)) * c
+        (d / c_shifted) ^ ((x - a) / (b - a)) * c_shifted
 
 
 explin : Float -> Float -> Float -> Float -> Float -> Float
 explin x a b c d =
+    let
+        a_shifted =
+            if a == 0.0 then
+                0.001
+
+            else
+                c
+    in
     if x <= a then
         c
 
@@ -92,4 +108,4 @@ explin x a b c d =
         d
 
     else
-        logE (x / a) / logE (b / a) * (d - c) + c
+        logE (x / a_shifted) / logE (b / a_shifted) * (d - c) + c

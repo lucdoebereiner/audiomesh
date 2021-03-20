@@ -325,12 +325,11 @@ update msg model =
 
         ReceivedMidi (Ok m) ->
             let
-                _ =
-                    Debug.log "midi" m
-
                 selectedNode =
                     getSelectedNode model
 
+                -- _ =
+                --     Debug.log "midi and node" ( m, selectedNode )
                 selectedEdge =
                     getSelectedEdge model
 
@@ -650,7 +649,14 @@ displayNode polled waiting n =
                <|
                 text <|
                     floatString polled
-             , slider (SetNodeOutputAmp n.id) (Parameter -1 n.label.output_amp Exp "OutputAmp" 0.001 2.0)
+             , slider (SetNodeOutputAmp n.id)
+                (Parameter -1
+                    n.label.output_amp
+                    Exp
+                    "OutputAmp"
+                    0.0
+                    2.0
+                )
              ]
                 ++ List.map
                     (\( out_i, amp ) ->
@@ -727,7 +733,7 @@ slider msg par =
 
 volumeSlider : Float -> Element Msg
 volumeSlider v =
-    slider SetVolume (Parameter -1 v Exp "Output volume" 0.0001 1.0)
+    slider SetVolume (Parameter -1 v Exp "Output volume" 0.0 1.0)
 
 
 outputSlider : Int -> Float -> Element Msg
@@ -737,7 +743,7 @@ outputSlider channel v =
 
 edgesSlider : Float -> Element Msg
 edgesSlider e =
-    slider SetEdgeFac (Parameter -1 e Exp "Edge fac" 0.05 5.0)
+    slider SetEdgeFac (Parameter -1 e Exp "Edge fac" 0.03 5.0)
 
 
 addProcess : String -> Process -> Element Msg
