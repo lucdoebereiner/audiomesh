@@ -1,4 +1,4 @@
-* TODO graph synth rust [52/94]
+* TODO graph synth rust [52/91]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -98,7 +98,6 @@
 - [ ] hopf
 - [ ] comb filter
 - [ ] kuramoto
-- [ ] variable lag times
 - [ ] subgraphs
 - [ ] duffing
 - [ ] reset graph
@@ -106,5 +105,3 @@
 - [ ] variations/evolving graph setups
 - [ ] fix visual scaling of graph in elm
 - [ ] scope
-- [ ] remeber output values
-- [ ] delay on every input(?)
