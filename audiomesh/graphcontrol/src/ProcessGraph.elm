@@ -115,9 +115,11 @@ type Process
     | VarDelay { delay : Float, maxdelay : Float }
     | Add
     | Mul
+    | Fold { threshold : Float, mul : Float, add : Float }
     | Softclip
     | Ducking
     | VanDerPol { e : Float, frac : Float, a : Float }
+    | Duffing { e : Float, frac : Float, a : Float }
     | EnvFollow
     | Env { min_target : Float, max_target : Float, max_n : Float }
     | PLL { factor : Float }
@@ -144,6 +146,9 @@ isOutputProcess : Process -> Bool
 isOutputProcess p =
     case p of
         Delay _ ->
+            False
+
+        VarDelay _ ->
             False
 
         RMS ->
@@ -181,6 +186,12 @@ processParameters p =
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.0 10.0 ]
 
+        Fold { threshold, mul, add } ->
+            [ Parameter 1 threshold Lin "Threshold" 0.0 1.0
+            , Parameter 2 mul Exp "Mul" 1.0 20.0
+            , Parameter 3 add Lin "Add" 0.0 1.0
+            ]
+
         VarDelay { delay } ->
             [ Parameter 1 delay Exp "Delay" 0.0 7.0 ]
 
@@ -190,6 +201,12 @@ processParameters p =
             ]
 
         VanDerPol { e, frac, a } ->
+            [ Parameter 1 e Exp "E" 0.05 20
+            , Parameter 2 frac Exp "dt" 0.001 0.9
+            , Parameter 3 a Exp "a" 0.001 10.0
+            ]
+
+        Duffing { e, frac, a } ->
             [ Parameter 1 e Exp "E" 0.05 20
             , Parameter 2 frac Exp "dt" 0.001 0.9
             , Parameter 3 a Exp "a" 0.001 10.0
@@ -252,6 +269,20 @@ setInput ( parIdx, val ) proc =
         VarDelay d ->
             VarDelay { d | delay = val }
 
+        Fold f ->
+            case parIdx of
+                1 ->
+                    Fold { f | threshold = val }
+
+                2 ->
+                    Fold { f | mul = val }
+
+                3 ->
+                    Fold { f | add = val }
+
+                _ ->
+                    proc
+
         VanDerPol s ->
             case parIdx of
                 1 ->
@@ -262,6 +293,20 @@ setInput ( parIdx, val ) proc =
 
                 3 ->
                     VanDerPol { s | a = val }
+
+                _ ->
+                    proc
+
+        Duffing s ->
+            case parIdx of
+                1 ->
+                    Duffing { s | e = val }
+
+                2 ->
+                    Duffing { s | frac = val }
+
+                3 ->
+                    Duffing { s | a = val }
 
                 _ ->
                     proc
@@ -377,11 +422,17 @@ processName p =
         VarDelay _ ->
             "VarDelay"
 
+        Fold _ ->
+            "Fold"
+
         Add ->
             "Add"
 
         VanDerPol _ ->
             "VanDerPol"
+
+        Duffing _ ->
+            "Duffing"
 
         Resonator _ ->
             "Resonator"
@@ -474,6 +525,15 @@ encodeProcess p =
                     ]
                 )
 
+        Fold f ->
+            encObj p
+                (JE.object
+                    [ ( "threshold", JE.float f.threshold )
+                    , ( "mul", JE.float f.mul )
+                    , ( "add", JE.float f.add )
+                    ]
+                )
+
         Env e ->
             encObj p
                 (JE.object
@@ -516,6 +576,15 @@ encodeProcess p =
                 )
 
         VanDerPol s ->
+            encObj p
+                (JE.object
+                    [ ( "e", JE.float s.e )
+                    , ( "frac", JE.float s.frac )
+                    , ( "a", JE.float s.a )
+                    ]
+                )
+
+        Duffing s ->
             encObj p
                 (JE.object
                     [ ( "e", JE.float s.e )
@@ -573,8 +642,14 @@ processToString p =
         VarDelay d ->
             "VarDelay d:" ++ floatString d.delay
 
+        Fold f ->
+            "VarDelay thresh:" ++ floatString f.threshold
+
         VanDerPol v ->
             "VanDerPol e:" ++ String.fromFloat v.e
+
+        Duffing v ->
+            "Duffing e:" ++ String.fromFloat v.e
 
         Filter f ->
             filterTypeToString f.filterType
@@ -661,9 +736,32 @@ decodeSoundIn =
         |> required "factor" float
 
 
+decodeFold : Decoder Process
+decodeFold =
+    Decode.succeed
+        (\t m a ->
+            Fold
+                { threshold = t
+                , mul = m
+                , add = a
+                }
+        )
+        |> required "threshold" float
+        |> required "mul" float
+        |> required "add" float
+
+
 decodeVanDerPol : Decoder Process
 decodeVanDerPol =
     Decode.succeed (\e f a -> VanDerPol { e = e, frac = f, a = a })
+        |> required "e" float
+        |> required "frac" float
+        |> required "a" float
+
+
+decodeDuffing : Decoder Process
+decodeDuffing =
+    Decode.succeed (\e f a -> Duffing { e = e, frac = f, a = a })
         |> required "e" float
         |> required "frac" float
         |> required "a" float
@@ -883,11 +981,13 @@ decodeUGen =
                 , field "Compressor" decodeCompressor
                 , field "Spike" decodeSpike
                 , field "Sin" decodeSin
+                , field "Fold" decodeFold
                 , field "Ducking" (decodeSimpleProcess Ducking)
                 , field "Gauss" (decodeSimpleProcess Gauss)
                 , field "EnvFollow" (decodeSimpleProcess EnvFollow)
                 , field "PLL" decodePLL
                 , field "VanDerPol" decodeVanDerPol
+                , field "Duffing" decodeDuffing
                 , field "Resonator" decodeResonator
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter

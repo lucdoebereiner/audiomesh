@@ -1,4 +1,4 @@
-* TODO graph synth rust [52/91]
+* TODO graph synth rust [54/91]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -62,6 +62,8 @@
 - [X] make delays variable (as taps)
 - [X] linexp with zero
 - [X] edges having delays, lp, weight
+- [X] duffing
+- [X] fold, (shift and gain parameters)
 - [-] edges midi control
   - [X] single control
   - [ ] control lag
@@ -69,7 +71,6 @@
   - [ ] incoming/outgoing control
   - [ ] randomize
 - [ ] accumulation on tapdelay
-- [ ] fold, (shift and gain parameters)
 - [ ] pll mod outputing freq and connection logic 
 - [ ] compenv rest time, sustain portion
 - [ ] spike durations flexible (derive from input)
@@ -99,7 +100,6 @@
 - [ ] comb filter
 - [ ] kuramoto
 - [ ] subgraphs
-- [ ] duffing
 - [ ] reset graph
 - [ ] dynamically change clipping function
 - [ ] variations/evolving graph setups

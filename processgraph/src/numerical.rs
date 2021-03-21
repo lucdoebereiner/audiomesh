@@ -7,6 +7,7 @@ pub fn fmod(numer: f64, denom: f64) -> f64 {
     numer - rquot * denom
 }
 
+#[inline]
 pub fn zapgremlins(x: f64) -> f64 {
     let absx = x.abs();
 
@@ -121,4 +122,22 @@ pub fn bit_and(input1: f64, input2: f64) -> f64 {
     f64::from_bits(input1.to_bits() & input2.to_bits()) // / f64::MAX * 2.0 - 1.0
 }
 
+#[inline]
+pub fn fold(input: f64, threshold: f64, mul: f64, add: f64) -> f64 {
+    let mut adjusted_in = input * mul + add;
+    let lower_threshold = threshold * -1.0;
+
+    while adjusted_in > threshold || adjusted_in < lower_threshold {
+        // mirror at positive threshold
+        if adjusted_in > threshold {
+            adjusted_in = threshold - (adjusted_in - threshold);
+        }
+        // mirror at negative threshold
+        if adjusted_in < lower_threshold {
+            adjusted_in = lower_threshold + (lower_threshold - adjusted_in);
+        }
+    }
+
+    adjusted_in * (1.0 / threshold)
+}
 // TODO unit tests

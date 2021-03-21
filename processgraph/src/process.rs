@@ -43,6 +43,13 @@ pub enum Process {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
+    Fold {
+        #[serde(skip)]
+        input: f64,
+        threshold: lag::Lag,
+        mul: lag::Lag,
+        add: lag::Lag,
+    },
     Ring {
         #[serde(skip)]
         inputs: Vec<Process>,
@@ -78,6 +85,20 @@ pub enum Process {
         comp_env: CompEnv,
     },
     VanDerPol {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip)]
+        x: f64,
+        #[serde(skip)]
+        y: f64,
+        frac: lag::Lag,
+        e: lag::Lag,
+        a: lag::Lag,
+        #[serde(skip_serializing)]
+        #[serde(default = "dc_remove_filter")]
+        output: filters::OnePoleHP,
+    },
+    Duffing {
         #[serde(skip)]
         input: f64,
         #[serde(skip)]
@@ -322,6 +343,7 @@ pub enum InputType {
     Parameter,
     Amplitude,
     Seconds,
+    Offset,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -416,6 +438,12 @@ impl Process {
                 ref mut factor,
             } => (*input + (*external_input.get(*index).unwrap_or(&0.0) * factor.tick())),
             Process::Sin { input, mul } => (*input * mul.tick()).sin(),
+            Process::Fold {
+                input,
+                ref mut threshold,
+                ref mut mul,
+                ref mut add,
+            } => (numerical::fold(*input, threshold.tick(), mul.tick(), add.tick())),
             Process::SinOsc {
                 input,
                 freq,
@@ -451,6 +479,51 @@ impl Process {
 
                 let mut d_x_1 = y_1;
                 let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1 + (*input * this_a);
+
+                d_x_1 = zapgremlins(d_x_1);
+                d_y_1 = zapgremlins(d_y_1);
+
+                let mut d_x = ((d_x_n + d_x_1) / 2.0) * f;
+                let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
+
+                //hard reset
+                if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
+                    //                    println!("reset vdp x{} y{}", d_x, d_y);
+                    d_x = 0.0;
+                    d_y = 0.0;
+                    *x = 0.0;
+                    *y = 0.0;
+                }
+
+                *x = *x + d_x;
+                *y = *y + d_y;
+                output.input = *x * 0.5;
+                output.process()
+            }
+            Process::Duffing {
+                input,
+                ref mut x,
+                ref mut y,
+                ref mut frac,
+                ref mut e,
+                ref mut a,
+                ref mut output,
+            } => {
+                let this_e = e.tick();
+                let f = frac.tick();
+                let this_a = a.tick();
+
+                let mut d_x_n = *y;
+                let mut d_y_n = *x - (*x).powi(3) - this_e * *y + (*input * this_a);
+
+                d_x_n = zapgremlins(d_x_n);
+                d_y_n = zapgremlins(d_y_n);
+
+                let x_1 = *x + (d_x_n * f);
+                let y_1 = *y + (d_y_n * f);
+
+                let mut d_x_1 = y_1;
+                let mut d_y_1 = x_1 - (x_1).powi(3) - this_e * y_1 + (*input * this_a);
 
                 d_x_1 = zapgremlins(d_x_1);
                 d_y_1 = zapgremlins(d_y_1);
@@ -694,6 +767,18 @@ impl Process {
                 1 => factor.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
+            Process::Fold {
+                ref mut input,
+                ref mut threshold,
+                ref mut mul,
+                add: ref mut fold_add,
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => threshold.set_target(input_value),
+                2 => mul.set_target(input_value),
+                3 => fold_add.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
             Process::VarDelay {
                 ref mut input,
                 ref mut delay,
@@ -704,6 +789,19 @@ impl Process {
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::VanDerPol {
+                ref mut input,
+                ref mut e,
+                ref mut frac,
+                ref mut a,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => e.set_target(input_value),
+                2 => frac.set_target(input_value),
+                3 => a.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+            Process::Duffing {
                 ref mut input,
                 ref mut e,
                 ref mut frac,
@@ -972,6 +1070,28 @@ impl Process {
                     InputType::Amplitude,
                 ],
             ),
+            Process::Duffing { .. } => procspec(
+                "duffing",
+                ProcessType::OpaqueProcessor,
+                vec![
+                    InputType::Audio,
+                    InputType::Factor,
+                    InputType::Factor,
+                    InputType::Amplitude,
+                ],
+            ),
+
+            Process::Fold { .. } => procspec(
+                "fold",
+                ProcessType::OpaqueProcessor,
+                vec![
+                    InputType::Audio,
+                    InputType::Threshold,
+                    InputType::Amplitude,
+                    InputType::Offset,
+                ],
+            ),
+
             Process::Sin { .. } => {
                 procspec("sin", ProcessType::OpaqueProcessor, vec![InputType::Phase])
             }
@@ -1135,6 +1255,8 @@ impl Process {
 	| Process::Spike { ref mut input, .. }
 	| Process::VarDelay { ref mut input, .. }
 	| Process::VanDerPol { ref mut input, .. }
+	    | Process::Duffing { ref mut input, .. }
+	    	| Process::Fold { ref mut input, .. }
 	| Process::BitNeg { ref mut input } => *input = 0.0,
         Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	Process::Compressor { ref mut input, ref mut input_level, .. }

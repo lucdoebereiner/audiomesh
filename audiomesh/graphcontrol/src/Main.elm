@@ -1019,6 +1019,13 @@ processRow m =
         , addProcess "Ducking" Ducking
         , addProcess "EnvFollow" EnvFollow
         , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
+        , addProcess "Fold"
+            (Fold
+                { threshold = 1.0
+                , mul = 1.0
+                , add = 0.0
+                }
+            )
         , addProcess "Env"
             (Env
                 { min_target = 0.001
@@ -1034,6 +1041,7 @@ processRow m =
         , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03, a = 1.0 })
+        , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5 })
         , delayInput m.delayLength
         , pllInput m.pllFac
         , sinInput m.sinMul
