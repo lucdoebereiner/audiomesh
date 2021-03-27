@@ -480,7 +480,7 @@ fn clear_chain(chain: &mut [Process]) {
 
 #[inline]
 fn kaneko_logisitc(x: f64, a: f64) -> f64 {
-    1.0 - a * x.tanh().powi(2)
+    1.0 - a * numerical::wrap(x, -1.0, 1.0).powi(2)
 }
 
 impl Process {

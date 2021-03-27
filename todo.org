@@ -1,4 +1,4 @@
-* TODO graph synth rust [59/97]
+* TODO graph synth rust [60/97]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -69,6 +69,7 @@
 - [X] kaneko osc (circle of coupled)
 - [X] gate if greater
 - [X] send state to midi controller
+- [X] kaneko fix
 - [-] edges midi control
   - [X] single control
   - [ ] multiple control
@@ -77,7 +78,6 @@
   - [ ] control lag
 - [ ] slow compression
 - [ ] delay feedbacks with compression and leakage
-- [ ] kaneko fix
 - [ ] sanitize output
 - [ ] output compressor
 - [ ] insert process in edge (between)
