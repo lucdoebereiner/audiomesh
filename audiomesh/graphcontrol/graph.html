@@ -72,6 +72,7 @@
      }
 
      function parseMidiMessage(message) {
+	 console.log(message.data);
 	 return {
 	     channel: message.data[0] & 0xf,
 	     controller: message.data[1],
@@ -83,7 +84,12 @@
 	 console.log('Could not access your MIDI devices.');
      }
 
-   //  setTimeout(() => midiOutput.send([176, 89, 0]), 3000); 
+     app.ports.midiSend.subscribe(function(message) {
+	 console.log(message);
+	 midiOutput.send([176, message[0], message[1]]); 
+     });
+     
+     //  setTimeout(() => midiOutput.send([176, 89, 0]), 3000); 
      
     </script>
 </html>

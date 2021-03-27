@@ -64,6 +64,7 @@ type alias Model =
     , spikeTConst : String
     , spikeR : String
     , spikeTRest : String
+    , kanekoChainN : String
     }
 
 
@@ -99,6 +100,7 @@ init _ =
         "0.0001"
         "5"
         "20000"
+        "100"
     , Api.getGraph GotGraph
     )
 
@@ -123,6 +125,9 @@ type alias MidiCC =
 port midiCC : (Dec.Value -> msg) -> Sub msg
 
 
+port midiSend : ( Int, Int ) -> Cmd msg
+
+
 decodeMidiCC : Dec.Value -> Result Dec.Error MidiCC
 decodeMidiCC =
     Dec.decodeValue
@@ -131,6 +136,40 @@ decodeMidiCC =
             |> required "controller" Dec.int
             |> required "value" Dec.float
         )
+
+
+sendMidiProcessState : UGen -> Cmd msg
+sendMidiProcessState ugen =
+    let
+        outputAmp =
+            Parameters.explin ugen.output_amp 0.0 2.0 0.0 1.0
+                |> round
+                << (*) 127
+    in
+    midiSend ( 4, outputAmp )
+        :: List.indexedMap
+            (\i p ->
+                midiSend
+                    ( i + 5
+                    , round
+                        (Parameters.unmapped p p.value * 127)
+                    )
+            )
+            (processParameters ugen.process)
+        |> Cmd.batch
+
+
+sendMidiEdgeState : ProcessGraph.Link -> Cmd msg
+sendMidiEdgeState edge =
+    let
+        w =
+            round (Parameters.explin edge.strength 0.0 5.0 0.0 1.0 * 127)
+
+        d =
+            round (Parameters.explin edge.delay.delay 0.0 6.0 0.0 1.0 * 127)
+    in
+    List.map midiSend [ ( 14, d ), ( 15, w ) ]
+        |> Cmd.batch
 
 
 midiDict : ( Maybe (Graph.Node UGen), Maybe (Graph.Edge Link) ) -> Dict Int (Float -> Msg)
@@ -283,6 +322,7 @@ type Msg
     | SetResonatorFreqCenter String
     | SetResonatorFreqFactor String
     | SetResonatorDecay String
+    | SetKanekoChainN String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | SetEdgeDelay Int Float
@@ -331,6 +371,36 @@ getSelectedNode model =
         model.selectedNode
 
 
+selectNode : Model -> Maybe Graph.NodeId -> ( Model, Cmd msg )
+selectNode model nextNode =
+    let
+        newModel =
+            { model | selectedNode = nextNode }
+
+        selectedNode =
+            getSelectedNode newModel
+    in
+    ( newModel
+    , Maybe.map (sendMidiProcessState << .label) selectedNode
+        |> Maybe.withDefault Cmd.none
+    )
+
+
+selectEdge : Model -> Maybe Int -> ( Model, Cmd msg )
+selectEdge model nextEdge =
+    let
+        newModel =
+            { model | selectedEdge = nextEdge }
+
+        selectedEdge =
+            getSelectedEdge newModel
+    in
+    ( newModel
+    , Maybe.map (sendMidiEdgeState << .label) selectedEdge
+        |> Maybe.withDefault Cmd.none
+    )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -369,30 +439,42 @@ update msg model =
         SelectPrevNode ->
             let
                 nextNode =
-                    Maybe.andThen (\g -> ProcessGraph.prevNode g model.selectedNode) model.graph
+                    Maybe.andThen
+                        (\g ->
+                            ProcessGraph.prevNode
+                                g
+                                model.selectedNode
+                        )
+                        model.graph
             in
-            ( { model | selectedNode = nextNode }, Cmd.none )
+            selectNode model nextNode
 
         SelectNextNode ->
             let
                 nextNode =
-                    Maybe.andThen (\g -> ProcessGraph.nextNode g model.selectedNode) model.graph
+                    Maybe.andThen
+                        (\g ->
+                            ProcessGraph.nextNode
+                                g
+                                model.selectedNode
+                        )
+                        model.graph
             in
-            ( { model | selectedNode = nextNode }, Cmd.none )
+            selectNode model nextNode
 
         SelectPrevEdge ->
             let
                 nextEdge =
                     Maybe.andThen (\g -> ProcessGraph.prevEdge g model.selectedEdge) model.graph
             in
-            ( { model | selectedEdge = nextEdge }, Cmd.none )
+            selectEdge model nextEdge
 
         SelectNextEdge ->
             let
                 nextEdge =
                     Maybe.andThen (\g -> ProcessGraph.nextEdge g model.selectedEdge) model.graph
             in
-            ( { model | selectedEdge = nextEdge }, Cmd.none )
+            selectEdge model nextEdge
 
         SetOutputs channel pos ->
             let
@@ -505,7 +587,7 @@ update msg model =
                     )
 
                 Nothing ->
-                    ( { model | selectedNode = Just id }, Cmd.none )
+                    selectNode model (Just id)
 
         Connect from to idx ->
             ( { model | waitingToConnect = Nothing }
@@ -513,7 +595,7 @@ update msg model =
             )
 
         SelectEdge id ->
-            ( { model | selectedEdge = Just id }, Cmd.none )
+            selectEdge model (Just id)
 
         DeleteNode id ->
             ( model, Api.deleteNode UpdatedGraph id )
@@ -584,6 +666,9 @@ update msg model =
         SetSpikeTConst s ->
             ( { model | spikeTConst = s }, Cmd.none )
 
+        SetKanekoChainN n ->
+            ( { model | kanekoChainN = n }, Cmd.none )
+
         NoOp _ ->
             ( model, Cmd.none )
 
@@ -595,9 +680,8 @@ update msg model =
 
         SetProcessParameter nodeId parIdx val ->
             let
-                _ =
-                    Debug.log "para" val
-
+                -- _ =
+                --     Debug.log "para" val
                 newGraph =
                     Maybe.map (updateProcessParameter nodeId ( parIdx, val ))
                         model.graph
@@ -798,6 +882,20 @@ pllInput v =
             }
         , Maybe.withDefault none <|
             Maybe.map (\f -> addProcess "PLL" (PLL { factor = f })) (String.toFloat v)
+        ]
+
+
+kanekoChainInput : String -> Element Msg
+kanekoChainInput v =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetKanekoChainN
+            , text = v
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "N")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map (\n -> addProcess "KanekoChain" (KanekoChain { n = n, a = 1.5, e = 0.3 })) (String.toInt v)
         ]
 
 
@@ -1018,19 +1116,30 @@ processRow m =
         , addProcess "RMS" RMS
         , addProcess "Ducking" Ducking
         , addProcess "EnvFollow" EnvFollow
-        , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
-        , addProcess "Fold"
-            (Fold
-                { threshold = 1.0
-                , mul = 1.0
-                , add = 0.0
-                }
-            )
         , addProcess "Env"
             (Env
                 { min_target = 0.001
                 , max_target = 0.6
                 , max_n = 4.0
+                , sustain_fac = 1.0
+                , rest_fac = 0.1
+                }
+            )
+        , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
+        , addProcess "GateIfGreater" GateIfGreater
+        , addProcess "GateDecision"
+            (GateDecision
+                { min_dur_on = 1.0
+                , max_dur_on = 3.0
+                , min_dur_off = 3.0
+                , max_dur_off = 6.0
+                }
+            )
+        , addProcess "Fold"
+            (Fold
+                { threshold = 1.0
+                , mul = 1.0
+                , add = 0.0
                 }
             )
         , addProcess "BitNeg" BitNeg
@@ -1042,6 +1151,8 @@ processRow m =
         , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03, a = 1.0 })
         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5 })
+        , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
+        , kanekoChainInput m.kanekoChainN
         , delayInput m.delayLength
         , pllInput m.pllFac
         , sinInput m.sinMul
@@ -1092,10 +1203,10 @@ showSelectedEdge model =
             el [ padding 10, Border.width 1, Border.solid ] <|
                 row [ spacing 10 ]
                     [ --text ("Link weight: " ++ floatString l.label.strength)
-                      slider (SetEdgeWeight l.label.id)
-                        (Parameter -1 l.label.strength Exp "weight" 0.0 5.0)
-                    , slider (SetEdgeDelay l.label.id)
+                      slider (SetEdgeDelay l.label.id)
                         (Parameter -1 l.label.delay.delay Exp "Delay" 0.0 6.0)
+                    , slider (SetEdgeWeight l.label.id)
+                        (Parameter -1 l.label.strength Exp "weight" 0.0 5.0)
                     , simpleButton "Delete" (DeleteEdge l.label.id)
                     ]
         )

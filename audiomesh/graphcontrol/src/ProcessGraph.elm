@@ -113,15 +113,30 @@ type Process
     = Mem { lastValue : Float }
     | Delay { length : Int }
     | VarDelay { delay : Float, maxdelay : Float }
+    | Kaneko { e : Float, a : Float }
+    | KanekoChain { n : Int, e : Float, a : Float }
+    | GateDecision
+        { min_dur_on : Float
+        , max_dur_on : Float
+        , min_dur_off : Float
+        , max_dur_off : Float
+        }
     | Add
     | Mul
     | Fold { threshold : Float, mul : Float, add : Float }
     | Softclip
     | Ducking
+    | GateIfGreater
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float }
     | EnvFollow
-    | Env { min_target : Float, max_target : Float, max_n : Float }
+    | Env
+        { min_target : Float
+        , max_target : Float
+        , max_n : Float
+        , sustain_fac : Float
+        , rest_fac : Float
+        }
     | PLL { factor : Float }
     | Ring
     | Filter { filterType : FilterType, freq : Float, q : Float }
@@ -148,9 +163,8 @@ isOutputProcess p =
         Delay _ ->
             False
 
-        VarDelay _ ->
-            False
-
+        -- VarDelay _ ->
+        --     False
         RMS ->
             False
 
@@ -186,6 +200,23 @@ processParameters p =
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.0 10.0 ]
 
+        Kaneko { e, a } ->
+            [ Parameter 2 e Lin "e" 0.0 1.0
+            , Parameter 3 a Lin "a" 1.0 2.0
+            ]
+
+        KanekoChain { e, a } ->
+            [ Parameter 2 e Lin "e" 0.0 1.0
+            , Parameter 3 a Lin "a" 1.0 2.0
+            ]
+
+        GateDecision { min_dur_on, max_dur_on, min_dur_off, max_dur_off } ->
+            [ Parameter 2 min_dur_on Exp "Min dur on" 0.05 10.0
+            , Parameter 3 max_dur_on Exp "Max dur on" 0.2 20.0
+            , Parameter 4 min_dur_off Exp "Min dur off" 0.05 10.0
+            , Parameter 5 max_dur_off Exp "Max dur off" 0.2 20.0
+            ]
+
         Fold { threshold, mul, add } ->
             [ Parameter 1 threshold Lin "Threshold" 0.0 1.0
             , Parameter 2 mul Exp "Mul" 1.0 20.0
@@ -212,10 +243,12 @@ processParameters p =
             , Parameter 3 a Exp "a" 0.001 10.0
             ]
 
-        Env { min_target, max_target, max_n } ->
+        Env { min_target, max_target, max_n, sustain_fac, rest_fac } ->
             [ Parameter 1 min_target Exp "Min" 0.0 0.5
             , Parameter 2 max_target Exp "Max" 0.1 0.9
             , Parameter 3 max_n Exp "Sec" 0.5 20.0
+            , Parameter 4 sustain_fac Exp "Sustain fac" 0.1 2.0
+            , Parameter 5 rest_fac Exp "Rest fac" 0.0 1.0
             ]
 
         -- Constant { value } ->
@@ -268,6 +301,45 @@ setInput ( parIdx, val ) proc =
 
         VarDelay d ->
             VarDelay { d | delay = val }
+
+        Kaneko k ->
+            case parIdx of
+                2 ->
+                    Kaneko { k | e = val }
+
+                3 ->
+                    Kaneko { k | a = val }
+
+                _ ->
+                    proc
+
+        KanekoChain k ->
+            case parIdx of
+                2 ->
+                    KanekoChain { k | e = val }
+
+                3 ->
+                    KanekoChain { k | a = val }
+
+                _ ->
+                    proc
+
+        GateDecision g ->
+            case parIdx of
+                2 ->
+                    GateDecision { g | min_dur_on = val }
+
+                3 ->
+                    GateDecision { g | max_dur_on = val }
+
+                4 ->
+                    GateDecision { g | min_dur_off = val }
+
+                5 ->
+                    GateDecision { g | max_dur_off = val }
+
+                _ ->
+                    proc
 
         Fold f ->
             case parIdx of
@@ -347,6 +419,12 @@ setInput ( parIdx, val ) proc =
                 3 ->
                     Env { e | max_n = val }
 
+                4 ->
+                    Env { e | sustain_fac = val }
+
+                5 ->
+                    Env { e | rest_fac = val }
+
                 _ ->
                     proc
 
@@ -416,6 +494,12 @@ processName p =
         Mem _ ->
             "Mem"
 
+        GateIfGreater ->
+            "GateIfGreater"
+
+        GateDecision _ ->
+            "GateDecision"
+
         Delay _ ->
             "Delay"
 
@@ -424,6 +508,12 @@ processName p =
 
         Fold _ ->
             "Fold"
+
+        Kaneko _ ->
+            "Kaneko"
+
+        KanekoChain _ ->
+            "KanekoChain"
 
         Add ->
             "Add"
@@ -525,6 +615,33 @@ encodeProcess p =
                     ]
                 )
 
+        Kaneko k ->
+            encObj p
+                (JE.object
+                    [ ( "e", JE.float k.e )
+                    , ( "a", JE.float k.a )
+                    ]
+                )
+
+        KanekoChain k ->
+            encObj p
+                (JE.object
+                    [ ( "e", JE.float k.e )
+                    , ( "a", JE.float k.a )
+                    , ( "last_outputs", JE.int k.n )
+                    ]
+                )
+
+        GateDecision k ->
+            encObj p
+                (JE.object
+                    [ ( "min_dur_on", JE.float k.min_dur_on )
+                    , ( "max_dur_on", JE.float k.max_dur_on )
+                    , ( "min_dur_off", JE.float k.min_dur_off )
+                    , ( "max_dur_off", JE.float k.max_dur_off )
+                    ]
+                )
+
         Fold f ->
             encObj p
                 (JE.object
@@ -540,6 +657,8 @@ encodeProcess p =
                     [ ( "min_target", JE.float e.min_target )
                     , ( "max_target", JE.float e.max_target )
                     , ( "max_n", JE.float e.max_n )
+                    , ( "sustain_fac", JE.float e.sustain_fac )
+                    , ( "rest_fac", JE.float e.rest_fac )
                     ]
                 )
 
@@ -639,11 +758,14 @@ processToString p =
         Delay d ->
             "Delay length:" ++ String.fromInt d.length
 
+        KanekoChain k ->
+            "KanekoChain n:" ++ String.fromInt k.n
+
         VarDelay d ->
             "VarDelay d:" ++ floatString d.delay
 
         Fold f ->
-            "VarDelay thresh:" ++ floatString f.threshold
+            "Fold thresh:" ++ floatString f.threshold
 
         VanDerPol v ->
             "VanDerPol e:" ++ String.fromFloat v.e
@@ -729,6 +851,38 @@ decodeVarDelay =
         |> required "maxdelay" float
 
 
+decodeGateDecision : Decoder Process
+decodeGateDecision =
+    Decode.succeed
+        (\mi mx mi_off mx_off ->
+            GateDecision
+                { min_dur_on = mi
+                , max_dur_on = mx
+                , min_dur_off = mi_off
+                , max_dur_off = mx_off
+                }
+        )
+        |> required "min_dur_on" float
+        |> required "max_dur_on" float
+        |> required "min_dur_off" float
+        |> required "max_dur_off" float
+
+
+decodeKaneko : Decoder Process
+decodeKaneko =
+    Decode.succeed (\e a -> Kaneko { e = e, a = a })
+        |> required "e" float
+        |> required "a" float
+
+
+decodeKanekoChain : Decoder Process
+decodeKanekoChain =
+    Decode.succeed (\e a n -> KanekoChain { n = n, e = e, a = a })
+        |> required "e" float
+        |> required "a" float
+        |> required "last_outputs" int
+
+
 decodeSoundIn : Decoder Process
 decodeSoundIn =
     Decode.succeed (\input f -> SoundIn { index = input, factor = f })
@@ -770,16 +924,20 @@ decodeDuffing =
 decodeEnv : Decoder Process
 decodeEnv =
     Decode.succeed
-        (\min max n ->
+        (\min max n sus rest ->
             Env
                 { min_target = min
                 , max_target = max
                 , max_n = n
+                , sustain_fac = sus
+                , rest_fac = rest
                 }
         )
         |> required "min_target" float
         |> required "max_target" float
         |> required "max_n" float
+        |> required "sustain_fac" float
+        |> required "rest_fac" float
 
 
 decodeSimpleProcess : Process -> Decoder Process
@@ -991,8 +1149,12 @@ decodeUGen =
                 , field "Resonator" decodeResonator
                 , field "SoundIn" decodeSoundIn
                 , field "Filter" decodeFilter
+                , field "Kaneko" decodeKaneko
+                , field "KanekoChain" decodeKanekoChain
+                , field "GateDecision" decodeGateDecision
                 , field "SinOsc" decodeSinOsc
                 , field "LinCon" decodeLinCon
+                , field "GateIfGreater" (decodeSimpleProcess GateIfGreater)
                 , field "Square" (decodeSimpleProcess Square)
                 , field "BitAnd" decodeBitAnd
                 , field "BitOr" decodeBitOr

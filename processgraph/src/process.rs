@@ -50,6 +50,52 @@ pub enum Process {
         mul: lag::Lag,
         add: lag::Lag,
     },
+    GateIfGreater {
+        #[serde(skip)]
+        input1: f64,
+        #[serde(skip)]
+        input2: f64,
+    },
+    Kaneko {
+        #[serde(skip)]
+        input1: f64,
+        #[serde(skip)]
+        input2: f64,
+        #[serde(skip)]
+        last_output: f64,
+        e: lag::Lag,
+        a: lag::Lag,
+    },
+    KanekoChain {
+        #[serde(skip)]
+        input1: f64,
+        #[serde(skip)]
+        input2: f64,
+        #[serde(serialize_with = "vector_serialize")]
+        #[serde(deserialize_with = "vector_deserialize")]
+        last_outputs: Vec<f64>,
+        e: lag::Lag,
+        a: lag::Lag,
+        #[serde(skip)]
+        i: usize,
+    },
+    GateDecision {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip)]
+        other_level: Vec<Process>,
+        #[serde(skip)]
+        playing: bool,
+        #[serde(skip)]
+        counter: i32,
+        min_dur_on: f64,
+        max_dur_on: f64,
+        min_dur_off: f64,
+        max_dur_off: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "out_gate_lag")]
+        out_lag: lag::Lag,
+    },
     Ring {
         #[serde(skip)]
         inputs: Vec<Process>,
@@ -191,9 +237,6 @@ pub enum Process {
         #[serde(flatten)]
         resonator: filters::ComplexRes,
     },
-    // Noise {
-    //     rng: SmallRng,
-    // },
     Wrap {
         #[serde(skip)]
         input: f64,
@@ -386,7 +429,13 @@ fn rms_chain() -> Vec<Process> {
 
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
-    dlag.set_duration_ud(1.0, 0.15);
+    dlag.set_duration_ud(0.1, 0.1);
+    dlag
+}
+
+fn out_gate_lag() -> lag::Lag {
+    let mut dlag = lag::lag(0.0);
+    dlag.set_duration_ud(0.05, 0.07);
     dlag
 }
 
@@ -429,9 +478,21 @@ fn clear_chain(chain: &mut [Process]) {
     }
 }
 
+#[inline]
+fn kaneko_logisitc(x: f64, a: f64) -> f64 {
+    1.0 - a * x.tanh().powi(2)
+}
+
 impl Process {
     pub fn process(&mut self, external_input: &[f64]) -> f64 {
         match self {
+            Process::GateIfGreater { input1, input2 } => {
+                if input1.abs() > input2.abs() {
+                    *input1
+                } else {
+                    0.0
+                }
+            }
             Process::SoundIn {
                 input,
                 index,
@@ -561,6 +622,102 @@ impl Process {
                 }
                 output * 0.7
             }
+            Process::Kaneko {
+                input1,
+                input2,
+                ref mut last_output,
+                ref mut e,
+                ref mut a,
+            } => {
+                let this_e = e.tick();
+                let this_a = a.tick();
+                *last_output = (1.0 - this_e) * kaneko_logisitc(*last_output, this_a)
+                    + ((this_e / 2.0)
+                        * (kaneko_logisitc(*input1, this_a) + kaneko_logisitc(*input2, this_a)));
+                *last_output
+            }
+
+            Process::KanekoChain {
+                input1,
+                input2,
+                ref mut last_outputs,
+                ref mut e,
+                ref mut a,
+                ref mut i,
+            } => {
+                let this_e = e.tick();
+                let this_a = a.tick();
+
+                if *i == 0 {
+                    for k in 0..last_outputs.len() {
+                        let prev = if k == 0 { *input1 } else { last_outputs[k - 1] };
+                        let next = if k == (last_outputs.len() - 1) {
+                            *input2
+                        } else {
+                            last_outputs[k + 1]
+                        };
+
+                        last_outputs[k] = (1.0 - this_e) * kaneko_logisitc(last_outputs[k], this_a)
+                            + ((this_e / 2.0)
+                                * (kaneko_logisitc(prev, this_a) + kaneko_logisitc(next, this_a)));
+                    }
+                }
+
+                let out = last_outputs[*i];
+                *i = (*i + 1) % last_outputs.len();
+                out
+            }
+
+            Process::GateDecision {
+                input,
+                ref mut other_level,
+                ref mut playing,
+                ref mut counter,
+                min_dur_on,
+                max_dur_on,
+                min_dur_off,
+                max_dur_off,
+                ref mut out_lag,
+            } => {
+                let level: f64 = other_level
+                    .iter_mut()
+                    .map(|p| p.process(external_input))
+                    .sum();
+
+                if *playing {
+                    if *counter > ((*max_dur_on * get_sr()) as i32) {
+                        *counter = 0;
+                        *playing = false;
+                    } else {
+                        if *counter > ((*min_dur_on * get_sr()) as i32) {
+                            if level > 0.1 {
+                                *playing = false;
+                                *counter = 0;
+                            }
+                        }
+                    }
+                } else {
+                    if *counter > ((*max_dur_off * get_sr()) as i32) {
+                        *counter = 0;
+                        *playing = true;
+                    } else {
+                        if *counter > ((*min_dur_off * get_sr()) as i32) {
+                            if level < 0.05 {
+                                *playing = true;
+                                *counter = 0;
+                            }
+                        }
+                    }
+                }
+
+                *counter += 1;
+                if *playing {
+                    out_lag.set_target(1.0);
+                } else {
+                    out_lag.set_target(0.0);
+                }
+                *input * out_lag.tick()
+            }
             Process::Env {
                 input,
                 ref mut input_level,
@@ -685,7 +842,6 @@ impl Process {
                 }
                 output
             }
-            //        Process::Noise { ref mut rng } => rng.gen_range(-1.0, 1.0),
             Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
             Process::Softclip { input } => input.tanh(),
             Process::Delay {
@@ -877,6 +1033,27 @@ impl Process {
                 3 => makeup.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
+            Process::Kaneko {
+                ref mut input1,
+                ref mut input2,
+                ref mut e,
+                ref mut a,
+                ..
+            }
+            | Process::KanekoChain {
+                ref mut input1,
+                ref mut input2,
+                ref mut e,
+                ref mut a,
+                ..
+            } => match idx {
+                0 => set_or_add(input1, input_value, add),
+                1 => set_or_add(input2, input_value, add),
+                2 => e.set_target(input_value),
+                3 => a.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
             Process::Env {
                 ref mut input,
                 ref mut input_level,
@@ -893,6 +1070,8 @@ impl Process {
                 1 => comp_env.min_target = input_value,
                 2 => comp_env.max_target = input_value,
                 3 => comp_env.max_n = input_value,
+                4 => comp_env.sustain_fac = input_value,
+                5 => comp_env.rest_fac = input_value,
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::Ducking {
@@ -907,6 +1086,29 @@ impl Process {
                     }
                     input_level[0].set_input(0, input_value, add);
                 }
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
+            Process::GateDecision {
+                ref mut input,
+                ref mut other_level,
+                ref mut min_dur_on,
+                ref mut max_dur_on,
+                ref mut min_dur_off,
+                ref mut max_dur_off,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => {
+                    if other_level.len() < 1 {
+                        other_level.push(rms_proc());
+                    }
+                    other_level[0].set_input(0, input_value, add);
+                }
+                2 => *min_dur_on = input_value,
+                3 => *max_dur_on = input_value,
+                4 => *min_dur_off = input_value,
+                5 => *max_dur_off = input_value,
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
 
@@ -1006,6 +1208,10 @@ impl Process {
                 ref mut input1,
                 ref mut input2,
             }
+            | Process::GateIfGreater {
+                ref mut input1,
+                ref mut input2,
+            }
             | Process::BitAnd {
                 ref mut input1,
                 ref mut input2,
@@ -1096,7 +1302,7 @@ impl Process {
                 procspec("sin", ProcessType::OpaqueProcessor, vec![InputType::Phase])
             }
             Process::Env { .. } => procspec(
-                "sin",
+                "env",
                 ProcessType::TransparentProcessor,
                 vec![InputType::Audio],
             ),
@@ -1165,7 +1371,17 @@ impl Process {
                 vec![InputType::Any; 2],
             ),
 
-            //        Process::Noise { .. } => procspec("noise", vec![]),
+            Process::GateDecision { .. } => procspec(
+                "gatedecision",
+                ProcessType::SidechainEnv,
+                vec![
+                    InputType::Any,
+                    InputType::Any,
+                    InputType::Seconds,
+                    InputType::Seconds,
+                ],
+            ),
+
             Process::Wrap { .. } => procspec(
                 "wrap",
                 ProcessType::OpaqueProcessor,
@@ -1205,9 +1421,35 @@ impl Process {
             Process::BitXOr { .. } => {
                 procspec("bitxor", ProcessType::TwoInputs, vec![InputType::Any; 2])
             }
+            Process::Kaneko { .. } => procspec(
+                "kaneko",
+                ProcessType::TwoInputs,
+                vec![
+                    InputType::Any,
+                    InputType::Any,
+                    InputType::Factor,
+                    InputType::Factor,
+                ],
+            ),
+            Process::KanekoChain { .. } => procspec(
+                "kanekochain",
+                ProcessType::TwoInputs,
+                vec![
+                    InputType::Any,
+                    InputType::Any,
+                    InputType::Factor,
+                    InputType::Factor,
+                ],
+            ),
+
             Process::BitAnd { .. } => {
                 procspec("bitand", ProcessType::TwoInputs, vec![InputType::Any; 2])
             }
+            Process::GateIfGreater { .. } => procspec(
+                "gateifgreater",
+                ProcessType::TwoInputs,
+                vec![InputType::Any; 2],
+            ),
             Process::CurveLin { .. } => procspec(
                 "curvelin",
                 ProcessType::TransparentProcessor,
@@ -1265,9 +1507,14 @@ impl Process {
 	| Process::Ducking { ref mut input, ref mut input_level, .. } => {
 	    *input = 0.0;
 	    clear_chain(input_level);
-	    //input_level.iter_mut().for_each(|i| clear_inputs(i));
 	},
-	Process::Resonator { ref mut input, ref mut freq_mod, .. } => {
+
+	Process::GateDecision { ref mut input, ref mut other_level, .. } => {
+	    *input = 0.0;
+	    clear_chain(other_level);
+	},
+
+	    Process::Resonator { ref mut input, ref mut freq_mod, .. } => {
 		*input = 0.0;
 		*freq_mod = 0.0;
 	},
@@ -1282,7 +1529,6 @@ impl Process {
 	Process::Sin { ref mut input, .. } => *input = 0.0,
         Process::Constant { .. }  => (),
 	| Process::SoundIn { ref mut input, .. } => *input = 0.0,
-//        Process::Noise { .. } => (),
         Process::Delay {
             ref mut input,
             rec_idx,
@@ -1291,10 +1537,27 @@ impl Process {
             ref mut input1,
             ref mut input2,
         }
+	| Process::GateIfGreater {
+            ref mut input1,
+            ref mut input2,
+        }
+
         | Process::BitXOr {
             ref mut input1,
             ref mut input2,
         }
+
+        | Process::Kaneko {
+            ref mut input1,
+            ref mut input2,
+	    ..
+        }
+        | Process::KanekoChain {
+            ref mut input1,
+            ref mut input2,
+	    ..
+        }
+
         | Process::BitAnd {
             ref mut input1,
             ref mut input2,

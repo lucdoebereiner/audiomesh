@@ -47,6 +47,11 @@ impl Lag {
         l
     }
 
+    pub fn reset(&mut self, new_value: f64) {
+        self.target = new_value;
+        self.current = new_value;
+    }
+
     pub fn tick(&mut self) -> f64 {
         if (self.current - self.target).abs() < 0.00001 {
             self.current = self.target

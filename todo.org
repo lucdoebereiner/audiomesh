@@ -1,4 +1,4 @@
-* TODO graph synth rust [54/91]
+* TODO graph synth rust [59/97]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -64,41 +64,47 @@
 - [X] edges having delays, lp, weight
 - [X] duffing
 - [X] fold, (shift and gain parameters)
+- [X] kaneko
+- [X] compenv rest time, sustain portion
+- [X] kaneko osc (circle of coupled)
+- [X] gate if greater
+- [X] send state to midi controller
 - [-] edges midi control
   - [X] single control
-  - [ ] control lag
   - [ ] multiple control
   - [ ] incoming/outgoing control
   - [ ] randomize
-- [ ] accumulation on tapdelay
-- [ ] pll mod outputing freq and connection logic 
-- [ ] compenv rest time, sustain portion
-- [ ] spike durations flexible (derive from input)
+  - [ ] control lag
 - [ ] slow compression
-- [ ] spike ducking 
-- [ ] spike envs (make sparse)
+- [ ] delay feedbacks with compression and leakage
+- [ ] kaneko fix
 - [ ] sanitize output
 - [ ] output compressor
+- [ ] insert process in edge (between)
+- [ ] accumulation on tapdelay
+- [ ] halfwave stuff
+- [ ] fdn with matrix
+- [ ] zero crossing follow
+- [ ] spike envs (make sparse)
+- [ ] (other) mod vcf, cytomic svf
+- [ ] spike durations flexible (derive from input)
+- [ ] spike ducking 
+- [ ] kuramoto
 - [ ] list of processes for easier selection
-- [ ] send state to midi controller
 - [ ] learning (some persistent trace)
 - [ ] types of output and conversion when linking
-- [ ] kaneko
 - [ ] exchange process with another
+- [ ] pll mod outputing freq and connection logic 
 - [ ] fade in/out when adding/removing process
 - [ ] record process for later looping/addition as separate process
-- [ ] (other) mod vcf, cytomic svf
 - [ ] other waveshapers (musicdsp)
-- [ ] halfwave stuff
-- [ ] gates, threshold
 - [ ] lock parts of patch from rnd
 - [ ] temporary connections
 - [ ] comparison
 - [ ] slew env ala serge (lag2)
 - [ ] s and hp
-- [ ] hopf
+- [ ] hopf with filters
 - [ ] comb filter
-- [ ] kuramoto
 - [ ] subgraphs
 - [ ] reset graph
 - [ ] dynamically change clipping function

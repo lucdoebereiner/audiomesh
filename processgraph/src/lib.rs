@@ -45,7 +45,7 @@ pub struct UGen {
     pub last_value: f64,
     sum_inputs: bool,
     clip: ClipType,
-    output_sends: Vec<(usize, lag::Lag)>,
+    pub output_sends: Vec<(usize, lag::Lag)>,
     #[serde(skip_deserializing)]
     process_type: Option<ProcessType>,
     pub output_amp: lag::Lag,
@@ -223,17 +223,18 @@ impl Connection {
 
 pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>;
 
+#[derive(Debug)]
 pub struct UGenGraph {
     pub graph: UGenGraphStructure, // TODO: goal, make no longer pub, all edge/node manipulations via impl
-    edge_fac: lag::Lag,
+    pub edge_fac: lag::Lag,
     current_listening_nodes: Vec<NodeIndex>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct OutputSpec {
-    node: usize,
-    output: usize,
-    amp: f64,
+    pub node: usize,
+    pub output: usize,
+    pub amp: f64,
 }
 
 impl UGenGraph {
@@ -277,6 +278,12 @@ impl UGenGraph {
             Some(node) => node.set_output(spec.output, spec.amp),
         }
         //self.graph[NodeIndex::new(spec.node)].set_output(spec.output, spec.amp)
+    }
+
+    pub fn clear_output_sends(&mut self) {
+        for ugen in self.graph.node_weights_mut() {
+            ugen.output_sends = vec![];
+        }
     }
 
     // returns true if it had to update
@@ -701,8 +708,17 @@ impl UGenGraph {
         for ugen in self.graph.node_weights_mut() {
             let current_value = ugen.value.unwrap_or(0.0);
             for (out_i, amp_out) in ugen.output_sends.iter_mut() {
+                // println!(
+                //     "val {}, amp out {}, outputamp {}",
+                //     current_value, ugen.output_amp.current, amp_out.current
+                // );
                 output_buffer[*out_i % output_buffer.len()] +=
                     current_value * ugen.output_amp.tick() * amp_out.tick();
+                // println!(
+                //     "out {}: out_i {}",
+                //     output_buffer[*out_i % output_buffer.len()],
+                //     out_i
+                // );
             }
         }
         for &i in flow {
@@ -717,6 +733,31 @@ impl UGenGraph {
             e.reset_after_process()
         }
         self.edge_fac.tick();
+    }
+
+    pub fn render(
+        &mut self,
+        n: usize,
+        output_channels: usize,
+        output_specs: Vec<OutputSpec>,
+        inputs: &[Vec<f64>],
+        input_channels: usize,
+    ) -> Vec<Vec<f64>> {
+        for spec in output_specs.into_iter() {
+            self.set_output(spec);
+        }
+        let flow = self.establish_flow();
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            let mut output_buffer = vec![0.0; output_channels];
+            let default_input = vec![0.0; input_channels];
+            // let default_input_ptr: &[f64] = default_input.as_slice();
+            let this_input = inputs.get(i).unwrap_or(&default_input);
+            // println!("in {:?}", this_input);
+            self.process(&flow, this_input, &mut output_buffer);
+            out.push(output_buffer)
+        }
+        out
     }
 }
 

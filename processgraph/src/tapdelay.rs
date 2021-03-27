@@ -66,7 +66,9 @@ impl TapDelay {
     }
 
     fn reader_idx(&self, reader: usize) -> usize {
-        (self.buffer.len() + (self.writer - reader)) % self.buffer.len()
+        let length = self.buffer.len() as i32;
+        let difference = self.writer as i32 - reader as i32;
+        ((length + difference) % length) as usize
     }
 
     fn tick(&mut self) -> f64 {
