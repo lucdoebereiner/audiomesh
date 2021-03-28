@@ -1,12 +1,11 @@
 port module Main exposing (Msg(..), main, update, view)
 
---import Html exposing (Html, button, div, span, text)
-
 import Api
 import Array exposing (Array)
 import Browser
 import Dict exposing (Dict)
 import DrawGraph
+import EdgeControl exposing (EdgeControl)
 import Element exposing (..)
 import Element.Background as Background
 import Element.Border as Border
@@ -65,6 +64,7 @@ type alias Model =
     , spikeR : String
     , spikeTRest : String
     , kanekoChainN : String
+    , edgeWeightControl : EdgeControl
     }
 
 
@@ -101,6 +101,7 @@ init _ =
         "5"
         "20000"
         "100"
+        EdgeControl.defaultControl
     , Api.getGraph GotGraph
     )
 
@@ -269,6 +270,14 @@ midiDict ( node, edge ) =
         , ( 4, nodeAmp )
         , ( 14, edgeD )
         , ( 15, edgeW )
+        , ( 16, SetEdgeControlWeightsCenter 0 )
+        , ( 17, SetEdgeControlWeightsCenter 1 )
+        , ( 18, SetEdgeControlWeightsCenter 2 )
+        , ( 19, SetEdgeControlWeightsCenter 3 )
+        , ( 24, SetEdgeControlWeightsSpread 0 )
+        , ( 25, SetEdgeControlWeightsSpread 1 )
+        , ( 26, SetEdgeControlWeightsSpread 2 )
+        , ( 27, SetEdgeControlWeightsSpread 3 )
         ]
             ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
 
@@ -346,6 +355,8 @@ type Msg
     | SelectNextEdge
     | UpdateDrawGraph Time.Posix
     | ReceivedMidi (Result Dec.Error MidiCC)
+    | SetEdgeControlWeightsCenter Int Float
+    | SetEdgeControlWeightsSpread Int Float
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -401,9 +412,56 @@ selectEdge model nextEdge =
     )
 
 
+updateWeightFromEdgeControl : Int -> (Model -> EdgeControl) -> Model -> ( Model, Cmd Msg )
+updateWeightFromEdgeControl i getControl model =
+    case EdgeControl.getPositions i (getControl model) of
+        Just pLst ->
+            let
+                newGraph =
+                    Maybe.map
+                        (\g ->
+                            List.foldl
+                                (\( e, w ) ->
+                                    updateEdgeWeight e w
+                                )
+                                g
+                                pLst
+                        )
+                        model.graph
+
+                newModel =
+                    { model | graph = newGraph }
+            in
+            ( newModel, List.map (\( e, w ) -> Api.setEdgeWeight NoOp e w) pLst |> Cmd.batch )
+
+        Nothing ->
+            let
+                _ =
+                    Debug.log "not found" e
+            in
+            ( model, Cmd.none )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        SetEdgeControlWeightsSpread i s ->
+            let
+                newModel =
+                    { model | edgeWeightControl = EdgeControl.setSpread i s model.edgeWeightControl }
+            in
+            updateWeightFromEdgeControl i .edgeWeightControl newModel
+
+        SetEdgeControlWeightsCenter i s ->
+            let
+                mapped =
+                    Parameters.linexp s 0.0 1.0 0.0 5.0
+
+                newModel =
+                    { model | edgeWeightControl = EdgeControl.setCenter i mapped model.edgeWeightControl }
+            in
+            updateWeightFromEdgeControl i .edgeWeightControl newModel
+
         SetNodeOutputAmp id amp ->
             ( { model | graph = Maybe.map (ProcessGraph.updateOutputAmp id amp) model.graph }
             , Api.setNodeOutputAmp NoOp id amp
@@ -543,7 +601,17 @@ update msg model =
         GotGraph res ->
             case res of
                 Ok g ->
-                    ( { model | graph = Just (mkGraph g) }, Cmd.none )
+                    let
+                        newGraph =
+                            mkGraph g
+                    in
+                    ( { model
+                        | graph = Just newGraph
+                        , edgeWeightControl =
+                            EdgeControl.updateFromGraph newGraph model.edgeWeightControl
+                      }
+                    , Cmd.none
+                    )
 
                 _ ->
                     let

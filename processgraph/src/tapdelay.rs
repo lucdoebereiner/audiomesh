@@ -51,7 +51,7 @@ where
     let delay_secs: f64 = <f64 as Deserialize>::deserialize(deserializer)?;
     let delay_smpls = (delay_secs * get_sr()) as usize;
     let mut l = lag(1.0);
-    l.set_duration(0.8);
+    l.set_duration_ud(4.0, 4.0);
     Ok(vec![(delay_smpls, l)])
 }
 
@@ -80,7 +80,8 @@ impl TapDelay {
     }
 
     fn clean_zero_readers(&mut self) {
-        self.readers.retain(|(_, l)| l.current != 0.0);
+        self.readers
+            .retain(|(_, l)| l.current != 0.0 || l.target != 0.0);
         if self.readers.is_empty() {
             self.set_delay(0.0);
         }
@@ -89,8 +90,8 @@ impl TapDelay {
     pub fn set_delay(&mut self, delay_secs: f64) {
         let delay = ((delay_secs * get_sr()) as usize) % self.buffer.len();
         if !self.readers.iter().any(|(idx, _)| *idx == delay) {
-            let mut l = lag(1.0);
-            l.set_duration(0.8);
+            let mut l = lag(0.0);
+            l.set_duration_ud(4.0, 4.0);
             self.readers.push((delay, l));
         }
         for r in self.readers.iter_mut() {
@@ -100,6 +101,7 @@ impl TapDelay {
                 r.1.set_target(0.0);
             }
         }
+        //        println!("set delays to readers {:?}", self.readers);
     }
 
     // pub fn set_input(&mut self, input: f64) {
