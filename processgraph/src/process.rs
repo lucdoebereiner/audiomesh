@@ -358,7 +358,7 @@ fn set_or_add(field: &mut f64, value: f64, add: bool) {
     }
 }
 
-fn lpf1_calc_p(freq: f64) -> f64 {
+pub fn lpf1_calc_p(freq: f64) -> f64 {
     1. - (2. * (freq / unsafe { SR }).tan())
 }
 

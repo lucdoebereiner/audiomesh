@@ -72,7 +72,9 @@
 - [X] kaneko fix
 - [-] edges midi control
   - [X] single control
-  - [ ] multiple control
+  - [X] multiple control
+  - [ ] control delays
+  - [ ] control damping/lpf
   - [ ] incoming/outgoing control
   - [ ] randomize
   - [ ] control lag

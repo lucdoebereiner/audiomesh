@@ -199,6 +199,10 @@ impl Connection {
         self.output.set_duration(dur);
     }
 
+    pub fn set_frequency(&mut self, freq: f64) {
+        self.output.set_frequency(freq);
+    }
+
     pub fn set_weight(&mut self, weight: f64) {
         self.weight.set_target(weight);
     }

@@ -35,6 +35,7 @@ enum UpdateMessage {
     AddNode(Process),
     RemoveEdge(usize),
     SetEdgeWeight(usize, f64),
+    SetEdgeFreq(usize, f64),
     SetEdgeDelay(usize, f64),
     SetEdgeFac(f64),
     SetOutput(NodeIndex, usize, f64),
@@ -154,6 +155,13 @@ fn set_edge_delay(id: usize, delay: f64, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetEdgeDelay(id, delay)).unwrap()
+}
+
+#[post("/edge/<id>/freq/<freq>")]
+fn set_edge_freq(id: usize, freq: f64, state: State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::SetEdgeFreq(id, lag)).unwrap()
 }
 
 #[post("/edge/<id_from>/<id_to>/<weight>/<index>")]
@@ -289,6 +297,12 @@ fn handle_messages(
         UpdateMessage::SetEdgeDelay(id, d) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
                 e.set_delay(d)
+            }
+        }
+
+        UpdateMessage::SetEdgeFreq(id, f) => {
+            if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
+                e.set_frequency(f)
             }
         }
 
@@ -534,7 +548,8 @@ fn main() {
                 set_outputs,
                 set_edge_fac,
                 node_output_amp,
-                set_edge_delay
+                set_edge_delay,
+                set_edge_freq
             ],
         )
         .attach(cors)

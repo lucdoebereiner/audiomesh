@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::get_sr;
+use crate::process::lpf1_calc_p;
 
 const LOG001: f64 = -6.90775527898; //0.001_f64.ln();
 
@@ -81,6 +82,10 @@ impl Lag {
             self.factor_up = (LOG001 / (duration * get_sr())).exp();
             self.factor_down = (LOG001 / (duration * get_sr())).exp();
         }
+    }
+
+    pub fn set_frequency(&mut self, freq: f64) {
+        self.set_factor(lpf1_calc_p(freq))
     }
 
     pub fn set_factor(&mut self, factor: f64) {

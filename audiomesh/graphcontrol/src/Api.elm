@@ -14,6 +14,7 @@ module Api exposing
     , randomize
     , setEdgeDelay
     , setEdgeFac
+    , setEdgeFreq
     , setEdgeWeight
     , setNodeOutputAmp
     , setOutputs
@@ -122,6 +123,20 @@ setEdgeWeight msg edgeIdx value =
                 ++ "/edge/"
                 ++ String.fromInt edgeIdx
                 ++ "/weight/"
+                ++ String.fromFloat value
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setEdgeFreq : (Result Http.Error () -> msg) -> Int -> Float -> Cmd msg
+setEdgeFreq msg edgeIdx value =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/edge/"
+                ++ String.fromInt edgeIdx
+                ++ "/freq/"
                 ++ String.fromFloat value
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg

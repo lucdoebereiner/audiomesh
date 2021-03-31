@@ -65,6 +65,8 @@ type alias Model =
     , spikeTRest : String
     , kanekoChainN : String
     , edgeWeightControl : EdgeControl
+    , edgeDelayControl : EdgeControl
+    , edgeFreqControl : EdgeControl
     }
 
 
@@ -101,6 +103,8 @@ init _ =
         "5"
         "20000"
         "100"
+        EdgeControl.defaultControl
+        EdgeControl.defaultControl
         EdgeControl.defaultControl
     , Api.getGraph GotGraph
     )
@@ -270,14 +274,18 @@ midiDict ( node, edge ) =
         , ( 4, nodeAmp )
         , ( 14, edgeD )
         , ( 15, edgeW )
-        , ( 16, SetEdgeControlWeightsCenter 0 )
-        , ( 17, SetEdgeControlWeightsCenter 1 )
-        , ( 18, SetEdgeControlWeightsCenter 2 )
-        , ( 19, SetEdgeControlWeightsCenter 3 )
-        , ( 24, SetEdgeControlWeightsSpread 0 )
-        , ( 25, SetEdgeControlWeightsSpread 1 )
-        , ( 26, SetEdgeControlWeightsSpread 2 )
-        , ( 27, SetEdgeControlWeightsSpread 3 )
+        , ( 16, SetEdgeControlWeights 0 )
+        , ( 17, SetEdgeControlWeights 1 )
+        , ( 18, SetEdgeControlWeights 2 )
+        , ( 19, SetEdgeControlWeights 3 )
+        , ( 20, SetEdgeControlDelay 0 )
+        , ( 21, SetEdgeControlDelay 1 )
+        , ( 22, SetEdgeControlDelay 2 )
+        , ( 23, SetEdgeControlDelay 3 )
+        , ( 24, SetEdgeControlFreq 0 )
+        , ( 25, SetEdgeControlFreq 1 )
+        , ( 26, SetEdgeControlFreq 2 )
+        , ( 27, SetEdgeControlFreq 3 )
         ]
             ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
 
@@ -355,8 +363,9 @@ type Msg
     | SelectNextEdge
     | UpdateDrawGraph Time.Posix
     | ReceivedMidi (Result Dec.Error MidiCC)
-    | SetEdgeControlWeightsCenter Int Float
-    | SetEdgeControlWeightsSpread Int Float
+    | SetEdgeControlWeights Int Float
+    | SetEdgeControlFreq Int Float
+    | SetEdgeControlDelay Int Float
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -412,8 +421,8 @@ selectEdge model nextEdge =
     )
 
 
-updateWeightFromEdgeControl : Int -> (Model -> EdgeControl) -> Model -> ( Model, Cmd Msg )
-updateWeightFromEdgeControl i getControl model =
+updateFromEdgeControl : Int -> (Model -> EdgeControl) -> (Int -> Float -> Cmd Msg) -> Model -> ( Model, Cmd Msg )
+updateFromEdgeControl i getControl apiFun model =
     case EdgeControl.getPositions i (getControl model) of
         Just pLst ->
             let
@@ -432,7 +441,7 @@ updateWeightFromEdgeControl i getControl model =
                 newModel =
                     { model | graph = newGraph }
             in
-            ( newModel, List.map (\( e, w ) -> Api.setEdgeWeight NoOp e w) pLst |> Cmd.batch )
+            ( newModel, List.map (\( e, w ) -> apiFun e w) pLst |> Cmd.batch )
 
         Nothing ->
             let
@@ -445,14 +454,7 @@ updateWeightFromEdgeControl i getControl model =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SetEdgeControlWeightsSpread i s ->
-            let
-                newModel =
-                    { model | edgeWeightControl = EdgeControl.setSpread i s model.edgeWeightControl }
-            in
-            updateWeightFromEdgeControl i .edgeWeightControl newModel
-
-        SetEdgeControlWeightsCenter i s ->
+        SetEdgeControlWeights i s ->
             let
                 mapped =
                     Parameters.linexp s 0.0 1.0 0.0 5.0
@@ -460,7 +462,27 @@ update msg model =
                 newModel =
                     { model | edgeWeightControl = EdgeControl.setCenter i mapped model.edgeWeightControl }
             in
-            updateWeightFromEdgeControl i .edgeWeightControl newModel
+            updateFromEdgeControl i .edgeWeightControl (Api.setEdgeWeight NoOp) newModel
+
+        SetEdgeControlDelay i s ->
+            let
+                mapped =
+                    Parameters.linexp s 0.0 1.0 0.0 5.0
+
+                newModel =
+                    { model | edgeDelayControl = EdgeControl.setCenter i mapped model.edgeDelayControl }
+            in
+            updateFromEdgeControl i .edgeDelayControl (Api.setEdgeDelay NoOp) newModel
+
+        SetEdgeControlFreq i s ->
+            let
+                mapped =
+                    Parameters.linexp s 0.0 1.0 1.0 20000.0
+
+                newModel =
+                    { model | edgeFreqControl = EdgeControl.setCenter i mapped model.edgeFreqControl }
+            in
+            updateFromEdgeControl i .edgeFreqControl (Api.setEdgeFreq NoOp) newModel
 
         SetNodeOutputAmp id amp ->
             ( { model | graph = Maybe.map (ProcessGraph.updateOutputAmp id amp) model.graph }

@@ -5628,7 +5628,15 @@ var $author$project$Main$Model = function (graph) {
 																											return function (spikeTConst) {
 																												return function (spikeR) {
 																													return function (spikeTRest) {
-																														return {compressorMakeup: compressorMakeup, compressorRatio: compressorRatio, compressorThreshold: compressorThreshold, delayLength: delayLength, drawGraph: drawGraph, edgesFac: edgesFac, fileName: fileName, filterFreq: filterFreq, filterQ: filterQ, filterType: filterType, graph: graph, lastPoll: lastPoll, linConA: linConA, linConB: linConB, outputIndices: outputIndices, pllFac: pllFac, resonatorDecay: resonatorDecay, resonatorFreqCenter: resonatorFreqCenter, resonatorFreqFactor: resonatorFreqFactor, selectedEdge: selectedEdge, selectedNode: selectedNode, sinMul: sinMul, sinOscFreq: sinOscFreq, sinOscFreqMul: sinOscFreqMul, spikeR: spikeR, spikeTConst: spikeTConst, spikeTRest: spikeTRest, spikeThreshold: spikeThreshold, volume: volume, waitingToConnect: waitingToConnect};
+																														return function (kanekoChainN) {
+																															return function (edgeWeightControl) {
+																																return function (edgeDelayControl) {
+																																	return function (edgeFreqControl) {
+																																		return {compressorMakeup: compressorMakeup, compressorRatio: compressorRatio, compressorThreshold: compressorThreshold, delayLength: delayLength, drawGraph: drawGraph, edgeDelayControl: edgeDelayControl, edgeFreqControl: edgeFreqControl, edgeWeightControl: edgeWeightControl, edgesFac: edgesFac, fileName: fileName, filterFreq: filterFreq, filterQ: filterQ, filterType: filterType, graph: graph, kanekoChainN: kanekoChainN, lastPoll: lastPoll, linConA: linConA, linConB: linConB, outputIndices: outputIndices, pllFac: pllFac, resonatorDecay: resonatorDecay, resonatorFreqCenter: resonatorFreqCenter, resonatorFreqFactor: resonatorFreqFactor, selectedEdge: selectedEdge, selectedNode: selectedNode, sinMul: sinMul, sinOscFreq: sinOscFreq, sinOscFreqMul: sinOscFreqMul, spikeR: spikeR, spikeTConst: spikeTConst, spikeTRest: spikeTRest, spikeThreshold: spikeThreshold, volume: volume, waitingToConnect: waitingToConnect};
+																																	};
+																																};
+																															};
+																														};
 																													};
 																												};
 																											};
@@ -5659,6 +5667,13 @@ var $author$project$Main$Model = function (graph) {
 		};
 	};
 };
+var $elm$core$Set$Set_elm_builtin = function (a) {
+	return {$: 'Set_elm_builtin', a: a};
+};
+var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
+var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
+var $elm$core$Set$empty = $elm$core$Set$Set_elm_builtin($elm$core$Dict$empty);
+var $author$project$EdgeControl$defaultGroup = {center: 0.5, edges: $elm$core$Set$empty, spread: 0.3};
 var $elm$core$Array$fromListHelp = F3(
 	function (list, nodeList, nodeListSize) {
 		fromListHelp:
@@ -5694,6 +5709,9 @@ var $elm$core$Array$fromList = function (list) {
 		return A3($elm$core$Array$fromListHelp, list, _List_Nil, 0);
 	}
 };
+var $author$project$EdgeControl$defaultControl = $elm$core$Array$fromList(
+	_List_fromArray(
+		[$author$project$EdgeControl$defaultGroup, $author$project$EdgeControl$defaultGroup, $author$project$EdgeControl$defaultGroup, $author$project$EdgeControl$defaultGroup]));
 var $author$project$Api$baseUrl = 'http://localhost:8008';
 var $author$project$ProcessGraph$BackendGraph = F4(
 	function (nodes, node_holes, edges, outputs) {
@@ -5916,6 +5934,7 @@ var $author$project$ProcessGraph$decodeConnection = $elm$json$Json$Decode$nullab
 var $author$project$ProcessGraph$Add = {$: 'Add'};
 var $author$project$ProcessGraph$Ducking = {$: 'Ducking'};
 var $author$project$ProcessGraph$EnvFollow = {$: 'EnvFollow'};
+var $author$project$ProcessGraph$GateIfGreater = {$: 'GateIfGreater'};
 var $author$project$ProcessGraph$Gauss = {$: 'Gauss'};
 var $author$project$ProcessGraph$Mul = {$: 'Mul'};
 var $author$project$ProcessGraph$RMS = {$: 'RMS'};
@@ -6019,22 +6038,30 @@ var $author$project$ProcessGraph$Env = function (a) {
 };
 var $author$project$ProcessGraph$decodeEnv = A3(
 	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-	'max_n',
+	'rest_fac',
 	$elm$json$Json$Decode$float,
 	A3(
 		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-		'max_target',
+		'sustain_fac',
 		$elm$json$Json$Decode$float,
 		A3(
 			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
-			'min_target',
+			'max_n',
 			$elm$json$Json$Decode$float,
-			$elm$json$Json$Decode$succeed(
-				F3(
-					function (min, max, n) {
-						return $author$project$ProcessGraph$Env(
-							{max_n: n, max_target: max, min_target: min});
-					})))));
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'max_target',
+				$elm$json$Json$Decode$float,
+				A3(
+					$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+					'min_target',
+					$elm$json$Json$Decode$float,
+					$elm$json$Json$Decode$succeed(
+						F5(
+							function (min, max, n, sus, rest) {
+								return $author$project$ProcessGraph$Env(
+									{max_n: n, max_target: max, min_target: min, rest_fac: rest, sustain_fac: sus});
+							})))))));
 var $author$project$ProcessGraph$Filter = function (a) {
 	return {$: 'Filter', a: a};
 };
@@ -6095,6 +6122,69 @@ var $author$project$ProcessGraph$decodeFold = A3(
 					function (t, m, a) {
 						return $author$project$ProcessGraph$Fold(
 							{add: a, mul: m, threshold: t});
+					})))));
+var $author$project$ProcessGraph$GateDecision = function (a) {
+	return {$: 'GateDecision', a: a};
+};
+var $author$project$ProcessGraph$decodeGateDecision = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'max_dur_off',
+	$elm$json$Json$Decode$float,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'min_dur_off',
+		$elm$json$Json$Decode$float,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'max_dur_on',
+			$elm$json$Json$Decode$float,
+			A3(
+				$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+				'min_dur_on',
+				$elm$json$Json$Decode$float,
+				$elm$json$Json$Decode$succeed(
+					F4(
+						function (mi, mx, mi_off, mx_off) {
+							return $author$project$ProcessGraph$GateDecision(
+								{max_dur_off: mx_off, max_dur_on: mx, min_dur_off: mi_off, min_dur_on: mi});
+						}))))));
+var $author$project$ProcessGraph$Kaneko = function (a) {
+	return {$: 'Kaneko', a: a};
+};
+var $author$project$ProcessGraph$decodeKaneko = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'a',
+	$elm$json$Json$Decode$float,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'e',
+		$elm$json$Json$Decode$float,
+		$elm$json$Json$Decode$succeed(
+			F2(
+				function (e, a) {
+					return $author$project$ProcessGraph$Kaneko(
+						{a: a, e: e});
+				}))));
+var $author$project$ProcessGraph$KanekoChain = function (a) {
+	return {$: 'KanekoChain', a: a};
+};
+var $author$project$ProcessGraph$decodeKanekoChain = A3(
+	$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+	'last_outputs',
+	$elm$json$Json$Decode$int,
+	A3(
+		$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+		'a',
+		$elm$json$Json$Decode$float,
+		A3(
+			$NoRedInk$elm_json_decode_pipeline$Json$Decode$Pipeline$required,
+			'e',
+			$elm$json$Json$Decode$float,
+			$elm$json$Json$Decode$succeed(
+				F3(
+					function (e, a, n) {
+						return $author$project$ProcessGraph$KanekoChain(
+							{a: a, e: e, n: n});
 					})))));
 var $author$project$ProcessGraph$LinCon = function (a) {
 	return {$: 'LinCon', a: a};
@@ -6544,8 +6634,15 @@ var $author$project$ProcessGraph$decodeUGen = A3(
 									A2($elm$json$Json$Decode$field, 'Resonator', $author$project$ProcessGraph$decodeResonator),
 									A2($elm$json$Json$Decode$field, 'SoundIn', $author$project$ProcessGraph$decodeSoundIn),
 									A2($elm$json$Json$Decode$field, 'Filter', $author$project$ProcessGraph$decodeFilter),
+									A2($elm$json$Json$Decode$field, 'Kaneko', $author$project$ProcessGraph$decodeKaneko),
+									A2($elm$json$Json$Decode$field, 'KanekoChain', $author$project$ProcessGraph$decodeKanekoChain),
+									A2($elm$json$Json$Decode$field, 'GateDecision', $author$project$ProcessGraph$decodeGateDecision),
 									A2($elm$json$Json$Decode$field, 'SinOsc', $author$project$ProcessGraph$decodeSinOsc),
 									A2($elm$json$Json$Decode$field, 'LinCon', $author$project$ProcessGraph$decodeLinCon),
+									A2(
+									$elm$json$Json$Decode$field,
+									'GateIfGreater',
+									$author$project$ProcessGraph$decodeSimpleProcess($author$project$ProcessGraph$GateIfGreater)),
 									A2(
 									$elm$json$Json$Decode$field,
 									'Square',
@@ -6613,8 +6710,6 @@ var $elm$http$Http$Sending = function (a) {
 	return {$: 'Sending', a: a};
 };
 var $elm$http$Http$Timeout_ = {$: 'Timeout_'};
-var $elm$core$Dict$RBEmpty_elm_builtin = {$: 'RBEmpty_elm_builtin'};
-var $elm$core$Dict$empty = $elm$core$Dict$RBEmpty_elm_builtin;
 var $elm$core$Maybe$isJust = function (maybe) {
 	if (maybe.$ === 'Just') {
 		return true;
@@ -7387,7 +7482,7 @@ var $author$project$Main$init = function (_v0) {
 		$author$project$Main$Model($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(
 			$elm$core$Array$fromList(
 				_List_fromArray(
-					[0.0, 0.0])))($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(0.4)(1.0)('')('')('')('')($author$project$ProcessGraph$BLPF)('')('')('')('')('')('')('')('')('graph')($elm$core$Maybe$Nothing)(0.0)('0.4')('4')('2')('0.2')('0.0001')('5')('20000'),
+					[0.0, 0.0])))($elm$core$Maybe$Nothing)($elm$core$Maybe$Nothing)(0.4)(1.0)('')('')('')('')($author$project$ProcessGraph$BLPF)('')('')('')('')('')('')('')('')('graph')($elm$core$Maybe$Nothing)(0.0)('0.4')('4')('2')('0.2')('0.0001')('5')('20000')('100')($author$project$EdgeControl$defaultControl)($author$project$EdgeControl$defaultControl)($author$project$EdgeControl$defaultControl),
 		$author$project$Api$getGraph($author$project$Main$GotGraph));
 };
 var $author$project$Main$ReceivedMidi = function (a) {
@@ -7748,12 +7843,20 @@ var $author$project$ProcessGraph$processName = function (p) {
 	switch (p.$) {
 		case 'Mem':
 			return 'Mem';
+		case 'GateIfGreater':
+			return 'GateIfGreater';
+		case 'GateDecision':
+			return 'GateDecision';
 		case 'Delay':
 			return 'Delay';
 		case 'VarDelay':
 			return 'VarDelay';
 		case 'Fold':
 			return 'Fold';
+		case 'Kaneko':
+			return 'Kaneko';
+		case 'KanekoChain':
+			return 'KanekoChain';
 		case 'Add':
 			return 'Add';
 		case 'VanDerPol':
@@ -7860,6 +7963,60 @@ var $author$project$ProcessGraph$encodeProcess = function (p) {
 							'maxdelay',
 							$elm$json$Json$Encode$float(d.maxdelay))
 						])));
+		case 'Kaneko':
+			var k = p.a;
+			return A2(
+				encObj,
+				p,
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'e',
+							$elm$json$Json$Encode$float(k.e)),
+							_Utils_Tuple2(
+							'a',
+							$elm$json$Json$Encode$float(k.a))
+						])));
+		case 'KanekoChain':
+			var k = p.a;
+			return A2(
+				encObj,
+				p,
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'e',
+							$elm$json$Json$Encode$float(k.e)),
+							_Utils_Tuple2(
+							'a',
+							$elm$json$Json$Encode$float(k.a)),
+							_Utils_Tuple2(
+							'last_outputs',
+							$elm$json$Json$Encode$int(k.n))
+						])));
+		case 'GateDecision':
+			var k = p.a;
+			return A2(
+				encObj,
+				p,
+				$elm$json$Json$Encode$object(
+					_List_fromArray(
+						[
+							_Utils_Tuple2(
+							'min_dur_on',
+							$elm$json$Json$Encode$float(k.min_dur_on)),
+							_Utils_Tuple2(
+							'max_dur_on',
+							$elm$json$Json$Encode$float(k.max_dur_on)),
+							_Utils_Tuple2(
+							'min_dur_off',
+							$elm$json$Json$Encode$float(k.min_dur_off)),
+							_Utils_Tuple2(
+							'max_dur_off',
+							$elm$json$Json$Encode$float(k.max_dur_off))
+						])));
 		case 'Fold':
 			var f = p.a;
 			return A2(
@@ -7894,7 +8051,13 @@ var $author$project$ProcessGraph$encodeProcess = function (p) {
 							$elm$json$Json$Encode$float(e.max_target)),
 							_Utils_Tuple2(
 							'max_n',
-							$elm$json$Json$Encode$float(e.max_n))
+							$elm$json$Json$Encode$float(e.max_n)),
+							_Utils_Tuple2(
+							'sustain_fac',
+							$elm$json$Json$Encode$float(e.sustain_fac)),
+							_Utils_Tuple2(
+							'rest_fac',
+							$elm$json$Json$Encode$float(e.rest_fac))
 						])));
 		case 'Resonator':
 			var r = p.a;
@@ -8343,6 +8506,12 @@ var $author$project$Main$getSelectedNode = function (model) {
 		},
 		model.selectedNode);
 };
+var $elm$core$Basics$pow = _Basics_pow;
+var $author$project$Parameters$linexp = F5(
+	function (x, a, b, c, d) {
+		var c_shifted = (c === 0.0) ? 0.001 : c;
+		return (_Utils_cmp(x, a) < 1) ? c : ((_Utils_cmp(x, b) > -1) ? d : (A2($elm$core$Basics$pow, d / c_shifted, (x - a) / (b - a)) * c_shifted));
+	});
 var $elm$core$Debug$log = _Debug_log;
 var $elm$core$Maybe$map2 = F3(
 	function (func, ma, mb) {
@@ -8364,6 +8533,18 @@ var $author$project$Main$SelectNextEdge = {$: 'SelectNextEdge'};
 var $author$project$Main$SelectNextNode = {$: 'SelectNextNode'};
 var $author$project$Main$SelectPrevEdge = {$: 'SelectPrevEdge'};
 var $author$project$Main$SelectPrevNode = {$: 'SelectPrevNode'};
+var $author$project$Main$SetEdgeControlDelay = F2(
+	function (a, b) {
+		return {$: 'SetEdgeControlDelay', a: a, b: b};
+	});
+var $author$project$Main$SetEdgeControlFreq = F2(
+	function (a, b) {
+		return {$: 'SetEdgeControlFreq', a: a, b: b};
+	});
+var $author$project$Main$SetEdgeControlWeights = F2(
+	function (a, b) {
+		return {$: 'SetEdgeControlWeights', a: a, b: b};
+	});
 var $author$project$Main$SetEdgeDelay = F2(
 	function (a, b) {
 		return {$: 'SetEdgeDelay', a: a, b: b};
@@ -8402,12 +8583,6 @@ var $elm$core$Dict$fromList = function (assocs) {
 		$elm$core$Dict$empty,
 		assocs);
 };
-var $elm$core$Basics$pow = _Basics_pow;
-var $author$project$Parameters$linexp = F5(
-	function (x, a, b, c, d) {
-		var c_shifted = (c === 0.0) ? 0.001 : c;
-		return (_Utils_cmp(x, a) < 1) ? c : ((_Utils_cmp(x, b) > -1) ? d : (A2($elm$core$Basics$pow, d / c_shifted, (x - a) / (b - a)) * c_shifted));
-	});
 var $author$project$Parameters$linlin = F5(
 	function (x, a, b, c, d) {
 		return (_Utils_cmp(x, a) < 1) ? c : ((_Utils_cmp(x, b) > -1) ? d : ((((x - a) / (b - a)) * (d - c)) + c));
@@ -8452,6 +8627,34 @@ var $author$project$ProcessGraph$processParameters = function (p) {
 			return _List_fromArray(
 				[
 					A6($author$project$Parameters$Parameter, 1, factor, $author$project$Parameters$Exp, 'Fac', 0.0, 10.0)
+				]);
+		case 'Kaneko':
+			var e = p.a.e;
+			var a = p.a.a;
+			return _List_fromArray(
+				[
+					A6($author$project$Parameters$Parameter, 2, e, $author$project$Parameters$Lin, 'e', 0.0, 1.0),
+					A6($author$project$Parameters$Parameter, 3, a, $author$project$Parameters$Lin, 'a', 1.0, 2.0)
+				]);
+		case 'KanekoChain':
+			var e = p.a.e;
+			var a = p.a.a;
+			return _List_fromArray(
+				[
+					A6($author$project$Parameters$Parameter, 2, e, $author$project$Parameters$Lin, 'e', 0.0, 1.0),
+					A6($author$project$Parameters$Parameter, 3, a, $author$project$Parameters$Lin, 'a', 1.0, 2.0)
+				]);
+		case 'GateDecision':
+			var min_dur_on = p.a.min_dur_on;
+			var max_dur_on = p.a.max_dur_on;
+			var min_dur_off = p.a.min_dur_off;
+			var max_dur_off = p.a.max_dur_off;
+			return _List_fromArray(
+				[
+					A6($author$project$Parameters$Parameter, 2, min_dur_on, $author$project$Parameters$Exp, 'Min dur on', 0.05, 10.0),
+					A6($author$project$Parameters$Parameter, 3, max_dur_on, $author$project$Parameters$Exp, 'Max dur on', 0.2, 20.0),
+					A6($author$project$Parameters$Parameter, 4, min_dur_off, $author$project$Parameters$Exp, 'Min dur off', 0.05, 10.0),
+					A6($author$project$Parameters$Parameter, 5, max_dur_off, $author$project$Parameters$Exp, 'Max dur off', 0.2, 20.0)
 				]);
 		case 'Fold':
 			var threshold = p.a.threshold;
@@ -8501,11 +8704,15 @@ var $author$project$ProcessGraph$processParameters = function (p) {
 			var min_target = p.a.min_target;
 			var max_target = p.a.max_target;
 			var max_n = p.a.max_n;
+			var sustain_fac = p.a.sustain_fac;
+			var rest_fac = p.a.rest_fac;
 			return _List_fromArray(
 				[
 					A6($author$project$Parameters$Parameter, 1, min_target, $author$project$Parameters$Exp, 'Min', 0.0, 0.5),
 					A6($author$project$Parameters$Parameter, 2, max_target, $author$project$Parameters$Exp, 'Max', 0.1, 0.9),
-					A6($author$project$Parameters$Parameter, 3, max_n, $author$project$Parameters$Exp, 'Sec', 0.5, 20.0)
+					A6($author$project$Parameters$Parameter, 3, max_n, $author$project$Parameters$Exp, 'Sec', 0.5, 20.0),
+					A6($author$project$Parameters$Parameter, 4, sustain_fac, $author$project$Parameters$Exp, 'Sustain fac', 0.1, 2.0),
+					A6($author$project$Parameters$Parameter, 5, rest_fac, $author$project$Parameters$Exp, 'Rest fac', 0.0, 1.0)
 				]);
 		case 'Filter':
 			var filterType = p.a.filterType;
@@ -8686,7 +8893,43 @@ var $author$project$Main$midiDict = function (_v0) {
 					}),
 					_Utils_Tuple2(4, nodeAmp),
 					_Utils_Tuple2(14, edgeD),
-					_Utils_Tuple2(15, edgeW)
+					_Utils_Tuple2(15, edgeW),
+					_Utils_Tuple2(
+					16,
+					$author$project$Main$SetEdgeControlWeights(0)),
+					_Utils_Tuple2(
+					17,
+					$author$project$Main$SetEdgeControlWeights(1)),
+					_Utils_Tuple2(
+					18,
+					$author$project$Main$SetEdgeControlWeights(2)),
+					_Utils_Tuple2(
+					19,
+					$author$project$Main$SetEdgeControlWeights(3)),
+					_Utils_Tuple2(
+					20,
+					$author$project$Main$SetEdgeControlDelay(0)),
+					_Utils_Tuple2(
+					21,
+					$author$project$Main$SetEdgeControlDelay(1)),
+					_Utils_Tuple2(
+					22,
+					$author$project$Main$SetEdgeControlDelay(2)),
+					_Utils_Tuple2(
+					23,
+					$author$project$Main$SetEdgeControlDelay(3)),
+					_Utils_Tuple2(
+					24,
+					$author$project$Main$SetEdgeControlFreq(0)),
+					_Utils_Tuple2(
+					25,
+					$author$project$Main$SetEdgeControlFreq(1)),
+					_Utils_Tuple2(
+					26,
+					$author$project$Main$SetEdgeControlFreq(2)),
+					_Utils_Tuple2(
+					27,
+					$author$project$Main$SetEdgeControlFreq(3))
 				]),
 			A2(
 				$elm$core$List$indexedMap,
@@ -9049,8 +9292,6 @@ var $author$project$ProcessGraph$isOutputProcess = function (p) {
 	switch (p.$) {
 		case 'Delay':
 			return false;
-		case 'VarDelay':
-			return false;
 		case 'RMS':
 			return false;
 		case 'SoundIn':
@@ -9223,6 +9464,125 @@ var $author$project$Main$readFile = function (file) {
 		$author$project$Main$GraphJsonLoaded,
 		$elm$file$File$toString(file));
 };
+var $author$project$Parameters$logE = $elm$core$Basics$logBase($elm$core$Basics$e);
+var $author$project$Parameters$explin = F5(
+	function (x, a, b, c, d) {
+		var a_shifted = (a === 0.0) ? 0.001 : a;
+		return (_Utils_cmp(x, a) < 1) ? c : ((_Utils_cmp(x, b) > -1) ? d : ((($author$project$Parameters$logE(x / a_shifted) / $author$project$Parameters$logE(b / a_shifted)) * (d - c)) + c));
+	});
+var $elm$json$Json$Encode$list = F2(
+	function (func, entries) {
+		return _Json_wrap(
+			A3(
+				$elm$core$List$foldl,
+				_Json_addEntry(func),
+				_Json_emptyArray(_Utils_Tuple0),
+				entries));
+	});
+var $author$project$Main$midiSend = _Platform_outgoingPort(
+	'midiSend',
+	function ($) {
+		var a = $.a;
+		var b = $.b;
+		return A2(
+			$elm$json$Json$Encode$list,
+			$elm$core$Basics$identity,
+			_List_fromArray(
+				[
+					$elm$json$Json$Encode$int(a),
+					$elm$json$Json$Encode$int(b)
+				]));
+	});
+var $elm$core$Basics$round = _Basics_round;
+var $author$project$Main$sendMidiEdgeState = function (edge) {
+	var w = $elm$core$Basics$round(
+		A5($author$project$Parameters$explin, edge.strength, 0.0, 5.0, 0.0, 1.0) * 127);
+	var d = $elm$core$Basics$round(
+		A5($author$project$Parameters$explin, edge.delay.delay, 0.0, 6.0, 0.0, 1.0) * 127);
+	return $elm$core$Platform$Cmd$batch(
+		A2(
+			$elm$core$List$map,
+			$author$project$Main$midiSend,
+			_List_fromArray(
+				[
+					_Utils_Tuple2(14, d),
+					_Utils_Tuple2(15, w)
+				])));
+};
+var $author$project$Main$selectEdge = F2(
+	function (model, nextEdge) {
+		var newModel = _Utils_update(
+			model,
+			{selectedEdge: nextEdge});
+		var selectedEdge = $author$project$Main$getSelectedEdge(newModel);
+		return _Utils_Tuple2(
+			newModel,
+			A2(
+				$elm$core$Maybe$withDefault,
+				$elm$core$Platform$Cmd$none,
+				A2(
+					$elm$core$Maybe$map,
+					A2(
+						$elm$core$Basics$composeL,
+						$author$project$Main$sendMidiEdgeState,
+						function ($) {
+							return $.label;
+						}),
+					selectedEdge)));
+	});
+var $author$project$Parameters$unmapped = F2(
+	function (p, v) {
+		var _v0 = p.mapping;
+		if (_v0.$ === 'Lin') {
+			return A5($author$project$Parameters$linlin, v, p.min, p.max, 0.0, 1.0);
+		} else {
+			return A5($author$project$Parameters$explin, v, p.min, p.max, 0.0, 1.0);
+		}
+	});
+var $author$project$Main$sendMidiProcessState = function (ugen) {
+	var outputAmp = A3(
+		$elm$core$Basics$composeL,
+		$elm$core$Basics$round,
+		$elm$core$Basics$mul(127),
+		A5($author$project$Parameters$explin, ugen.output_amp, 0.0, 2.0, 0.0, 1.0));
+	return $elm$core$Platform$Cmd$batch(
+		A2(
+			$elm$core$List$cons,
+			$author$project$Main$midiSend(
+				_Utils_Tuple2(4, outputAmp)),
+			A2(
+				$elm$core$List$indexedMap,
+				F2(
+					function (i, p) {
+						return $author$project$Main$midiSend(
+							_Utils_Tuple2(
+								i + 5,
+								$elm$core$Basics$round(
+									A2($author$project$Parameters$unmapped, p, p.value) * 127)));
+					}),
+				$author$project$ProcessGraph$processParameters(ugen.process))));
+};
+var $author$project$Main$selectNode = F2(
+	function (model, nextNode) {
+		var newModel = _Utils_update(
+			model,
+			{selectedNode: nextNode});
+		var selectedNode = $author$project$Main$getSelectedNode(newModel);
+		return _Utils_Tuple2(
+			newModel,
+			A2(
+				$elm$core$Maybe$withDefault,
+				$elm$core$Platform$Cmd$none,
+				A2(
+					$elm$core$Maybe$map,
+					A2(
+						$elm$core$Basics$composeL,
+						$author$project$Main$sendMidiProcessState,
+						function ($) {
+							return $.label;
+						}),
+					selectedNode)));
+	});
 var $elm$core$Elm$JsArray$unsafeSet = _JsArray_unsafeSet;
 var $elm$core$Array$setHelp = F4(
 	function (shift, index, value, tree) {
@@ -9266,6 +9626,32 @@ var $elm$core$Array$set = F3(
 			A4($elm$core$Array$setHelp, startShift, index, value, tree),
 			tail));
 	});
+var $elm_community$array_extra$Array$Extra$update = F3(
+	function (n, f, a) {
+		var element = A2($elm$core$Array$get, n, a);
+		if (element.$ === 'Nothing') {
+			return a;
+		} else {
+			var element_ = element.a;
+			return A3(
+				$elm$core$Array$set,
+				n,
+				f(element_),
+				a);
+		}
+	});
+var $author$project$EdgeControl$setCenter = F3(
+	function (i, center, e) {
+		return A3(
+			$elm_community$array_extra$Array$Extra$update,
+			i,
+			function (g) {
+				return _Utils_update(
+					g,
+					{center: center});
+			},
+			e);
+	});
 var $author$project$Api$setEdgeDelay = F3(
 	function (msg, edgeIdx, value) {
 		return $elm$http$Http$post(
@@ -9282,6 +9668,15 @@ var $author$project$Api$setEdgeFac = F2(
 				body: $elm$http$Http$emptyBody,
 				expect: $elm$http$Http$expectWhatever(msg),
 				url: $author$project$Api$baseUrl + ('/edgefac/' + $elm$core$String$fromFloat(amp))
+			});
+	});
+var $author$project$Api$setEdgeFreq = F3(
+	function (msg, edgeIdx, value) {
+		return $elm$http$Http$post(
+			{
+				body: $elm$http$Http$emptyBody,
+				expect: $elm$http$Http$expectWhatever(msg),
+				url: $author$project$Api$baseUrl + ('/edge/' + ($elm$core$String$fromInt(edgeIdx) + ('/freq/' + $elm$core$String$fromFloat(value))))
 			});
 	});
 var $author$project$Api$setEdgeWeight = F3(
@@ -9317,15 +9712,6 @@ var $author$project$OutputIndices$encodeSpec = function (spec) {
 				$elm$json$Json$Encode$float(spec.amp))
 			]));
 };
-var $elm$json$Json$Encode$list = F2(
-	function (func, entries) {
-		return _Json_wrap(
-			A3(
-				$elm$core$List$foldl,
-				_Json_addEntry(func),
-				_Json_emptyArray(_Utils_Tuple0),
-				entries));
-	});
 var $author$project$Api$setOutputs = F2(
 	function (msg, specs) {
 		return $elm$http$Http$post(
@@ -9725,6 +10111,258 @@ var $author$project$ProcessGraph$updateEdgeWeight = F3(
 			},
 			graph);
 	});
+var $author$project$EdgeControl$position = F4(
+	function (x, n, spread, center) {
+		if (n === 1) {
+			return center;
+		} else {
+			var pos = ((x * (spread / (n - 1))) + ((1.0 - spread) / 2.0)) + (center - 0.5);
+			return A2(
+				$elm$core$Basics$max,
+				0.0,
+				A2($elm$core$Basics$min, pos, 1.0));
+		}
+	});
+var $elm$core$Dict$sizeHelp = F2(
+	function (n, dict) {
+		sizeHelp:
+		while (true) {
+			if (dict.$ === 'RBEmpty_elm_builtin') {
+				return n;
+			} else {
+				var left = dict.d;
+				var right = dict.e;
+				var $temp$n = A2($elm$core$Dict$sizeHelp, n + 1, right),
+					$temp$dict = left;
+				n = $temp$n;
+				dict = $temp$dict;
+				continue sizeHelp;
+			}
+		}
+	});
+var $elm$core$Dict$size = function (dict) {
+	return A2($elm$core$Dict$sizeHelp, 0, dict);
+};
+var $elm$core$Set$size = function (_v0) {
+	var dict = _v0.a;
+	return $elm$core$Dict$size(dict);
+};
+var $author$project$EdgeControl$groupPositions = function (g) {
+	var n = $elm$core$Set$size(g.edges);
+	return A2(
+		$elm$core$List$indexedMap,
+		F2(
+			function (i, e) {
+				return _Utils_Tuple2(
+					e,
+					A4($author$project$EdgeControl$position, i, n, g.spread, g.center));
+			}),
+		$elm$core$Set$toList(g.edges));
+};
+var $author$project$EdgeControl$getPositions = F2(
+	function (idx, e) {
+		return A2(
+			$elm$core$Maybe$map,
+			$author$project$EdgeControl$groupPositions,
+			A2($elm$core$Array$get, idx, e));
+	});
+var $author$project$Main$updateFromEdgeControl = F4(
+	function (i, getControl, apiFun, model) {
+		var _v0 = A2(
+			$author$project$EdgeControl$getPositions,
+			i,
+			getControl(model));
+		if (_v0.$ === 'Just') {
+			var pLst = _v0.a;
+			var newGraph = A2(
+				$elm$core$Maybe$map,
+				function (g) {
+					return A3(
+						$elm$core$List$foldl,
+						function (_v2) {
+							var e = _v2.a;
+							var w = _v2.b;
+							return A2($author$project$ProcessGraph$updateEdgeWeight, e, w);
+						},
+						g,
+						pLst);
+				},
+				model.graph);
+			var newModel = _Utils_update(
+				model,
+				{graph: newGraph});
+			return _Utils_Tuple2(
+				newModel,
+				$elm$core$Platform$Cmd$batch(
+					A2(
+						$elm$core$List$map,
+						function (_v1) {
+							var e = _v1.a;
+							var w = _v1.b;
+							return A2(apiFun, e, w);
+						},
+						pLst)));
+		} else {
+			var _v3 = A2($elm$core$Debug$log, 'not found', $elm$core$Basics$e);
+			return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
+		}
+	});
+var $elm$core$Set$insert = F2(
+	function (key, _v0) {
+		var dict = _v0.a;
+		return $elm$core$Set$Set_elm_builtin(
+			A3($elm$core$Dict$insert, key, _Utils_Tuple0, dict));
+	});
+var $elm$core$Set$fromList = function (list) {
+	return A3($elm$core$List$foldl, $elm$core$Set$insert, $elm$core$Set$empty, list);
+};
+var $elm$core$Array$length = function (_v0) {
+	var len = _v0.a;
+	return len;
+};
+var $elm$core$Dict$member = F2(
+	function (key, dict) {
+		var _v0 = A2($elm$core$Dict$get, key, dict);
+		if (_v0.$ === 'Just') {
+			return true;
+		} else {
+			return false;
+		}
+	});
+var $elm$core$Set$member = F2(
+	function (key, _v0) {
+		var dict = _v0.a;
+		return A2($elm$core$Dict$member, key, dict);
+	});
+var $elm$core$Basics$modBy = _Basics_modBy;
+var $elm$core$Elm$JsArray$push = _JsArray_push;
+var $elm$core$Elm$JsArray$singleton = _JsArray_singleton;
+var $elm$core$Array$insertTailInTree = F4(
+	function (shift, index, tail, tree) {
+		var pos = $elm$core$Array$bitMask & (index >>> shift);
+		if (_Utils_cmp(
+			pos,
+			$elm$core$Elm$JsArray$length(tree)) > -1) {
+			if (shift === 5) {
+				return A2(
+					$elm$core$Elm$JsArray$push,
+					$elm$core$Array$Leaf(tail),
+					tree);
+			} else {
+				var newSub = $elm$core$Array$SubTree(
+					A4($elm$core$Array$insertTailInTree, shift - $elm$core$Array$shiftStep, index, tail, $elm$core$Elm$JsArray$empty));
+				return A2($elm$core$Elm$JsArray$push, newSub, tree);
+			}
+		} else {
+			var value = A2($elm$core$Elm$JsArray$unsafeGet, pos, tree);
+			if (value.$ === 'SubTree') {
+				var subTree = value.a;
+				var newSub = $elm$core$Array$SubTree(
+					A4($elm$core$Array$insertTailInTree, shift - $elm$core$Array$shiftStep, index, tail, subTree));
+				return A3($elm$core$Elm$JsArray$unsafeSet, pos, newSub, tree);
+			} else {
+				var newSub = $elm$core$Array$SubTree(
+					A4(
+						$elm$core$Array$insertTailInTree,
+						shift - $elm$core$Array$shiftStep,
+						index,
+						tail,
+						$elm$core$Elm$JsArray$singleton(value)));
+				return A3($elm$core$Elm$JsArray$unsafeSet, pos, newSub, tree);
+			}
+		}
+	});
+var $elm$core$Array$unsafeReplaceTail = F2(
+	function (newTail, _v0) {
+		var len = _v0.a;
+		var startShift = _v0.b;
+		var tree = _v0.c;
+		var tail = _v0.d;
+		var originalTailLen = $elm$core$Elm$JsArray$length(tail);
+		var newTailLen = $elm$core$Elm$JsArray$length(newTail);
+		var newArrayLen = len + (newTailLen - originalTailLen);
+		if (_Utils_eq(newTailLen, $elm$core$Array$branchFactor)) {
+			var overflow = _Utils_cmp(newArrayLen >>> $elm$core$Array$shiftStep, 1 << startShift) > 0;
+			if (overflow) {
+				var newShift = startShift + $elm$core$Array$shiftStep;
+				var newTree = A4(
+					$elm$core$Array$insertTailInTree,
+					newShift,
+					len,
+					newTail,
+					$elm$core$Elm$JsArray$singleton(
+						$elm$core$Array$SubTree(tree)));
+				return A4($elm$core$Array$Array_elm_builtin, newArrayLen, newShift, newTree, $elm$core$Elm$JsArray$empty);
+			} else {
+				return A4(
+					$elm$core$Array$Array_elm_builtin,
+					newArrayLen,
+					startShift,
+					A4($elm$core$Array$insertTailInTree, startShift, len, newTail, tree),
+					$elm$core$Elm$JsArray$empty);
+			}
+		} else {
+			return A4($elm$core$Array$Array_elm_builtin, newArrayLen, startShift, tree, newTail);
+		}
+	});
+var $elm$core$Array$push = F2(
+	function (a, array) {
+		var tail = array.d;
+		return A2(
+			$elm$core$Array$unsafeReplaceTail,
+			A2($elm$core$Elm$JsArray$push, a, tail),
+			array);
+	});
+var $author$project$EdgeControl$addEdge = F2(
+	function (i, e) {
+		if (A2(
+			$elm$core$List$any,
+			function (g) {
+				return A2($elm$core$Set$member, i, g.edges);
+			},
+			$elm$core$Array$toList(e))) {
+			return e;
+		} else {
+			var length = $elm$core$Array$length(e);
+			var idx = A2($elm$core$Basics$modBy, 4, i);
+			return (_Utils_cmp(length, idx) > -1) ? A3(
+				$elm_community$array_extra$Array$Extra$update,
+				idx,
+				function (g) {
+					return _Utils_update(
+						g,
+						{
+							edges: A2($elm$core$Set$insert, i, g.edges)
+						});
+				},
+				e) : A2(
+				$elm$core$Array$push,
+				{
+					center: 0.5,
+					edges: $elm$core$Set$fromList(
+						_List_fromArray(
+							[i])),
+					spread: 1.0
+				},
+				e);
+		}
+	});
+var $author$project$EdgeControl$updateFromGraph = F2(
+	function (graph, control) {
+		var edges = $elm$core$List$sort(
+			A2(
+				$elm$core$List$map,
+				A2(
+					$elm$core$Basics$composeR,
+					function ($) {
+						return $.label;
+					},
+					function ($) {
+						return $.id;
+					}),
+				$elm_community$graph$Graph$edges(graph)));
+		return A3($elm$core$List$foldl, $author$project$EdgeControl$addEdge, control, edges);
+	});
 var $author$project$ProcessGraph$upsertOutputSend = F2(
 	function (_v0, ugen) {
 		var k = _v0.a;
@@ -9794,7 +10432,6 @@ var $author$project$ProcessGraph$updateOutputAmp = F3(
 				}),
 			graph);
 	});
-var $elm$core$Basics$round = _Basics_round;
 var $author$project$ProcessGraph$setInput = F2(
 	function (_v0, proc) {
 		var parIdx = _v0.a;
@@ -9821,6 +10458,64 @@ var $author$project$ProcessGraph$setInput = F2(
 					_Utils_update(
 						d,
 						{delay: val}));
+			case 'Kaneko':
+				var k = proc.a;
+				switch (parIdx) {
+					case 2:
+						return $author$project$ProcessGraph$Kaneko(
+							_Utils_update(
+								k,
+								{e: val}));
+					case 3:
+						return $author$project$ProcessGraph$Kaneko(
+							_Utils_update(
+								k,
+								{a: val}));
+					default:
+						return proc;
+				}
+			case 'KanekoChain':
+				var k = proc.a;
+				switch (parIdx) {
+					case 2:
+						return $author$project$ProcessGraph$KanekoChain(
+							_Utils_update(
+								k,
+								{e: val}));
+					case 3:
+						return $author$project$ProcessGraph$KanekoChain(
+							_Utils_update(
+								k,
+								{a: val}));
+					default:
+						return proc;
+				}
+			case 'GateDecision':
+				var g = proc.a;
+				switch (parIdx) {
+					case 2:
+						return $author$project$ProcessGraph$GateDecision(
+							_Utils_update(
+								g,
+								{min_dur_on: val}));
+					case 3:
+						return $author$project$ProcessGraph$GateDecision(
+							_Utils_update(
+								g,
+								{max_dur_on: val}));
+					case 4:
+						return $author$project$ProcessGraph$GateDecision(
+							_Utils_update(
+								g,
+								{min_dur_off: val}));
+					case 5:
+						return $author$project$ProcessGraph$GateDecision(
+							_Utils_update(
+								g,
+								{max_dur_off: val}));
+					default:
+						return proc;
+				}
 			case 'Fold':
 				var f = proc.a;
 				switch (parIdx) {
@@ -9937,6 +10632,16 @@ var $author$project$ProcessGraph$setInput = F2(
 							_Utils_update(
 								e,
 								{max_n: val}));
+					case 4:
+						return $author$project$ProcessGraph$Env(
+							_Utils_update(
+								e,
+								{sustain_fac: val}));
+					case 5:
+						return $author$project$ProcessGraph$Env(
+							_Utils_update(
+								e,
+								{rest_fac: val}));
 					default:
 						return proc;
 				}
@@ -10061,6 +10766,57 @@ var $author$project$ProcessGraph$updateProcessParameter = F3(
 var $author$project$Main$update = F2(
 	function (msg, model) {
 		switch (msg.$) {
+			case 'SetEdgeControlWeights':
+				var i = msg.a;
+				var s = msg.b;
+				var mapped = A5($author$project$Parameters$linexp, s, 0.0, 1.0, 0.0, 5.0);
+				var newModel = _Utils_update(
+					model,
+					{
+						edgeWeightControl: A3($author$project$EdgeControl$setCenter, i, mapped, model.edgeWeightControl)
+					});
+				return A4(
+					$author$project$Main$updateFromEdgeControl,
+					i,
+					function ($) {
+						return $.edgeWeightControl;
+					},
+					$author$project$Api$setEdgeWeight($author$project$Main$NoOp),
+					newModel);
+			case 'SetEdgeControlDelay':
+				var i = msg.a;
+				var s = msg.b;
+				var mapped = A5($author$project$Parameters$linexp, s, 0.0, 1.0, 0.0, 5.0);
+				var newModel = _Utils_update(
+					model,
+					{
+						edgeDelayControl: A3($author$project$EdgeControl$setCenter, i, mapped, model.edgeDelayControl)
+					});
+				return A4(
+					$author$project$Main$updateFromEdgeControl,
+					i,
+					function ($) {
+						return $.edgeDelayControl;
+					},
+					$author$project$Api$setEdgeDelay($author$project$Main$NoOp),
+					newModel);
+			case 'SetEdgeControlFreq':
+				var i = msg.a;
+				var s = msg.b;
+				var mapped = A5($author$project$Parameters$linexp, s, 0.0, 1.0, 1.0, 20000.0);
+				var newModel = _Utils_update(
+					model,
+					{
+						edgeFreqControl: A3($author$project$EdgeControl$setCenter, i, mapped, model.edgeFreqControl)
+					});
+				return A4(
+					$author$project$Main$updateFromEdgeControl,
+					i,
+					function ($) {
+						return $.edgeFreqControl;
+					},
+					$author$project$Api$setEdgeFreq($author$project$Main$NoOp),
+					newModel);
 			case 'SetNodeOutputAmp':
 				var id = msg.a;
 				var amp = msg.b;
@@ -10117,11 +10873,7 @@ var $author$project$Main$update = F2(
 						return A2($author$project$ProcessGraph$prevNode, g, model.selectedNode);
 					},
 					model.graph);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{selectedNode: nextNode}),
-					$elm$core$Platform$Cmd$none);
+				return A2($author$project$Main$selectNode, model, nextNode);
 			case 'SelectNextNode':
 				var nextNode = A2(
 					$elm$core$Maybe$andThen,
@@ -10129,11 +10881,7 @@ var $author$project$Main$update = F2(
 						return A2($author$project$ProcessGraph$nextNode, g, model.selectedNode);
 					},
 					model.graph);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{selectedNode: nextNode}),
-					$elm$core$Platform$Cmd$none);
+				return A2($author$project$Main$selectNode, model, nextNode);
 			case 'SelectPrevEdge':
 				var nextEdge = A2(
 					$elm$core$Maybe$andThen,
@@ -10141,11 +10889,7 @@ var $author$project$Main$update = F2(
 						return A2($author$project$ProcessGraph$prevEdge, g, model.selectedEdge);
 					},
 					model.graph);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{selectedEdge: nextEdge}),
-					$elm$core$Platform$Cmd$none);
+				return A2($author$project$Main$selectEdge, model, nextEdge);
 			case 'SelectNextEdge':
 				var nextEdge = A2(
 					$elm$core$Maybe$andThen,
@@ -10153,11 +10897,7 @@ var $author$project$Main$update = F2(
 						return A2($author$project$ProcessGraph$nextEdge, g, model.selectedEdge);
 					},
 					model.graph);
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{selectedEdge: nextEdge}),
-					$elm$core$Platform$Cmd$none);
+				return A2($author$project$Main$selectEdge, model, nextEdge);
 			case 'SetOutputs':
 				var channel = msg.a;
 				var pos = msg.b;
@@ -10267,12 +11007,13 @@ var $author$project$Main$update = F2(
 				var res = msg.a;
 				if (res.$ === 'Ok') {
 					var g = res.a;
+					var newGraph = $author$project$ProcessGraph$mkGraph(g);
 					return _Utils_Tuple2(
 						_Utils_update(
 							model,
 							{
-								graph: $elm$core$Maybe$Just(
-									$author$project$ProcessGraph$mkGraph(g))
+								edgeWeightControl: A2($author$project$EdgeControl$updateFromGraph, newGraph, model.edgeWeightControl),
+								graph: $elm$core$Maybe$Just(newGraph)
 							}),
 						$elm$core$Platform$Cmd$none);
 				} else {
@@ -10325,13 +11066,10 @@ var $author$project$Main$update = F2(
 							id,
 							_Utils_Tuple2(0, 1.0)));
 				} else {
-					return _Utils_Tuple2(
-						_Utils_update(
-							model,
-							{
-								selectedNode: $elm$core$Maybe$Just(id)
-							}),
-						$elm$core$Platform$Cmd$none);
+					return A2(
+						$author$project$Main$selectNode,
+						model,
+						$elm$core$Maybe$Just(id));
 				}
 			case 'Connect':
 				var from = msg.a;
@@ -10349,13 +11087,10 @@ var $author$project$Main$update = F2(
 						_Utils_Tuple2(idx, 1.0)));
 			case 'SelectEdge':
 				var id = msg.a;
-				return _Utils_Tuple2(
-					_Utils_update(
-						model,
-						{
-							selectedEdge: $elm$core$Maybe$Just(id)
-						}),
-					$elm$core$Platform$Cmd$none);
+				return A2(
+					$author$project$Main$selectEdge,
+					model,
+					$elm$core$Maybe$Just(id));
 			case 'DeleteNode':
 				var id = msg.a;
 				return _Utils_Tuple2(
@@ -10512,6 +11247,13 @@ var $author$project$Main$update = F2(
 						model,
 						{spikeTConst: s}),
 					$elm$core$Platform$Cmd$none);
+			case 'SetKanekoChainN':
+				var n = msg.a;
+				return _Utils_Tuple2(
+					_Utils_update(
+						model,
+						{kanekoChainN: n}),
+					$elm$core$Platform$Cmd$none);
 			case 'NoOp':
 				return _Utils_Tuple2(model, $elm$core$Platform$Cmd$none);
 			case 'NoMsg':
@@ -10532,7 +11274,6 @@ var $author$project$Main$update = F2(
 						nodeId,
 						_Utils_Tuple2(parIdx, val)),
 					model.graph);
-				var _v9 = A2($elm$core$Debug$log, 'para', val);
 				return _Utils_Tuple2(
 					_Utils_update(
 						model,
@@ -10724,10 +11465,6 @@ var $elm$html$Html$Attributes$stringProperty = F2(
 	});
 var $elm$html$Html$Attributes$class = $elm$html$Html$Attributes$stringProperty('className');
 var $elm$html$Html$div = _VirtualDom_node('div');
-var $elm$core$Set$Set_elm_builtin = function (a) {
-	return {$: 'Set_elm_builtin', a: a};
-};
-var $elm$core$Set$empty = $elm$core$Set$Set_elm_builtin($elm$core$Dict$empty);
 var $mdgriffith$elm_ui$Internal$Model$lengthClassName = function (x) {
 	switch (x.$) {
 		case 'Px':
@@ -10876,26 +11613,6 @@ var $mdgriffith$elm_ui$Internal$Model$getStyleName = function (style) {
 				$mdgriffith$elm_ui$Internal$Model$transformClass(x));
 	}
 };
-var $elm$core$Set$insert = F2(
-	function (key, _v0) {
-		var dict = _v0.a;
-		return $elm$core$Set$Set_elm_builtin(
-			A3($elm$core$Dict$insert, key, _Utils_Tuple0, dict));
-	});
-var $elm$core$Dict$member = F2(
-	function (key, dict) {
-		var _v0 = A2($elm$core$Dict$get, key, dict);
-		if (_v0.$ === 'Just') {
-			return true;
-		} else {
-			return false;
-		}
-	});
-var $elm$core$Set$member = F2(
-	function (key, _v0) {
-		var dict = _v0.a;
-		return A2($elm$core$Dict$member, key, dict);
-	});
 var $mdgriffith$elm_ui$Internal$Model$reduceStyles = F2(
 	function (style, nevermind) {
 		var cache = nevermind.a;
@@ -16344,21 +17061,6 @@ var $elm$html$Html$Attributes$step = function (n) {
 };
 var $elm$core$String$toFloat = _String_toFloat;
 var $elm$html$Html$Attributes$type_ = $elm$html$Html$Attributes$stringProperty('type');
-var $author$project$Parameters$logE = $elm$core$Basics$logBase($elm$core$Basics$e);
-var $author$project$Parameters$explin = F5(
-	function (x, a, b, c, d) {
-		var a_shifted = (a === 0.0) ? 0.001 : a;
-		return (_Utils_cmp(x, a) < 1) ? c : ((_Utils_cmp(x, b) > -1) ? d : ((($author$project$Parameters$logE(x / a_shifted) / $author$project$Parameters$logE(b / a_shifted)) * (d - c)) + c));
-	});
-var $author$project$Parameters$unmapped = F2(
-	function (p, v) {
-		var _v0 = p.mapping;
-		if (_v0.$ === 'Lin') {
-			return A5($author$project$Parameters$linlin, v, p.min, p.max, 0.0, 1.0);
-		} else {
-			return A5($author$project$Parameters$explin, v, p.min, p.max, 0.0, 1.0);
-		}
-	});
 var $elm$html$Html$Attributes$value = $elm$html$Html$Attributes$stringProperty('value');
 var $author$project$Main$slider = F2(
 	function (msg, par) {
@@ -16447,12 +17149,15 @@ var $author$project$ProcessGraph$processToString = function (p) {
 		case 'Delay':
 			var d = p.a;
 			return 'Delay length:' + $elm$core$String$fromInt(d.length);
+		case 'KanekoChain':
+			var k = p.a;
+			return 'KanekoChain n:' + $elm$core$String$fromInt(k.n);
 		case 'VarDelay':
 			var d = p.a;
 			return 'VarDelay d:' + $author$project$Utils$floatString(d.delay);
 		case 'Fold':
 			var f = p.a;
-			return 'VarDelay thresh:' + $author$project$Utils$floatString(f.threshold);
+			return 'Fold thresh:' + $author$project$Utils$floatString(f.threshold);
 		case 'VanDerPol':
 			var v = p.a;
 			return 'VanDerPol e:' + $elm$core$String$fromFloat(v.e);
@@ -18461,6 +19166,51 @@ var $author$project$Main$filterInput = F3(
 						$elm$core$String$toFloat(q)))
 				]));
 	});
+var $author$project$Main$SetKanekoChainN = function (a) {
+	return {$: 'SetKanekoChainN', a: a};
+};
+var $author$project$Main$kanekoChainInput = function (v) {
+	return A2(
+		$mdgriffith$elm_ui$Element$row,
+		_List_fromArray(
+			[
+				$mdgriffith$elm_ui$Element$spacing(5),
+				$mdgriffith$elm_ui$Element$Border$solid,
+				$mdgriffith$elm_ui$Element$Border$width(1)
+			]),
+		_List_fromArray(
+			[
+				A2(
+				$mdgriffith$elm_ui$Element$Input$text,
+				_List_fromArray(
+					[
+						$mdgriffith$elm_ui$Element$width(
+						$mdgriffith$elm_ui$Element$px(80))
+					]),
+				{
+					label: A2(
+						$mdgriffith$elm_ui$Element$Input$labelLeft,
+						_List_Nil,
+						$mdgriffith$elm_ui$Element$text('N')),
+					onChange: $author$project$Main$SetKanekoChainN,
+					placeholder: $elm$core$Maybe$Nothing,
+					text: v
+				}),
+				A2(
+				$elm$core$Maybe$withDefault,
+				$mdgriffith$elm_ui$Element$none,
+				A2(
+					$elm$core$Maybe$map,
+					function (n) {
+						return A2(
+							$author$project$Main$addProcess,
+							'KanekoChain',
+							$author$project$ProcessGraph$KanekoChain(
+								{a: 1.5, e: 0.3, n: n}));
+					},
+					$elm$core$String$toInt(v)))
+			]));
+};
 var $author$project$Main$SetLinConA = function (a) {
 	return {$: 'SetLinConA', a: a};
 };
@@ -19105,19 +19855,25 @@ var $author$project$Main$processRow = function (m) {
 				A2($author$project$Main$addProcess, 'EnvFollow', $author$project$ProcessGraph$EnvFollow),
 				A2(
 				$author$project$Main$addProcess,
+				'Env',
+				$author$project$ProcessGraph$Env(
+					{max_n: 4.0, max_target: 0.6, min_target: 0.001, rest_fac: 0.1, sustain_fac: 1.0})),
+				A2(
+				$author$project$Main$addProcess,
 				'VarDelay',
 				$author$project$ProcessGraph$VarDelay(
 					{delay: 0.0, maxdelay: 10.0})),
+				A2($author$project$Main$addProcess, 'GateIfGreater', $author$project$ProcessGraph$GateIfGreater),
+				A2(
+				$author$project$Main$addProcess,
+				'GateDecision',
+				$author$project$ProcessGraph$GateDecision(
+					{max_dur_off: 6.0, max_dur_on: 3.0, min_dur_off: 3.0, min_dur_on: 1.0})),
 				A2(
 				$author$project$Main$addProcess,
 				'Fold',
 				$author$project$ProcessGraph$Fold(
 					{add: 0.0, mul: 1.0, threshold: 1.0})),
-				A2(
-				$author$project$Main$addProcess,
-				'Env',
-				$author$project$ProcessGraph$Env(
-					{max_n: 4.0, max_target: 0.6, min_target: 0.001})),
 				A2($author$project$Main$addProcess, 'BitNeg', $author$project$ProcessGraph$BitNeg),
 				A2($author$project$Main$addProcess, 'BitOr', $author$project$ProcessGraph$BitOr),
 				A2($author$project$Main$addProcess, 'BitAnd', $author$project$ProcessGraph$BitAnd),
@@ -19141,6 +19897,12 @@ var $author$project$Main$processRow = function (m) {
 				'Duffing',
 				$author$project$ProcessGraph$Duffing(
 					{a: 0.5, e: 0.2, frac: 0.03})),
+				A2(
+				$author$project$Main$addProcess,
+				'Kaneko',
+				$author$project$ProcessGraph$Kaneko(
+					{a: 1.5, e: 0.4})),
+				$author$project$Main$kanekoChainInput(m.kanekoChainN),
 				$author$project$Main$delayInput(m.delayLength),
 				$author$project$Main$pllInput(m.pllFac),
 				$author$project$Main$sinInput(m.sinMul),
@@ -19181,12 +19943,12 @@ var $author$project$Main$showSelectedEdge = function (model) {
 							[
 								A2(
 								$author$project$Main$slider,
-								$author$project$Main$SetEdgeWeight(l.label.id),
-								A6($author$project$Parameters$Parameter, -1, l.label.strength, $author$project$Parameters$Exp, 'weight', 0.0, 5.0)),
-								A2(
-								$author$project$Main$slider,
 								$author$project$Main$SetEdgeDelay(l.label.id),
 								A6($author$project$Parameters$Parameter, -1, l.label.delay.delay, $author$project$Parameters$Exp, 'Delay', 0.0, 6.0)),
+								A2(
+								$author$project$Main$slider,
+								$author$project$Main$SetEdgeWeight(l.label.id),
+								A6($author$project$Parameters$Parameter, -1, l.label.strength, $author$project$Parameters$Exp, 'weight', 0.0, 5.0)),
 								A2(
 								$author$project$Main$simpleButton,
 								'Delete',
@@ -19269,26 +20031,6 @@ var $gampleman$elm_visualization$Force$nTimes = F3(
 			}
 		}
 	});
-var $elm$core$Dict$sizeHelp = F2(
-	function (n, dict) {
-		sizeHelp:
-		while (true) {
-			if (dict.$ === 'RBEmpty_elm_builtin') {
-				return n;
-			} else {
-				var left = dict.d;
-				var right = dict.e;
-				var $temp$n = A2($elm$core$Dict$sizeHelp, n + 1, right),
-					$temp$dict = left;
-				n = $temp$n;
-				dict = $temp$dict;
-				continue sizeHelp;
-			}
-		}
-	});
-var $elm$core$Dict$size = function (dict) {
-	return A2($elm$core$Dict$sizeHelp, 0, dict);
-};
 var $elm$core$Basics$sqrt = _Basics_sqrt;
 var $ianmackenzie$elm_geometry$Vector2d$components = function (_v0) {
 	var components_ = _v0.a;

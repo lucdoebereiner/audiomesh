@@ -29,7 +29,7 @@ type alias EdgeControl =
 
 
 defaultGroup =
-    { edges = Set.empty, spread = 1.0, center = 0.5 }
+    { edges = Set.empty, spread = 0.3, center = 0.5 }
 
 
 defaultControl =
