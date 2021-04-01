@@ -23,6 +23,7 @@ module ProcessGraph exposing
     , setInput
     , ugenLabel
     , updateEdgeDelay
+    , updateEdgeFreq
     , updateEdgeWeight
     , updateOutputAmp
     , updateProcessParameter
@@ -1174,6 +1175,7 @@ type alias Link =
     , strength : Float
     , delay : { delay : Float, maxdelay : Float }
     , id : Int
+    , freq : Float
     }
 
 
@@ -1197,13 +1199,14 @@ decodeIntElement =
 decodeLinkObj : Decoder Link
 decodeLinkObj =
     Decode.succeed
-        (\idx w d m ->
-            Link idx w { delay = d, maxdelay = m } -1
+        (\idx w d m f ->
+            Link idx w { delay = d, maxdelay = m } -1 f
         )
         |> required "input_idx" int
         |> required "weight" float
         |> custom (at [ "delay", "delay" ] float)
         |> custom (at [ "delay", "maxdelay" ] float)
+        |> required "output" float
 
 
 
@@ -1464,6 +1467,19 @@ updateEdgeWeight edgeId weight graph =
         (\e ->
             if e.id == edgeId then
                 { e | strength = weight }
+
+            else
+                e
+        )
+        graph
+
+
+updateEdgeFreq : Int -> Float -> UGenGraph -> UGenGraph
+updateEdgeFreq edgeId freq graph =
+    Graph.mapEdges
+        (\e ->
+            if e.id == edgeId then
+                { e | freq = freq }
 
             else
                 e

@@ -225,6 +225,16 @@ midiDict ( node, edge ) =
                     )
                     edge
                     |> Maybe.withDefault NoMsg
+
+        edgeF =
+            \v ->
+                Maybe.map
+                    (\e ->
+                        SetEdgeFreq e.label.id
+                            (Parameters.linexp v 0.0 1.0 1.0 20000.0)
+                    )
+                    edge
+                    |> Maybe.withDefault NoMsg
     in
     Dict.fromList <|
         [ ( 29
@@ -272,6 +282,7 @@ midiDict ( node, edge ) =
         , ( 2, \v -> SetOutputs 0 v )
         , ( 3, \v -> SetOutputs 1 v )
         , ( 4, nodeAmp )
+        , ( 13, edgeF )
         , ( 14, edgeD )
         , ( 15, edgeW )
         , ( 16, SetEdgeControlWeights 0 )
@@ -343,6 +354,7 @@ type Msg
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | SetEdgeDelay Int Float
+    | SetEdgeFreq Int Float
     | DeleteEdge Int
     | SetEdgeFac Float
     | ConnectLeastConnected
@@ -421,27 +433,34 @@ selectEdge model nextEdge =
     )
 
 
-updateFromEdgeControl : Int -> (Model -> EdgeControl) -> (Int -> Float -> Cmd Msg) -> Model -> ( Model, Cmd Msg )
-updateFromEdgeControl i getControl apiFun model =
+updateFromEdgeControl : Int -> (Model -> EdgeControl) -> (Int -> Float -> Cmd Msg) -> (Int -> Float -> UGenGraph -> UGenGraph) -> (Float -> Float) -> Model -> ( Model, Cmd Msg )
+updateFromEdgeControl i getControl apiFun updateFun mapping model =
     case EdgeControl.getPositions i (getControl model) of
         Just pLst ->
             let
+                pLstMapped =
+                    List.map (\( e, w ) -> ( e, mapping w )) pLst
+
+                -- _ =
+                --     Debug.log "plst" pLstMapped
                 newGraph =
                     Maybe.map
                         (\g ->
                             List.foldl
                                 (\( e, w ) ->
-                                    updateEdgeWeight e w
+                                    updateFun e w
                                 )
                                 g
-                                pLst
+                                pLstMapped
                         )
                         model.graph
 
+                -- _ =
+                --     Debug.log "graph" newGraph
                 newModel =
                     { model | graph = newGraph }
             in
-            ( newModel, List.map (\( e, w ) -> apiFun e w) pLst |> Cmd.batch )
+            ( newModel, List.map (\( e, w ) -> apiFun e w) pLstMapped |> Cmd.batch )
 
         Nothing ->
             let
@@ -456,33 +475,54 @@ update msg model =
     case msg of
         SetEdgeControlWeights i s ->
             let
-                mapped =
-                    Parameters.linexp s 0.0 1.0 0.0 5.0
+                mapping =
+                    \v -> Parameters.linexp v 0.0 1.0 0.0 5.0
 
                 newModel =
-                    { model | edgeWeightControl = EdgeControl.setCenter i mapped model.edgeWeightControl }
+                    { model | edgeWeightControl = EdgeControl.setCenter i s model.edgeWeightControl }
             in
-            updateFromEdgeControl i .edgeWeightControl (Api.setEdgeWeight NoOp) newModel
+            updateFromEdgeControl
+                i
+                .edgeWeightControl
+                (Api.setEdgeWeight NoOp)
+                updateEdgeWeight
+                mapping
+                newModel
 
         SetEdgeControlDelay i s ->
             let
-                mapped =
-                    Parameters.linexp s 0.0 1.0 0.0 5.0
+                mapping =
+                    \v -> Parameters.linexp v 0.0 1.0 0.0 5.0
 
                 newModel =
-                    { model | edgeDelayControl = EdgeControl.setCenter i mapped model.edgeDelayControl }
+                    { model | edgeDelayControl = EdgeControl.setCenter i s model.edgeDelayControl }
             in
-            updateFromEdgeControl i .edgeDelayControl (Api.setEdgeDelay NoOp) newModel
+            updateFromEdgeControl
+                i
+                .edgeDelayControl
+                (Api.setEdgeDelay NoOp)
+                updateEdgeDelay
+                mapping
+                newModel
 
         SetEdgeControlFreq i s ->
             let
-                mapped =
-                    Parameters.linexp s 0.0 1.0 1.0 20000.0
+                mapping =
+                    \v -> Parameters.linexp v 0.0 1.0 1.0 20000.0
 
                 newModel =
-                    { model | edgeFreqControl = EdgeControl.setCenter i mapped model.edgeFreqControl }
+                    { model | edgeFreqControl = EdgeControl.setCenter i s model.edgeFreqControl }
+
+                -- _ =
+                --     Debug.log "f" ( i, newModel.edgeFreqControl )
             in
-            updateFromEdgeControl i .edgeFreqControl (Api.setEdgeFreq NoOp) newModel
+            updateFromEdgeControl
+                i
+                .edgeFreqControl
+                (Api.setEdgeFreq NoOp)
+                updateEdgeFreq
+                mapping
+                newModel
 
         SetNodeOutputAmp id amp ->
             ( { model | graph = Maybe.map (ProcessGraph.updateOutputAmp id amp) model.graph }
@@ -631,6 +671,10 @@ update msg model =
                         | graph = Just newGraph
                         , edgeWeightControl =
                             EdgeControl.updateFromGraph newGraph model.edgeWeightControl
+                        , edgeDelayControl =
+                            EdgeControl.updateFromGraph newGraph model.edgeDelayControl
+                        , edgeFreqControl =
+                            EdgeControl.updateFromGraph newGraph model.edgeFreqControl
                       }
                     , Cmd.none
                     )
@@ -784,6 +828,11 @@ update msg model =
         SetEdgeWeight edgeId weight ->
             ( { model | graph = Maybe.map (updateEdgeWeight edgeId weight) model.graph }
             , Api.setEdgeWeight NoOp edgeId weight
+            )
+
+        SetEdgeFreq edgeId f ->
+            ( { model | graph = Maybe.map (updateEdgeFreq edgeId f) model.graph }
+            , Api.setEdgeFreq NoOp edgeId f
             )
 
         SetEdgeDelay edgeId delay ->
@@ -1293,7 +1342,9 @@ showSelectedEdge model =
             el [ padding 10, Border.width 1, Border.solid ] <|
                 row [ spacing 10 ]
                     [ --text ("Link weight: " ++ floatString l.label.strength)
-                      slider (SetEdgeDelay l.label.id)
+                      slider (SetEdgeFreq l.label.id)
+                        (Parameter -1 l.label.freq Exp "freq" 1.0 20000.0)
+                    , slider (SetEdgeDelay l.label.id)
                         (Parameter -1 l.label.delay.delay Exp "Delay" 0.0 6.0)
                     , slider (SetEdgeWeight l.label.id)
                         (Parameter -1 l.label.strength Exp "weight" 0.0 5.0)

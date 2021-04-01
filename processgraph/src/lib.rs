@@ -3,7 +3,7 @@ mod filters;
 pub mod lag;
 pub mod process;
 pub mod tapdelay;
-use crate::lag::Lag;
+use crate::lag::{lag_freq_deserialize, lag_freq_serialize, Lag};
 use crate::process::*;
 use crate::tapdelay::TapDelay;
 //use petgraph::stable_graph::StableGraph;
@@ -155,8 +155,8 @@ pub struct Connection {
     delay: TapDelay,
     #[serde(skip)]
     pub input: f64,
-    #[serde(skip_serializing)]
-    #[serde(default = "connection_default_lag")]
+    #[serde(serialize_with = "lag_freq_serialize")]
+    #[serde(deserialize_with = "lag_freq_deserialize")]
     output: Lag,
     #[serde(skip_serializing)]
     #[serde(default = "default_false")]

@@ -73,8 +73,8 @@
 - [-] edges midi control
   - [X] single control
   - [X] multiple control
-  - [ ] control delays
-  - [ ] control damping/lpf
+  - [X] control delays
+  - [X] control damping/lpf
   - [ ] incoming/outgoing control
   - [ ] randomize
   - [ ] control lag

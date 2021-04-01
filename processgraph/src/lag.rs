@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::get_sr;
-use crate::process::lpf1_calc_p;
+use crate::process::{lpf1_calc_freq, lpf1_calc_p};
 
 const LOG001: f64 = -6.90775527898; //0.001_f64.ln();
 
@@ -30,6 +30,24 @@ impl<'de> Deserialize<'de> for Lag {
         let current: f64 = <f64 as Deserialize>::deserialize(deserializer)?;
         Ok(lag(current)) // todo rethink this because factors are lost in (de)serializtion
     }
+}
+
+pub fn lag_freq_serialize<S>(x: &Lag, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let f = lpf1_calc_freq(x.factor_down);
+    s.serialize_f64(f)
+}
+
+pub fn lag_freq_deserialize<'de, D>(deserializer: D) -> Result<Lag, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let freq: f64 = <f64 as Deserialize>::deserialize(deserializer)?;
+    let mut l = lag(0.0);
+    l.set_frequency(freq);
+    Ok(l)
 }
 
 pub fn lag(init: f64) -> Lag {

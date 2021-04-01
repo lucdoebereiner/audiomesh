@@ -362,6 +362,10 @@ pub fn lpf1_calc_p(freq: f64) -> f64 {
     1. - (2. * (freq / unsafe { SR }).tan())
 }
 
+pub fn lpf1_calc_freq(p: f64) -> f64 {
+    ((1.0 - p).atan() * get_sr()) / 2.0
+}
+
 fn rms_proc() -> Process {
     Process::RMS {
         input: 0.0,

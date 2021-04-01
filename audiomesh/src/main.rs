@@ -161,7 +161,7 @@ fn set_edge_delay(id: usize, delay: f64, state: State<Globals>) {
 fn set_edge_freq(id: usize, freq: f64, state: State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
-    sender.send(UpdateMessage::SetEdgeFreq(id, lag)).unwrap()
+    sender.send(UpdateMessage::SetEdgeFreq(id, freq)).unwrap()
 }
 
 #[post("/edge/<id_from>/<id_to>/<weight>/<index>")]

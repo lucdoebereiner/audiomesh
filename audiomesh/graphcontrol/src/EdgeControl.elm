@@ -80,7 +80,7 @@ addEdge i e =
             A.update idx (\g -> { g | edges = Set.insert i g.edges }) e
 
         else
-            Array.push { edges = Set.fromList [ i ], spread = 1.0, center = 0.5 } e
+            Array.push { edges = Set.fromList [ i ], spread = 0.3, center = 0.5 } e
 
 
 getPositions : Int -> EdgeControl -> Maybe (List ( Int, Float ))
