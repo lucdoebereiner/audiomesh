@@ -1,4 +1,4 @@
-* TODO graph synth rust [60/97]
+* TODO graph synth rust [61/100]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -78,6 +78,10 @@
   - [ ] incoming/outgoing control
   - [ ] randomize
   - [ ] control lag
+- [X] leak dc on output
+- [ ] general input fader
+- [ ] prelisten solo mode
+- [ ] simpler addition of ugens, auto elm decoder/types
 - [ ] slow compression
 - [ ] delay feedbacks with compression and leakage
 - [ ] sanitize output
@@ -113,3 +117,4 @@
 - [ ] variations/evolving graph setups
 - [ ] fix visual scaling of graph in elm
 - [ ] scope
+

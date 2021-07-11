@@ -449,8 +449,8 @@ fn pll_error_lag() -> lag::Lag {
     dlag
 }
 
-fn dc_remove_filter() -> filters::OnePoleHP {
-    filters::OnePoleHP::new(0.94)
+pub fn dc_remove_filter() -> filters::OnePoleHP {
+    filters::OnePoleHP::new(0.97)
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {

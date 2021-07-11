@@ -59,15 +59,15 @@
 
 	 const outputs = midiAccess.outputs.values();
 	 for(const output of outputs) {
+//	     console.log(output);
 	     if (output.name == "BCF2000 MIDI 1") {
-		 //console.log(output);
 		 midiOutput = output;
 	     }
 	 }
      }
 
      function getMIDIMessage(midiMessage) {
-	 //console.log(midiMessage);
+	 console.log(midiMessage);
 	 app.ports.midiCC.send(parseMidiMessage(midiMessage));
      }
 

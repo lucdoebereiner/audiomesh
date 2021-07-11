@@ -439,6 +439,11 @@ fn main() {
     let mut flow = vec![];
     let n_outs = 2;
     let mut frame_buffer = vec![0.0; n_outs];
+    let mut dc_leak_outs = vec![];
+
+    for _i in 0..n_outs {
+        dc_leak_outs.push(dc_remove_filter());
+    }
 
     // println!("flow: {:?}", flow);
     // println!("{:?}", Dot::with_config(&g, &[Config::EdgeNoLabel]));
@@ -509,7 +514,8 @@ fn main() {
                 }
 
                 for (k, o) in outs.iter_mut().enumerate() {
-                    o[i as usize] = (frame_buffer[k] * amp) as f32;
+                    dc_leak_outs[k].input = frame_buffer[k];
+                    o[i as usize] = (dc_leak_outs[k].process() * amp) as f32;
                 }
             }
 
