@@ -1,6 +1,6 @@
 [package]
 name = "audiomesh"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["lucdoebereiner <luc.doebereiner@gmail.com>"]
 edition = "2018"
 
@@ -9,14 +9,21 @@ edition = "2018"
 [dependencies]
 jack = "*"
 processgraph = { path = "../processgraph" }
-petgraph = { version = "*", features = ["serde-1"] }
+petgraph = { version = "0.5.1", features = ["serde-1"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
-rocket = "*"
 crossbeam-channel = "*"
-rocket_cors = "*"
+rocket_cors = { git = "https://github.com/lawliet89/rocket_cors", branch = "master" }
+# rocket_cors = "0.5.2"
+futures = "0.3.15"
+lazy_static = "1.4.0"
 
-
-[dependencies.rocket_contrib]
-version = "*"
-default-features = false
+[dependencies.rocket]
+version = "0.5.0-rc.1"
 features = ["json"]
+
+
+# [dependencies.rocket_contrib]
+# version = "*"
+# default-features = false
+# features = ["json"]

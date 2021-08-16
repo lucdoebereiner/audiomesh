@@ -3,11 +3,17 @@
 #[macro_use]
 extern crate rocket;
 
+use rocket_cors::AllowedMethods;
+use rocket_cors::AllowedOrigins;
+use std::str::FromStr;
+
 use crossbeam_channel::bounded;
 use crossbeam_channel::{Receiver, Sender};
+use futures::executor::block_on;
 use jack;
 use rocket::http::Method;
-use rocket_contrib::json::*;
+use rocket::serde::json::*;
+//use rocket_contrib::json::*;
 use rocket_cors;
 //use rocket_cors::AllowedHeaders;
 
@@ -24,6 +30,8 @@ use rocket::response::content;
 
 use processgraph::lag;
 use processgraph::process::*;
+
+static mut JACK_PROCESS: Option<jack::AsyncClient<(), JackProc>> = None;
 
 enum UpdateMessage {
     Randomize,
@@ -60,21 +68,21 @@ struct Globals {
 }
 
 #[post("/volume/<amp>")]
-fn set_volume(amp: f64, state: State<Globals>) {
+fn set_volume(amp: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetVolume(amp)).unwrap()
 }
 
 #[delete("/node/<id>")]
-fn remove_node(id: usize, state: State<Globals>) {
+fn remove_node(id: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::RemoveNode(id)).unwrap()
 }
 
 #[post("/node", data = "<process>")]
-fn add_node(process: Json<Process>, state: State<Globals>) {
+fn add_node(process: Json<Process>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -83,7 +91,7 @@ fn add_node(process: Json<Process>, state: State<Globals>) {
 }
 
 #[post("/graph", data = "<graph>")]
-fn set_graph(graph: Json<UGenGraphStructure>, state: State<Globals>) {
+fn set_graph(graph: Json<UGenGraphStructure>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -92,7 +100,7 @@ fn set_graph(graph: Json<UGenGraphStructure>, state: State<Globals>) {
 }
 
 #[post("/node/<id>/output/<output>/amp/<amp>")]
-fn node_output(id: usize, output: usize, amp: f64, state: State<Globals>) {
+fn node_output(id: usize, output: usize, amp: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -101,7 +109,7 @@ fn node_output(id: usize, output: usize, amp: f64, state: State<Globals>) {
 }
 
 #[post("/node/<id>/outputamp/<amp>")]
-fn node_output_amp(id: usize, amp: f64, state: State<Globals>) {
+fn node_output_amp(id: usize, amp: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -110,7 +118,7 @@ fn node_output_amp(id: usize, amp: f64, state: State<Globals>) {
 }
 
 #[post("/outputs", data = "<specvec>")]
-fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: State<Globals>) {
+fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -119,7 +127,7 @@ fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: State<Globals>) {
 }
 
 #[post("/node/<id>/parameter/<input>/<value>")]
-fn set_parameter(id: usize, input: u32, value: f64, state: State<Globals>) {
+fn set_parameter(id: usize, input: u32, value: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -128,21 +136,21 @@ fn set_parameter(id: usize, input: u32, value: f64, state: State<Globals>) {
 }
 
 #[delete("/edge/<id>")]
-fn remove_edge(id: usize, state: State<Globals>) {
+fn remove_edge(id: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::RemoveEdge(id)).unwrap()
 }
 
 #[post("/edgefac/<fac>")]
-fn set_edge_fac(fac: f64, state: State<Globals>) {
+fn set_edge_fac(fac: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetEdgeFac(fac)).unwrap()
 }
 
 #[post("/edge/<id>/weight/<weight>")]
-fn set_edge_weight(id: usize, weight: f64, state: State<Globals>) {
+fn set_edge_weight(id: usize, weight: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -151,21 +159,21 @@ fn set_edge_weight(id: usize, weight: f64, state: State<Globals>) {
 }
 
 #[post("/edge/<id>/delay/<delay>")]
-fn set_edge_delay(id: usize, delay: f64, state: State<Globals>) {
+fn set_edge_delay(id: usize, delay: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetEdgeDelay(id, delay)).unwrap()
 }
 
 #[post("/edge/<id>/freq/<freq>")]
-fn set_edge_freq(id: usize, freq: f64, state: State<Globals>) {
+fn set_edge_freq(id: usize, freq: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetEdgeFreq(id, freq)).unwrap()
 }
 
 #[post("/edge/<id_from>/<id_to>/<weight>/<index>")]
-fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: State<Globals>) {
+fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender
@@ -179,35 +187,35 @@ fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: Stat
 }
 
 #[post("/randomize")]
-fn randomize(state: State<Globals>) {
+fn randomize(state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::Randomize).unwrap()
 }
 
 #[post("/randomcircle")]
-fn random_circle(state: State<Globals>) {
+fn random_circle(state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::RandomCircle).unwrap()
 }
 
 #[post("/connectleastconnected")]
-fn least_connected(state: State<Globals>) {
+fn least_connected(state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::ConnectLeastConnected).unwrap()
 }
 
 #[post("/disconnectmostconnected")]
-fn most_connected(state: State<Globals>) {
+fn most_connected(state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::DisconnectMostConnected).unwrap()
 }
 
 #[get("/graph")]
-fn get_graph(state: State<Globals>) -> content::Json<String> {
+fn get_graph(state: &State<Globals>) -> content::Json<String> {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     let receiver = &shared_data.receiver;
@@ -218,7 +226,7 @@ fn get_graph(state: State<Globals>) -> content::Json<String> {
 }
 
 #[get("/node/<id>/poll")]
-fn poll_node(id: usize, state: State<Globals>) -> content::Json<String> {
+fn poll_node(id: usize, state: &State<Globals>) -> content::Json<String> {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     let receiver = &shared_data.receiver;
@@ -357,28 +365,78 @@ fn handle_messages(
     }
 }
 
-fn main() {
-    // Cors header opetions
-    // let allowed_origins = rocket_cors::AllowedOrigins::some_exact(&[
-    //     // 4.
-    //     "http://localhost:8080",
-    //     "http://127.0.0.1:8080",
-    //     "http://localhost:8000",
-    //     "http://0.0.0.0:8000",
-    // ]);
+struct JackProc {
+    in_ports: Vec<jack::Port<jack::AudioIn>>,
+    out_ports: Vec<jack::Port<jack::AudioOut>>,
+    rx: Receiver<UpdateMessage>,
+    flow: Vec<NodeIndex>,
+    frame_buffer: Vec<f64>,
+    amplitude: lag::Lag,
+    g: UGenGraph,
+    s_ret: Sender<ReturnMessage>,
+}
+
+impl jack::ProcessHandler for JackProc {
+    fn process(&mut self, _: &jack::Client, ps: &jack::ProcessScope) -> jack::Control {
+        let polling = false;
+
+        while let Ok(update) = self.rx.try_recv() {
+            match update {
+                UpdateMessage::SetVolume(a) => self.amplitude.set_target(a),
+                _ => handle_messages(update, &mut self.g, &mut self.flow, &self.s_ret),
+            }
+        }
+
+        // Get output buffers
+        let mut outs: Vec<&mut [f32]> = self
+            .out_ports
+            .iter_mut()
+            .map(|p| p.as_mut_slice(ps))
+            .collect();
+
+        // Get input buffers
+        let ins: Vec<&[f32]> = self.in_ports.iter().map(|p| p.as_slice(ps)).collect();
+
+        // Write output
+        for i in 0..ps.n_frames() {
+            let input_samples: Vec<f64> =
+                ins.iter().map(|input| input[i as usize] as f64).collect();
+            let amp = self.amplitude.tick();
+            self.g
+                .process(&self.flow, &input_samples, &mut self.frame_buffer);
+            if i == 0 && polling {
+                println!("{}", self.frame_buffer[0]);
+            }
+
+            for (k, o) in outs.iter_mut().enumerate() {
+                o[i as usize] = (self.frame_buffer[k] * amp) as f32;
+            }
+        }
+
+        // Continue as normal
+        jack::Control::Continue
+    }
+}
+
+#[launch]
+fn rocket() -> _ {
+    let allowed_methods: AllowedMethods = ["Get", "Post", "Put", "Delete"]
+        .iter()
+        .map(|s| FromStr::from_str(s).unwrap())
+        .collect();
 
     let cors = rocket_cors::CorsOptions {
-        //        allowed_origins,
-        allowed_methods: vec![Method::Get, Method::Put, Method::Post, Method::Delete]
-            .into_iter()
-            .map(From::from)
-            .collect(),
+        allowed_origins: AllowedOrigins::all(),
+        allowed_methods: allowed_methods,
+        //            .into_iter()
+        //            .map(From::from)
+        //          .collect(),
         allowed_headers: rocket_cors::AllowedHeaders::All,
         allow_credentials: true,
         ..Default::default()
-    }
-    .to_cors()
-    .unwrap();
+    };
+    // .to_cors()
+    // .unwrap();
 
     // Channels for communication among threads
     let (tx, rx): (Sender<UpdateMessage>, Receiver<UpdateMessage>) = bounded(100);
@@ -387,55 +445,6 @@ fn main() {
     // Create graph and init
     let mut g = UGenGraph::new();
 
-    //    let mem1 = g.add_node(mem(0.5).clip(ClipType::Wrap));
-    //    let del1 = g.graph.add_node(delay(44100).clip(ClipType::Wrap));
-    //    let rms = g.add_node(rms());
-    // let sinph = g.graph.add_node(sin());
-    // let del2 = g.add_node(delay(3).clip(ClipType::Wrap));
-    //    let del3 = g.add_node(delay(4).clip(ClipType::Wrap));
-    //  let sum = g.graph.add_node(add().clip(ClipType::Wrap));
-    // let sum2 = g.add_node(add().clip(ClipType::SoftClip));
-    //    let filter1 = g.add_node(lpf(100.0, 6.0));
-    //    let filter2 = g.add_node(hpf(50.0, 6.0));
-    // let filter2 = g.add_node(hpf(1000.0, 3.0));
-    //    let in1 = g.add(sound_in(0).clip(ClipType::None));
-    //    let in2 = g.add(sound_in(1).clip(ClipType::None));
-
-    //  let d1 = g.add(resonator(400.0, 0.1));
-    // let c1 = g.graph.add_node(constant(0.5));
-    // let c2 = g.graph.add_node(constant(0.5));
-
-    // let gauss = g.add_node(gauss());
-    //let ring = g.add_node(ring());
-    //    let ring = g.graph.add_node(ring());
-    //    let c1 = g.add_node(constant(0.8));
-    //    let c2 = g.add_node(constant(1.0));
-    //let comp = g.add_node(compressor(0.3, 1.0, 1.0));
-    //  let sp = g.add_node(spike(0.3, 0.0001, 100));
-    //    let s1 = g.graph.add_node(sin_osc(100.0, 0.0));
-    //    let s2 = g.graph.add_node(sin_osc(2225.0, 0.0));
-    // g.graph.add_edge(in1, mul, (0, lag::lag(1.0)));
-    // g.graph.add_edge(in2, mul, (1, lag::lag(1.0)));
-
-    //  g.connect(s1, sinph, Connection::new(0, 1.0));
-    // g.connect(in2, d1, (1, lag::lag(1.0)));
-
-    //    g.add_edge(c2, ring, (0, lag::lag(1.0)));
-    //    g.add_edge(s1, ring, (0, lag::lag(1.0)));
-    //let nodes = vec![mem1, del1, rms, del2, del3, filter1, in1, in2, filter2];
-
-    //    let nodes = vec![ring, c1, c2];
-
-    // let nodes = vec![
-    //     mem1, rms, del1, del3, filter2, filter, sum, gauss, sum2, del2, in1,
-    // ];
-
-    // let sum1 = g.add_node(add());
-    //let sum2 = g.add_node(add());
-    //    rnd_connections(&mut g, &nodes, 1);
-    //    let mut output_indices = vec![sum1, sum2];
-
-    //    let mut flow = establish_flow(&g, &output_indices);
     let mut flow = vec![];
     let n_outs = 2;
     let mut frame_buffer = vec![0.0; n_outs];
@@ -444,14 +453,6 @@ fn main() {
     for _i in 0..n_outs {
         dc_leak_outs.push(dc_remove_filter());
     }
-
-    // println!("flow: {:?}", flow);
-    // println!("{:?}", Dot::with_config(&g, &[Config::EdgeNoLabel]));
-    // for i in 0..(64 * 10) {
-    //     println!("\n\n");
-    //     process_graph(&mut g, &flow, &output_indices, &mut frame_buffer);
-    //     println!("result: {:?}", frame_buffer);
-    // }
 
     // JACK
     let (client, _status) = jack::Client::new("audiomesh", jack::ClientOptions::empty()).unwrap();
@@ -484,51 +485,108 @@ fn main() {
 
     let mut amplitude = lag::lag(0.4);
 
-    let process = jack::ClosureProcessHandler::new(
-        move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-            // get input messages
-            let polling = false;
+    let jack_process = JackProc {
+        in_ports,
+        out_ports,
+        rx,
+        flow,
+        frame_buffer,
+        amplitude,
+        g,
+        s_ret,
+    };
 
-            while let Ok(update) = rx.try_recv() {
-                match update {
-                    UpdateMessage::SetVolume(a) => amplitude.set_target(a),
-                    _ => handle_messages(update, &mut g, &mut flow, &s_ret),
-                }
-            }
+    //
 
-            // Get output buffers
-            let mut outs: Vec<&mut [f32]> =
-                out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
+    // let process = jack::ClosureProcessHandler::new(
+    //     move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+    //         // get input messages
+    //         let polling = false;
 
-            // Get input buffers
-            let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
+    //         while let Ok(update) = rx.try_recv() {
+    //             match update {
+    //                 UpdateMessage::SetVolume(a) => amplitude.set_target(a),
+    //                 _ => handle_messages(update, &mut g, &mut flow, &s_ret),
+    //             }
+    //         }
 
-            // Write output
-            for i in 0..ps.n_frames() {
-                let input_samples: Vec<f64> =
-                    ins.iter().map(|input| input[i as usize] as f64).collect();
-                let amp = amplitude.tick();
-                g.process(&flow, &input_samples, &mut frame_buffer);
-                if i == 0 && polling {
-                    println!("{}", frame_buffer[0]);
-                }
+    //         // Get output buffers
+    //         let mut outs: Vec<&mut [f32]> =
+    //             out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
 
-                for (k, o) in outs.iter_mut().enumerate() {
-                    dc_leak_outs[k].input = frame_buffer[k];
-                    o[i as usize] = (dc_leak_outs[k].process() * amp) as f32;
-                }
-            }
+    //         // Get input buffers
+    //         let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
 
-            // Continue as normal
-            jack::Control::Continue
-        },
-    );
+    //         // Write output
+    //         for i in 0..ps.n_frames() {
+    //             let input_samples: Vec<f64> =
+    //                 ins.iter().map(|input| input[i as usize] as f64).collect();
+    //             let amp = amplitude.tick();
+    //             g.process(&flow, &input_samples, &mut frame_buffer);
+    //             if i == 0 && polling {
+    //                 println!("{}", frame_buffer[0]);
+    //             }
 
-    let _active_client = client.activate_async((), process).unwrap();
+    //             for (k, o) in outs.iter_mut().enumerate() {
+    //                 o[i as usize] = (frame_buffer[k] * amp) as f32;
+    //             }
+    //         }
 
-    rocket::ignite()
+    //         // Continue as normal
+    //         jack::Control::Continue
+    //     },
+    // );
+
+    unsafe {
+        JACK_PROCESS = Some(client.activate_async((), jack_process).unwrap());
+    }
+
+    // let process = jack::ClosureProcessHandler::new(
+    //     move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
+    //         // get input messages
+    //         let polling = false;
+
+    //         while let Ok(update) = rx.try_recv() {
+    //             match update {
+    //                 UpdateMessage::SetVolume(a) => amplitude.set_target(a),
+    //                 _ => handle_messages(update, &mut g, &mut flow, &s_ret),
+    //             }
+    //         }
+
+    //         // Get output buffers
+    //         let mut outs: Vec<&mut [f32]> =
+    //             out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
+
+    //         // Get input buffers
+    //         let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
+
+    //         // Write output
+    //         for i in 0..ps.n_frames() {
+    //             let input_samples: Vec<f64> =
+    //                 ins.iter().map(|input| input[i as usize] as f64).collect();
+    //             let amp = amplitude.tick();
+    //             g.process(&flow, &input_samples, &mut frame_buffer);
+    //             if i == 0 && polling {
+    //                 println!("{}", frame_buffer[0]);
+    //             }
+
+    //             for (k, o) in outs.iter_mut().enumerate() {
+    //                 dc_leak_outs[k].input = frame_buffer[k];
+    //                 o[i as usize] = (dc_leak_outs[k].process() * amp) as f32;
+    //             }
+    //         }
+
+    //         // Continue as normal
+    //         jack::Control::Continue
+    //     },
+    // );
+
+    // let _active_client = client.activate_async((), process).unwrap();
+
+    rocket::build()
         .manage(Globals {
             //            graph: &g,
+            //            jack_client: active_client,
             sender: tx,
             receiver: r_ret,
         })
@@ -558,6 +616,6 @@ fn main() {
                 set_edge_freq
             ],
         )
-        .attach(cors)
-        .launch();
+        .attach(cors.to_cors().expect("Cors failed"))
+    //        .manage(cors)
 }

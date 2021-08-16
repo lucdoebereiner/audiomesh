@@ -2,9 +2,7 @@
 
 members = [
     "processgraph",
-    "graphugen",
     "audiomesh",
-    "graphwasm",
 ]
 
 # [package]
