@@ -64,6 +64,7 @@ type alias Model =
     , spikeR : String
     , spikeTRest : String
     , kanekoChainN : String
+    , soundInIndex : String
     , edgeWeightControl : EdgeControl
     , edgeDelayControl : EdgeControl
     , edgeFreqControl : EdgeControl
@@ -103,6 +104,7 @@ init _ =
         "5"
         "20000"
         "100"
+        "0"
         EdgeControl.defaultControl
         EdgeControl.defaultControl
         EdgeControl.defaultControl
@@ -351,6 +353,7 @@ type Msg
     | SetResonatorFreqFactor String
     | SetResonatorDecay String
     | SetKanekoChainN String
+    | SetSoundInIndex String
     | SetProcessParameter Graph.NodeId Int Float
     | SetEdgeWeight Int Float
     | SetEdgeDelay Int Float
@@ -803,6 +806,9 @@ update msg model =
         SetKanekoChainN n ->
             ( { model | kanekoChainN = n }, Cmd.none )
 
+        SetSoundInIndex s ->
+            ( { model | soundInIndex = s }, Cmd.none )
+
         NoOp _ ->
             ( model, Cmd.none )
 
@@ -1072,6 +1078,20 @@ sinInput v =
         ]
 
 
+soundInInput : String -> Element Msg
+soundInInput v =
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        [ Input.text [ width (px 80) ]
+            { onChange = SetSoundInIndex
+            , text = v
+            , placeholder = Nothing
+            , label = Input.labelLeft [] (text "SoundInIndex")
+            }
+        , Maybe.withDefault none <|
+            Maybe.map (\i -> addProcess "SoundIn" (SoundIn { index = i, factor = 1 })) (String.toInt v)
+        ]
+
+
 linconInput : String -> String -> Element Msg
 linconInput a b =
     row [ spacing 5, Border.solid, Border.width 1 ]
@@ -1286,11 +1306,13 @@ processRow m =
 
         --        , addProcess "BitXOr" BitXOr
         , addProcess "BitAnd" BitAnd
-        , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
-        , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
+
+        -- , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
+        -- , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , addProcess "VanDerPol" (VanDerPol { e = 2, frac = 0.03, a = 1.0 })
         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5 })
         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
+        , soundInInput m.soundInIndex
         , kanekoChainInput m.kanekoChainN
         , delayInput m.delayLength
         , pllInput m.pllFac

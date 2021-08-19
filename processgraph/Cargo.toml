@@ -10,8 +10,9 @@ crate-type = ["cdylib", "staticlib", "lib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-petgraph = "0.5.0"
+petgraph = { version = "0.5.1", features = ["serde-1"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
 
 [dependencies.rand]
 version = "0.7"

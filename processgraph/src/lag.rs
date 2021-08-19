@@ -5,7 +5,7 @@ use crate::process::{lpf1_calc_freq, lpf1_calc_p};
 
 const LOG001: f64 = -6.90775527898; //0.001_f64.ln();
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Lag {
     pub current: f64,
     pub target: f64,

@@ -1484,6 +1484,13 @@ impl Process {
         self.spec().name
     }
 
+    pub fn is_input(&self) -> bool {
+        match self {
+            Process::SoundIn { .. } => true,
+            _ => false,
+        }
+    }
+
     pub fn clear_inputs(&mut self) {
         match self {
         Process::Wrap { ref mut input, .. }

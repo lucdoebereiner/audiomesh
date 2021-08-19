@@ -21,6 +21,7 @@ use petgraph::visit::Bfs;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
+use serde_json::Result;
 
 static mut DEBUG: bool = false;
 
@@ -231,7 +232,8 @@ pub type UGenGraphStructure = StableGraph<UGen, Connection, Directed, DefaultIx>
 pub struct UGenGraph {
     pub graph: UGenGraphStructure, // TODO: goal, make no longer pub, all edge/node manipulations via impl
     pub edge_fac: lag::Lag,
-    current_listening_nodes: Vec<NodeIndex>,
+    current_listening_nodes: Vec<NodeIndex>, // TODO check if this is kept up to date when output_amp of ugen is set
+                                             // TODO move flow in here
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -249,6 +251,34 @@ impl UGenGraph {
             graph: StableGraph::with_capacity(100, 100),
             edge_fac: ef,
             current_listening_nodes: vec![],
+        }
+    }
+
+    pub fn from_json_string(json: String, flow: &mut Vec<NodeIndex>) -> Result<UGenGraph> {
+        let struc: UGenGraphStructure = serde_json::from_str(&json)?;
+        let mut g = UGenGraph::new();
+        g.graph = struc;
+        g.init_after_deserialization();
+        g.update_connections_and_flow(flow);
+        Ok(g)
+    }
+
+    pub fn offset_sound_ins(&mut self, offset: usize) {
+        for ugen in self.graph.node_weights_mut() {
+            match &ugen.process {
+                Process::SoundIn {
+                    input,
+                    index,
+                    factor,
+                } => {
+                    ugen.process = Process::SoundIn {
+                        input: *input,
+                        index: index + offset,
+                        factor: *factor,
+                    }
+                }
+                _ => (),
+            }
         }
     }
 
@@ -698,6 +728,30 @@ impl UGenGraph {
         }
     }
 
+    pub fn number_of_inputs(&mut self) -> usize {
+        self.graph
+            .node_weights_mut()
+            .filter_map(|u| match u.process {
+                Process::SoundIn { index, .. } => Some(index),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0)
+            + 1
+    }
+
+    pub fn number_of_outputs(&mut self) -> usize {
+        let mut max_out: usize = 0;
+        for ugen in self.graph.node_weights_mut() {
+            for (out_i, amp_out) in ugen.output_sends.iter_mut() {
+                if ((amp_out.target > 0.0) || (amp_out.current > 0.0)) && (*out_i > max_out) {
+                    max_out = *out_i;
+                }
+            }
+        }
+        max_out + 1
+    }
+
     pub fn process(
         &mut self,
         flow: &Vec<NodeIndex>,
@@ -712,17 +766,8 @@ impl UGenGraph {
         for ugen in self.graph.node_weights_mut() {
             let current_value = ugen.value.unwrap_or(0.0);
             for (out_i, amp_out) in ugen.output_sends.iter_mut() {
-                // println!(
-                //     "val {}, amp out {}, outputamp {}",
-                //     current_value, ugen.output_amp.current, amp_out.current
-                // );
                 output_buffer[*out_i % output_buffer.len()] +=
                     current_value * ugen.output_amp.tick() * amp_out.tick();
-                // println!(
-                //     "out {}: out_i {}",
-                //     output_buffer[*out_i % output_buffer.len()],
-                //     out_i
-                // );
             }
         }
         for &i in flow {
@@ -907,20 +952,22 @@ impl UGenGraph {
 //     })
 // }
 
-// fn sinosc(freq: f64) -> Process {
-//     Process::SinOsc {
-//         input: 0.0,
-//         freq: lag::lag(freq),
-//         phase: 0.0,
-//     }
-// }
+pub fn sinosc(freq: f64) -> UGen {
+    UGen::new(Process::SinOsc {
+        input: 0.0,
+        freq: lag::lag(freq),
+        freq_mul: lag::lag(1.0),
+        phase: 0.0,
+    })
+}
 
-// fn map_process(func: fn(f64) -> f64) -> UGen {
-//     UGen::new(Process::Map {
-//         input: 0.0,
-//         func: func,
-//     })
-// }
+pub fn soundinput(index: usize) -> UGen {
+    UGen::new(Process::SoundIn {
+        input: 0.0,
+        index: index,
+        factor: lag::lag(1.0),
+    })
+}
 
 // pub fn wrap(lo: f64, hi: f64) -> UGen {
 //     UGen::new(Process::Wrap { input: 0.0, lo, hi })

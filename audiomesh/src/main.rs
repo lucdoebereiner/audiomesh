@@ -219,7 +219,7 @@ fn get_graph(state: &State<Globals>) -> content::Json<String> {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     let receiver = &shared_data.receiver;
-    sender.send(UpdateMessage::DumpGraph).unwrap();
+    let res = sender.send(UpdateMessage::DumpGraph);
     match receiver.recv().unwrap() {
         ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => content::Json(g),
     }
@@ -443,11 +443,11 @@ fn rocket() -> _ {
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
 
     // Create graph and init
-    let mut g = UGenGraph::new();
+    let g = UGenGraph::new();
 
-    let mut flow = vec![];
+    let flow = vec![];
     let n_outs = 2;
-    let mut frame_buffer = vec![0.0; n_outs];
+    let frame_buffer = vec![0.0; n_outs];
     let mut dc_leak_outs = vec![];
 
     for _i in 0..n_outs {
@@ -483,7 +483,7 @@ fn rocket() -> _ {
         );
     }
 
-    let mut amplitude = lag::lag(0.4);
+    let amplitude = lag::lag(0.4);
 
     let jack_process = JackProc {
         in_ports,
@@ -496,92 +496,9 @@ fn rocket() -> _ {
         s_ret,
     };
 
-    //
-
-    // let process = jack::ClosureProcessHandler::new(
-    //     move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-    //         // get input messages
-    //         let polling = false;
-
-    //         while let Ok(update) = rx.try_recv() {
-    //             match update {
-    //                 UpdateMessage::SetVolume(a) => amplitude.set_target(a),
-    //                 _ => handle_messages(update, &mut g, &mut flow, &s_ret),
-    //             }
-    //         }
-
-    //         // Get output buffers
-    //         let mut outs: Vec<&mut [f32]> =
-    //             out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
-
-    //         // Get input buffers
-    //         let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
-
-    //         // Write output
-    //         for i in 0..ps.n_frames() {
-    //             let input_samples: Vec<f64> =
-    //                 ins.iter().map(|input| input[i as usize] as f64).collect();
-    //             let amp = amplitude.tick();
-    //             g.process(&flow, &input_samples, &mut frame_buffer);
-    //             if i == 0 && polling {
-    //                 println!("{}", frame_buffer[0]);
-    //             }
-
-    //             for (k, o) in outs.iter_mut().enumerate() {
-    //                 o[i as usize] = (frame_buffer[k] * amp) as f32;
-    //             }
-    //         }
-
-    //         // Continue as normal
-    //         jack::Control::Continue
-    //     },
-    // );
-
     unsafe {
         JACK_PROCESS = Some(client.activate_async((), jack_process).unwrap());
     }
-
-    // let process = jack::ClosureProcessHandler::new(
-    //     move |_: &jack::Client, ps: &jack::ProcessScope| -> jack::Control {
-    //         // get input messages
-    //         let polling = false;
-
-    //         while let Ok(update) = rx.try_recv() {
-    //             match update {
-    //                 UpdateMessage::SetVolume(a) => amplitude.set_target(a),
-    //                 _ => handle_messages(update, &mut g, &mut flow, &s_ret),
-    //             }
-    //         }
-
-    //         // Get output buffers
-    //         let mut outs: Vec<&mut [f32]> =
-    //             out_ports.iter_mut().map(|p| p.as_mut_slice(ps)).collect();
-
-    //         // Get input buffers
-    //         let ins: Vec<&[f32]> = in_ports.iter().map(|p| p.as_slice(ps)).collect();
-
-    //         // Write output
-    //         for i in 0..ps.n_frames() {
-    //             let input_samples: Vec<f64> =
-    //                 ins.iter().map(|input| input[i as usize] as f64).collect();
-    //             let amp = amplitude.tick();
-    //             g.process(&flow, &input_samples, &mut frame_buffer);
-    //             if i == 0 && polling {
-    //                 println!("{}", frame_buffer[0]);
-    //             }
-
-    //             for (k, o) in outs.iter_mut().enumerate() {
-    //                 dc_leak_outs[k].input = frame_buffer[k];
-    //                 o[i as usize] = (dc_leak_outs[k].process() * amp) as f32;
-    //             }
-    //         }
-
-    //         // Continue as normal
-    //         jack::Control::Continue
-    //     },
-    // );
-
-    // let _active_client = client.activate_async((), process).unwrap();
 
     rocket::build()
         .manage(Globals {
