@@ -1,4 +1,4 @@
-* TODO graph synth rust [61/104]
+* TODO graph synth rust [62/105]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -79,25 +79,26 @@
   - [ ] randomize
   - [ ] control lag
 - [X] leak dc on output
-- [-] general sc ugen loading json networks
+- [X] general sc ugen loading json networks
   - [X] basic ugen and json loading
   - [X] soundin flexible index in elm
-  - [ ] edge fac general control
-  - [ ] edge facs specific control
-  - [ ] edge delays specific control
-  - [ ] edge lpf specific control
-  - [ ] stetoscope? or all outputs
+  - [X] edge fac general control
+  - [X] stetoscope? or all outputs
+  - [X] edge facs specific control
+  - [X] edge delays specific control
+  - [X] edge lpf specific control
 - [ ] lang for expressing networks
 - [ ] move flow into ugengraph struct
 - [ ] general input fader
 - [ ] prelisten solo mode
 - [ ] simpler addition of ugens, auto elm decoder/types
+- [ ] trait obj instead of enum?
 - [ ] slow compression
 - [ ] delay feedbacks with compression and leakage
 - [ ] sanitize output
 - [ ] output compressor
 - [ ] insert process in edge (between)
-- [ ] accumulation on tapdelay
+- [ ] accumulation in tapdelay
 - [ ] halfwave stuff
 - [ ] fdn with matrix
 - [ ] zero crossing follow

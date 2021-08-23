@@ -243,6 +243,81 @@ pub struct OutputSpec {
     pub amp: f64,
 }
 
+fn round(x: f64, quant: f64) -> f64 {
+    if quant == 0.0 {
+        x
+    } else {
+        (x / quant + 0.5).floor() * quant
+    }
+}
+
+fn trunc(x: f64, quant: f64) -> f64 {
+    if quant == 0.0 {
+        x
+    } else {
+        (x / quant).floor() * quant
+    }
+}
+
+fn fold(input: f64, lo: f64, hi: f64) -> f64 {
+    let x = input - lo;
+    let mut input_res = input;
+
+    if input_res >= hi {
+        input_res = hi + hi - input_res;
+        if input_res >= lo {
+            return input_res;
+        }
+    } else if input_res < lo {
+        input_res = lo + lo - input_res;
+        if input_res < hi {
+            return input_res;
+        }
+    } else {
+        return input_res;
+    }
+    if hi == lo {
+        return lo;
+    }
+    // ok do the divide
+    let range = hi - lo;
+    let range2 = range + range;
+    let mut c = x - range2 * (x / range2).floor();
+    if c >= range {
+        c = range2 - c;
+    }
+    return c + lo;
+}
+
+fn fold2(a: f64, b: f64) -> f64 {
+    fold(a, -b, b)
+}
+
+fn steto_indices(index: f64, length: usize) -> (usize, usize, f64) {
+    let index_scaled = index * length as f64;
+    let lower = round(index_scaled, 2.) as usize;
+    let upper = trunc(index_scaled, 2.) as usize + 1;
+    let bin_index = fold2(index_scaled * 2. - 1., 1.);
+    (lower, upper, bin_index)
+}
+
+fn calc_steto_amp(steto: f64, i: usize, n_output_ugens: usize) -> f64 {
+    let (lower, upper, bin_index) = steto_indices(steto, n_output_ugens);
+    let index_scaled = (bin_index + 1.0) / 2.0;
+    let result = if i == lower {
+        1. - index_scaled
+    } else if i == upper {
+        index_scaled
+    } else {
+        0.
+    };
+    // println!(
+    //     "steto: {}, l:{}, u:{}, bidx:{} steto {} for {} is {}",
+    //     steto, lower, upper, bin_index, steto, i, result
+    // );
+    result
+}
+
 impl UGenGraph {
     pub fn new() -> UGenGraph {
         let mut ef = lag::lag(1.0);
@@ -252,6 +327,30 @@ impl UGenGraph {
             edge_fac: ef,
             current_listening_nodes: vec![],
         }
+    }
+
+    pub fn set_edges_weight(&mut self, weight: f64, step: usize, skip: usize) {
+        self.graph
+            .edge_weights_mut()
+            .skip(skip)
+            .step_by(step)
+            .for_each(|e| e.set_weight(weight));
+    }
+
+    pub fn set_edges_delay(&mut self, delay: f64, step: usize, skip: usize) {
+        self.graph
+            .edge_weights_mut()
+            .skip(skip)
+            .step_by(step)
+            .for_each(|e| e.set_delay(delay));
+    }
+
+    pub fn set_edges_lp_freq(&mut self, freq: f64, step: usize, skip: usize) {
+        self.graph
+            .edge_weights_mut()
+            .skip(skip)
+            .step_by(step)
+            .for_each(|e| e.set_frequency(freq));
     }
 
     pub fn from_json_string(json: String, flow: &mut Vec<NodeIndex>) -> Result<UGenGraph> {
@@ -279,6 +378,34 @@ impl UGenGraph {
                 }
                 _ => (),
             }
+        }
+    }
+
+    pub fn reset_outputs(&mut self) {
+        for ugen in self.graph.node_weights_mut() {
+            ugen.output_sends = vec![];
+        }
+    }
+
+    pub fn set_steto_output_channel(&mut self, output_idx: usize, steto: f64) {
+        let n_output_ugens = self
+            .graph
+            .node_weights_mut()
+            .filter(|u| u.process.is_output())
+            .count();
+        if n_output_ugens < 2 {
+            self.graph
+                .node_weights_mut()
+                .filter(|u| u.process.is_output())
+                .for_each(|u| u.set_output(output_idx, 1.0));
+        } else {
+            self.graph
+                .node_weights_mut()
+                .filter(|u| u.process.is_output())
+                .enumerate()
+                .for_each(|(i, u)| {
+                    u.set_output(output_idx, calc_steto_amp(steto, i, n_output_ugens))
+                });
         }
     }
 

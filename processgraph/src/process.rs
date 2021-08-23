@@ -143,6 +143,18 @@ pub enum Process {
         #[serde(skip_serializing)]
         #[serde(default = "dc_remove_filter")]
         output: filters::OnePoleHP,
+        #[serde(skip_serializing)]
+        #[serde(default = "dc_remove_filter")]
+        x_filter: filters::OnePoleHP,
+        #[serde(skip_serializing)]
+        #[serde(default = "dc_remove_filter")]
+        y_filter: filters::OnePoleHP,
+        #[serde(skip_serializing)]
+        #[serde(default = "dynsys_compressor")]
+        x_compr: Box<Process>,
+        #[serde(skip_serializing)]
+        #[serde(default = "dynsys_compressor")]
+        y_compr: Box<Process>,
     },
     Duffing {
         #[serde(skip)]
@@ -431,6 +443,32 @@ fn rms_chain() -> Vec<Process> {
     ]
 }
 
+fn dynsys_compressor() -> Box<Process> {
+    Box::new(Process::Compressor {
+        input_level: vec![],
+        input: 0.0,
+        threshold: lag::lag(0.4),
+        ratio: lag::lag(0.6),
+        makeup: lag::lag(1.0),
+    })
+}
+
+pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
+    Process::VanDerPol {
+        input: 0.0,
+        x: 0.0,
+        y: 0.0,
+        frac: lag::lag(frac),
+        e: lag::lag(e),
+        a: lag::lag(a),
+        output: dc_remove_filter(),
+        x_filter: dc_remove_filter(),
+        y_filter: dc_remove_filter(),
+        x_compr: dynsys_compressor(),
+        y_compr: dynsys_compressor(),
+    }
+}
+
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
     dlag.set_duration_ud(0.1, 0.1);
@@ -528,6 +566,10 @@ impl Process {
                 ref mut e,
                 ref mut a,
                 ref mut output,
+                ref mut x_filter,
+                ref mut y_filter,
+                ref mut x_compr,
+                ref mut y_compr,
             } => {
                 let this_e = e.tick();
                 let f = frac.tick();
@@ -550,6 +592,15 @@ impl Process {
 
                 let mut d_x = ((d_x_n + d_x_1) / 2.0) * f;
                 let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
+
+                x_filter.input = d_x;
+                y_filter.input = d_y;
+                d_x = x_filter.process();
+                d_y = y_filter.process();
+                x_compr.set_input(0, d_x, false);
+                y_compr.set_input(0, d_y, false);
+                d_x = x_compr.process(external_input);
+                d_y = y_compr.process(external_input);
 
                 //hard reset
                 if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
@@ -905,6 +956,16 @@ impl Process {
                 *last_out = output;
                 output
             }
+        }
+    }
+
+    pub fn is_output(&self) -> bool {
+        match self {
+            Process::Mem { .. }
+            | Process::SoundIn { .. }
+            | Process::Delay { .. }
+            | Process::RMS { .. } => false,
+            _ => true,
         }
     }
 
