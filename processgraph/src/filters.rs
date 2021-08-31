@@ -236,6 +236,7 @@ pub struct OnePoleHP {
     last_in: f64,
     last_out: f64,
     x: f64,
+    w: f64,
 }
 
 impl OnePoleHP {
@@ -245,15 +246,22 @@ impl OnePoleHP {
             last_in: 0.0,
             last_out: 0.0,
             x: x,
+            w: 0.0,
         }
     }
     pub fn process(&mut self) -> f64 {
-        let a0 = ((1.0 + self.x) / 2.0) * self.input;
-        let a1 = ((-1.0 * (1.0 + self.x)) / 2.0) * self.last_in;
-        let b = self.last_out * self.x;
-        let output = a0 + a1 + b;
-        self.last_out = output;
-        self.last_in = self.input;
+        // https://sam-koblenski.blogspot.com/2015/11/everyday-dsp-for-programmers-dc-and.html
+        let w_n = zapgremlins(self.input + (self.x * self.w));
+        let output = w_n - self.w;
+        self.w = w_n;
         output
+        // actual one pole, creating artefacts ??
+        // let a0 = ((1.0 + self.x) / 2.0) * self.input;
+        // let a1 = ((-1.0 * (1.0 + self.x)) / 2.0) * self.last_in;
+        // let b = self.last_out * self.x;
+        // let output = a0 + a1 + b;
+        // self.last_out = output;
+        // self.last_in = self.input;
+        // output
     }
 }

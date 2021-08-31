@@ -133,9 +133,11 @@ pub enum Process {
     VanDerPol {
         #[serde(skip)]
         input: f64,
-        #[serde(skip)]
+        #[serde(skip_serializing)]
+        #[serde(default = "vdp_x")]
         x: f64,
-        #[serde(skip)]
+        #[serde(skip_serializing)]
+        #[serde(default = "vdp_y")]
         y: f64,
         frac: lag::Lag,
         e: lag::Lag,
@@ -447,8 +449,8 @@ fn dynsys_compressor() -> Box<Process> {
     Box::new(Process::Compressor {
         input_level: vec![],
         input: 0.0,
-        threshold: lag::lag(0.4),
-        ratio: lag::lag(0.6),
+        threshold: lag::lag(0.35),
+        ratio: lag::lag(5.0),
         makeup: lag::lag(1.0),
     })
 }
@@ -467,6 +469,14 @@ pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
         x_compr: dynsys_compressor(),
         y_compr: dynsys_compressor(),
     }
+}
+
+fn vdp_x() -> f64 {
+    0.1
+}
+
+fn vdp_y() -> f64 {
+    0.2
 }
 
 fn ducking_lag() -> lag::Lag {
@@ -488,7 +498,7 @@ fn pll_error_lag() -> lag::Lag {
 }
 
 pub fn dc_remove_filter() -> filters::OnePoleHP {
-    filters::OnePoleHP::new(0.97)
+    filters::OnePoleHP::new(0.98)
 }
 
 fn filter(filter_type: filters::FilterType, freq: f64, q: f64) -> Process {
@@ -523,6 +533,13 @@ fn clear_chain(chain: &mut [Process]) {
 #[inline]
 fn kaneko_logisitc(x: f64, a: f64) -> f64 {
     1.0 - a * numerical::wrap(x, -1.0, 1.0).powi(2)
+}
+
+#[inline]
+fn vdp_calc(x: f64, y: f64, e: f64, a: f64, input: f64) -> (f64, f64) {
+    let d_x = y + (input * a);
+    let d_y = (e * (1.0 - x.powi(2)) * y) - x;
+    (d_x, d_y)
 }
 
 impl Process {
@@ -575,46 +592,80 @@ impl Process {
                 let f = frac.tick();
                 let this_a = a.tick();
 
-                let mut d_x_n = *y;
-                let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x + (*input * this_a);
+                let deltas1 = vdp_calc(*x, *y, this_e, this_a, *input);
 
-                d_x_n = zapgremlins(d_x_n);
-                d_y_n = zapgremlins(d_y_n);
+                let deltas2 = vdp_calc(
+                    *x + (deltas1.0 * f),
+                    *y + (deltas1.1 * f),
+                    this_e,
+                    this_a,
+                    *input,
+                );
 
-                let x_1 = *x + (d_x_n * f);
-                let y_1 = *y + (d_y_n * f);
+                // let mut d_x = (*y + (*input * this_a)) * f;
+                // let mut d_y = ((this_e * *y * (1.0 - (*x).powi(2))) - *x) * f;
 
-                let mut d_x_1 = y_1;
-                let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1 + (*input * this_a);
+                // let mut d_x_n = *y + (*input * this_a);
+                // let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x;
 
-                d_x_1 = zapgremlins(d_x_1);
-                d_y_1 = zapgremlins(d_y_1);
+                // d_x_n = zapgremlins(d_x_n);
+                // d_y_n = zapgremlins(d_y_n);
 
-                let mut d_x = ((d_x_n + d_x_1) / 2.0) * f;
-                let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
+                // let x_1 = *x + (d_x_n * f);
+                // let y_1 = *y + (d_y_n * f);
 
-                x_filter.input = d_x;
-                y_filter.input = d_y;
-                d_x = x_filter.process();
-                d_y = y_filter.process();
-                x_compr.set_input(0, d_x, false);
-                y_compr.set_input(0, d_y, false);
-                d_x = x_compr.process(external_input);
-                d_y = y_compr.process(external_input);
+                // let mut d_x_1 = y_1 + (*input * this_a);
+                // let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1;
+
+                // d_x_1 = zapgremlins(d_x_1);
+                // d_y_1 = zapgremlins(d_y_1);
+
+                let d_x = ((deltas1.0 + deltas2.0) / 2.0) * f;
+                let d_y = ((deltas1.1 + deltas2.1) / 2.0) * f;
+
+                let mut new_x = *x + d_x;
+                let mut new_y = *y + d_y;
+
+                // x_filter.input = zapgremlins(new_x);
+                // y_filter.input = zapgremlins(new_y);
+                // new_x = x_filter.process();
+                // new_y = y_filter.process();
+                x_compr.set_input(0, new_x, false);
+                y_compr.set_input(0, new_y, false);
+                new_x = x_compr.process(external_input);
+                new_y = y_compr.process(external_input);
 
                 //hard reset
-                if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
-                    //                    println!("reset vdp x{} y{}", d_x, d_y);
-                    d_x = 0.0;
-                    d_y = 0.0;
-                    *x = 0.0;
-                    *y = 0.0;
-                }
+                // if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
+                //     //                    println!("reset vdp x{} y{}", d_x, d_y);
+                //     d_x = 0.05;
+                //     d_y = 0.1;
+                //     *x = 0.0;
+                //     *y = 0.0;
+                // }
 
-                *x = *x + d_x;
-                *y = *y + d_y;
-                output.input = *x * 0.5;
-                output.process()
+                *x = (new_x * 0.5).tanh() * 2.; //*x + (deltas1.0 * f); //.tanh();
+                *y = (new_y * 0.5).tanh() * 2.; //*y + (deltas1.1 * f); //.tanh();
+                                                //     println!("e: {}, f: {}, a: {}, x: {}, y: {}", this_e, f, this_a, x, y);
+
+                // println!(
+                //     "d1: {}, d2: {}, f: {}, x: {}, y: {}",
+                //     deltas1.0, deltas1.1, f, x, y
+                // );
+                *x
+                //                output.input = *x;
+                //              output.process()
+
+                // output.input = *input;
+                // output.process()
+
+                // let in_before = (*input * this_a);
+                // x_filter.input = in_before;
+                // let in_filter = x_filter.process();
+                // x_compr.set_input(0, in_filter, false);
+                // let in_after = x_compr.process(external_input);
+                // println!("before: {}, after: {}", in_before, in_after);
+                // in_after
             }
             Process::Duffing {
                 input,
@@ -1554,89 +1605,96 @@ impl Process {
 
     pub fn clear_inputs(&mut self) {
         match self {
-        Process::Wrap { ref mut input, .. }
-        | Process::Filter { ref mut input, .. }
-//        | Process::Map { ref mut input, .. }
-        | Process::CurveLin { ref mut input, .. }
-	| Process::Square { ref mut input }
-	| Process::Sqrt { ref mut input }
-        | Process::Gauss { ref mut input }
-        | Process::Softclip { ref mut input }
-        | Process::Mem { ref mut input, .. }
-	| Process::RMS { ref mut input, .. }
-        | Process::LPF1 { ref mut input, .. }
-	| Process::LinCon { ref mut input, .. }
-	| Process::Spike { ref mut input, .. }
-	| Process::VarDelay { ref mut input, .. }
-	| Process::VanDerPol { ref mut input, .. }
+            Process::Wrap { ref mut input, .. }
+            | Process::Filter { ref mut input, .. }
+            //        | Process::Map { ref mut input, .. }
+            | Process::CurveLin { ref mut input, .. }
+	    | Process::Square { ref mut input }
+	    | Process::Sqrt { ref mut input }
+            | Process::Gauss { ref mut input }
+            | Process::Softclip { ref mut input }
+            | Process::Mem { ref mut input, .. }
+	    | Process::RMS { ref mut input, .. }
+            | Process::LPF1 { ref mut input, .. }
+	    | Process::LinCon { ref mut input, .. }
+	    | Process::Spike { ref mut input, .. }
+	    | Process::VarDelay { ref mut input, .. }
 	    | Process::Duffing { ref mut input, .. }
-	    	| Process::Fold { ref mut input, .. }
-	| Process::BitNeg { ref mut input } => *input = 0.0,
-        Process::SinOsc { ref mut input, .. } => *input = 0.0,
-	Process::Compressor { ref mut input, ref mut input_level, .. }
-	| Process::Env { ref mut input, ref mut input_level, .. }
-	| Process::EnvFollow { ref mut input, ref mut input_level, .. }
-	| Process::Ducking { ref mut input, ref mut input_level, .. } => {
-	    *input = 0.0;
-	    clear_chain(input_level);
-	},
+	    | Process::Fold { ref mut input, .. }
+	    | Process::BitNeg { ref mut input } => *input = 0.0,
+            Process::SinOsc { ref mut input, .. } => *input = 0.0,
+	    Process::Compressor { ref mut input, ref mut input_level, .. }
+	    | Process::Env { ref mut input, ref mut input_level, .. }
+	    | Process::EnvFollow { ref mut input, ref mut input_level, .. }
+	    | Process::Ducking { ref mut input, ref mut input_level, .. } => {
+	        *input = 0.0;
+	        clear_chain(input_level);
+	    },
 
-	Process::GateDecision { ref mut input, ref mut other_level, .. } => {
-	    *input = 0.0;
-	    clear_chain(other_level);
-	},
+            | Process::VanDerPol { ref mut input, ref mut x_compr, ref mut y_compr, ref mut x_filter, ref mut y_filter, .. } => {
+	        *input = 0.0;
+                x_filter.input = 0.0;
+                y_filter.input = 0.0;
+                x_compr.clear_inputs();
+                y_compr.clear_inputs();
+            }
+
+	    Process::GateDecision { ref mut input, ref mut other_level, .. } => {
+	        *input = 0.0;
+	        clear_chain(other_level);
+	    },
 
 	    Process::Resonator { ref mut input, ref mut freq_mod, .. } => {
 		*input = 0.0;
 		*freq_mod = 0.0;
-	},
-	Process::PLL { ref mut input, .. } => input.input = 0.0,
-	Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
-	| Process::Ring { ref mut inputs, ref mut input_counter } => {
-	    *input_counter = 0;
-	    for i in inputs.iter_mut() {
-		i.clear_inputs();
+	    },
+	    Process::PLL { ref mut input, .. } => input.input = 0.0,
+	    Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+	    | Process::Ring { ref mut inputs, ref mut input_counter } => {
+	        *input_counter = 0;
+	        for i in inputs.iter_mut() {
+		    i.clear_inputs();
+	        }
 	    }
-	}
-	Process::Sin { ref mut input, .. } => *input = 0.0,
-        Process::Constant { .. }  => (),
-	| Process::SoundIn { ref mut input, .. } => *input = 0.0,
-        Process::Delay {
-            ref mut input,
-            rec_idx,
-        } => input[*rec_idx] = 0.0,
-        Process::BitOr {
-            ref mut input1,
-            ref mut input2,
-        }
-	| Process::GateIfGreater {
-            ref mut input1,
-            ref mut input2,
-        }
+	    Process::Sin { ref mut input, .. } => *input = 0.0,
+            Process::Constant { .. }  => (),
+	    | Process::SoundIn { ref mut input, .. } => *input = 0.0,
+            Process::Delay {
+                ref mut input,
+                rec_idx,
+            } => input[*rec_idx] = 0.0,
+            Process::BitOr {
+                ref mut input1,
+                ref mut input2,
+            }
+	    | Process::GateIfGreater {
+                ref mut input1,
+                ref mut input2,
+            }
 
-        | Process::BitXOr {
-            ref mut input1,
-            ref mut input2,
-        }
+            | Process::BitXOr {
+                ref mut input1,
+                ref mut input2,
+            }
 
-        | Process::Kaneko {
-            ref mut input1,
-            ref mut input2,
-	    ..
-        }
-        | Process::KanekoChain {
-            ref mut input1,
-            ref mut input2,
-	    ..
-        }
+            | Process::Kaneko {
+                ref mut input1,
+                ref mut input2,
+	        ..
+            }
+            | Process::KanekoChain {
+                ref mut input1,
+                ref mut input2,
+	        ..
+            }
 
-        | Process::BitAnd {
-            ref mut input1,
-            ref mut input2,
-        } => {
-            *input1 = 0.0;
-            *input2 = 0.0;
+            | Process::BitAnd {
+                ref mut input1,
+                ref mut input2,
+            } => {
+                *input1 = 0.0;
+                *input2 = 0.0;
+            }
         }
-    }
     }
 }

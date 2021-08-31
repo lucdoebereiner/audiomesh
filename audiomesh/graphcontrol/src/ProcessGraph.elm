@@ -233,9 +233,9 @@ processParameters p =
             ]
 
         VanDerPol { e, frac, a } ->
-            [ Parameter 1 e Exp "E" 0.05 20
-            , Parameter 2 frac Exp "dt" 0.001 0.9
-            , Parameter 3 a Exp "a" 0.001 10.0
+            [ Parameter 1 e Exp "E" 0.02 5
+            , Parameter 2 frac Exp "dt" 0.001 0.5
+            , Parameter 3 a Exp "a" 0.0001 30.0
             ]
 
         Duffing { e, frac, a } ->
