@@ -68,6 +68,7 @@ type alias Model =
     , edgeWeightControl : EdgeControl
     , edgeDelayControl : EdgeControl
     , edgeFreqControl : EdgeControl
+    , matrixMode : Bool
     }
 
 
@@ -108,6 +109,7 @@ init _ =
         EdgeControl.defaultControl
         EdgeControl.defaultControl
         EdgeControl.defaultControl
+        False
     , Api.getGraph GotGraph
     )
 
@@ -1399,6 +1401,16 @@ view model =
                 , simpleButton "Random Circle" RandomCircle
                 , simpleButton "Discon Most Connected" DisconnectMostConnected
                 , simpleButton "Conn Least Connected" ConnectLeastConnected
+                , simpleButton
+                    ("Matrix "
+                        ++ (if model.matrixMode then
+                                "on"
+
+                            else
+                                "off"
+                           )
+                    )
+                    MatrixToggle
                 , downloadInput model.fileName
                 , simpleButton "Load" LoadGraph
                 ]

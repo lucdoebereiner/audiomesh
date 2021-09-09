@@ -70,7 +70,7 @@ struct Globals {
 
 #[get("/matrix")]
 fn get_matrix(state: &State<Globals>) -> content::Json<Value> {
-    let mut lock = state.matrix_mode.lock().unwrap();
+    let lock = state.matrix_mode.lock().unwrap();
     content::Json(Value::Bool(*lock))
 }
 

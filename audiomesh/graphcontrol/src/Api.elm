@@ -16,6 +16,7 @@ module Api exposing
     , setEdgeFac
     , setEdgeFreq
     , setEdgeWeight
+    , setMatrixMode
     , setNodeOutputAmp
     , setOutputs
     , setParameter
@@ -96,6 +97,23 @@ setParameter msg ugenIdx parameter value =
                 ++ String.fromInt parameter
                 ++ "/"
                 ++ String.fromFloat value
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setMatrixMode : (Result Http.Error () -> msg) -> Bool -> Cmd msg
+setMatrixMode msg mode =
+    Http.post
+        { url =
+            baseUrl
+                ++ "/matrix/"
+                ++ (if mode then
+                        "on"
+
+                    else
+                        "off"
+                   )
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }
