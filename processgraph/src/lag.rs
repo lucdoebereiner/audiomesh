@@ -51,12 +51,14 @@ where
 }
 
 pub fn lag(init: f64) -> Lag {
-    Lag {
+    let mut l = Lag {
         current: init,
         target: init,
         factor_up: 0.99998,
         factor_down: 0.99998,
-    }
+    };
+    l.set_duration(0.1);
+    l
 }
 
 impl Lag {

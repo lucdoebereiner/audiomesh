@@ -3,16 +3,16 @@
 #[macro_use]
 extern crate rocket;
 
-use rocket_cors::AllowedMethods;
-use rocket_cors::AllowedOrigins;
-use std::str::FromStr;
-
 use crossbeam_channel::bounded;
 use crossbeam_channel::{Receiver, Sender};
 use futures::executor::block_on;
 use jack;
 use rocket::http::Method;
 use rocket::serde::json::*;
+use rocket_cors::AllowedMethods;
+use rocket_cors::AllowedOrigins;
+use std::str::FromStr;
+use std::sync::Mutex;
 //use rocket_contrib::json::*;
 use rocket_cors;
 //use rocket_cors::AllowedHeaders;
@@ -37,11 +37,11 @@ enum UpdateMessage {
     Randomize,
     RandomCircle,
     DumpGraph,
-    SetGraph(UGenGraphStructure),
-    AddEdge(NodeIndex, NodeIndex, f64, usize),
-    RemoveNode(usize),
-    AddNode(Process),
-    RemoveEdge(usize),
+    SetGraph(UGenGraphStructure, bool),
+    AddEdge(NodeIndex, NodeIndex, f64, usize, bool),
+    RemoveNode(usize, bool),
+    AddNode(Process, bool),
+    RemoveEdge(usize, bool),
     SetEdgeWeight(usize, f64),
     SetEdgeFreq(usize, f64),
     SetEdgeDelay(usize, f64),
@@ -65,6 +65,25 @@ enum ReturnMessage {
 struct Globals {
     sender: Sender<UpdateMessage>,
     receiver: Receiver<ReturnMessage>,
+    matrix_mode: Mutex<bool>,
+}
+
+#[get("/matrix")]
+fn get_matrix(state: &State<Globals>) -> content::Json<Value> {
+    let mut lock = state.matrix_mode.lock().unwrap();
+    content::Json(Value::Bool(*lock))
+}
+
+#[put("/matrix/on")]
+fn matrix_on(state: &State<Globals>) {
+    let mut lock = state.matrix_mode.lock().unwrap();
+    *lock = true;
+}
+
+#[put("/matrix/off")]
+fn matrix_off(state: &State<Globals>) {
+    let mut lock = state.matrix_mode.lock().unwrap();
+    *lock = false;
 }
 
 #[post("/volume/<amp>")]
@@ -78,15 +97,17 @@ fn set_volume(amp: f64, state: &State<Globals>) {
 fn remove_node(id: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
-    sender.send(UpdateMessage::RemoveNode(id)).unwrap()
+    let matrix = state.matrix_mode.lock().unwrap();
+    sender.send(UpdateMessage::RemoveNode(id, *matrix)).unwrap()
 }
 
 #[post("/node", data = "<process>")]
 fn add_node(process: Json<Process>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
+    let matrix = state.matrix_mode.lock().unwrap();
     sender
-        .send(UpdateMessage::AddNode(process.into_inner()))
+        .send(UpdateMessage::AddNode(process.into_inner(), *matrix))
         .unwrap()
 }
 
@@ -94,8 +115,9 @@ fn add_node(process: Json<Process>, state: &State<Globals>) {
 fn set_graph(graph: Json<UGenGraphStructure>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
+    let matrix = state.matrix_mode.lock().unwrap();
     sender
-        .send(UpdateMessage::SetGraph(graph.into_inner()))
+        .send(UpdateMessage::SetGraph(graph.into_inner(), *matrix))
         .unwrap()
 }
 
@@ -139,7 +161,8 @@ fn set_parameter(id: usize, input: u32, value: f64, state: &State<Globals>) {
 fn remove_edge(id: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
-    sender.send(UpdateMessage::RemoveEdge(id)).unwrap()
+    let matrix = state.matrix_mode.lock().unwrap();
+    sender.send(UpdateMessage::RemoveEdge(id, *matrix)).unwrap()
 }
 
 #[post("/edgefac/<fac>")]
@@ -176,12 +199,14 @@ fn set_edge_freq(id: usize, freq: f64, state: &State<Globals>) {
 fn add_edge(id_from: usize, id_to: usize, weight: f64, index: usize, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
+    let matrix = state.matrix_mode.lock().unwrap();
     sender
         .send(UpdateMessage::AddEdge(
             NodeIndex::new(id_from),
             NodeIndex::new(id_to),
             weight,
             index,
+            *matrix,
         ))
         .unwrap()
 }
@@ -289,9 +314,9 @@ fn handle_messages(
             }
         }
 
-        UpdateMessage::RemoveNode(id) => {
+        UpdateMessage::RemoveNode(id, matrix) => {
             graph.graph.remove_node(NodeIndex::new(id));
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, matrix)
         }
         UpdateMessage::SetEdgeFac(fac) => {
             graph.set_edge_fac(fac);
@@ -314,9 +339,9 @@ fn handle_messages(
             }
         }
 
-        UpdateMessage::RemoveEdge(id) => {
+        UpdateMessage::RemoveEdge(id, matrix) => {
             graph.graph.remove_edge(EdgeIndex::new(id));
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, matrix)
         }
         UpdateMessage::SetOutput(node, output, amp) => {
             graph.graph[node].set_output(output, amp);
@@ -330,31 +355,31 @@ fn handle_messages(
             let new_flow = graph.establish_flow();
             *flow = new_flow;
         }
-        UpdateMessage::AddNode(node) => {
+        UpdateMessage::AddNode(node, matrix) => {
             let mut ugen = UGen::new(node).clip(ClipType::None);
             ugen.init_after_deserialization();
             let idx = graph.graph.add_node(ugen);
             graph.rnd_connect_if_necessary(idx);
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, matrix)
         }
 
-        UpdateMessage::SetGraph(g) => {
+        UpdateMessage::SetGraph(g, matrix) => {
             graph.graph.clear();
             *graph = UGenGraph::new();
             graph.graph = g;
             graph.init_after_deserialization();
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, matrix)
         }
-        UpdateMessage::AddEdge(node_from, node_to, weight, index) => {
+        UpdateMessage::AddEdge(node_from, node_to, weight, index, matrix) => {
             let _idx = graph.connect(node_from, node_to, Connection::new(index as u32, weight));
         }
         UpdateMessage::ConnectLeastConnected => {
             graph.connect_least_connected();
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, false)
         }
         UpdateMessage::DisconnectMostConnected => {
             graph.disconnect_most_connected();
-            graph.update_connections_and_flow(flow)
+            graph.update_connections_and_flow(flow, false)
         }
 
         UpdateMessage::SetParameter(node, idx, value) => {
@@ -506,6 +531,7 @@ fn rocket() -> _ {
             //            jack_client: active_client,
             sender: tx,
             receiver: r_ret,
+            matrix_mode: Mutex::new(false),
         })
         .mount(
             "/",
@@ -530,7 +556,10 @@ fn rocket() -> _ {
                 set_edge_fac,
                 node_output_amp,
                 set_edge_delay,
-                set_edge_freq
+                set_edge_freq,
+                get_matrix,
+                matrix_on,
+                matrix_off,
             ],
         )
         .attach(cors.to_cors().expect("Cors failed"))

@@ -449,8 +449,8 @@ fn dynsys_compressor() -> Box<Process> {
     Box::new(Process::Compressor {
         input_level: vec![],
         input: 0.0,
-        threshold: lag::lag(0.35),
-        ratio: lag::lag(5.0),
+        threshold: lag::lag(0.25),
+        ratio: lag::lag(6.0),
         makeup: lag::lag(1.0),
     })
 }

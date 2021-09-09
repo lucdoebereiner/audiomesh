@@ -311,10 +311,6 @@ fn calc_steto_amp(steto: f64, i: usize, n_output_ugens: usize) -> f64 {
     } else {
         0.
     };
-    // println!(
-    //     "steto: {}, l:{}, u:{}, bidx:{} steto {} for {} is {}",
-    //     steto, lower, upper, bin_index, steto, i, result
-    // );
     result
 }
 
@@ -358,7 +354,7 @@ impl UGenGraph {
         let mut g = UGenGraph::new();
         g.graph = struc;
         g.init_after_deserialization();
-        g.update_connections_and_flow(flow);
+        g.update_connections_and_flow(flow, false);
         Ok(g)
     }
 
@@ -491,6 +487,41 @@ impl UGenGraph {
                     || s.process_type == ProcessType::SidechainEnv
             })
             .unwrap_or(false)
+    }
+
+    fn connect_if_possible(&mut self, from: NodeIndex, to: NodeIndex) {
+        match self.graph.find_edge(from, to) {
+            None => {
+                let mut rng = thread_rng();
+                match self.graph[to].process.spec().process_type {
+                    ProcessType::NoInputGenerator => (),
+                    _ => {
+                        let mut idx: u32 = 0;
+                        let lacking = self.lacking_input_edges(to);
+                        if lacking.is_empty() {
+                            if self.has_two_inputs(to) {
+                                // TODO: eventually get exact number of inputs
+                                idx = rng.gen_range(0, 2);
+                            }
+                        } else {
+                            idx = *(lacking.choose(&mut rng).unwrap());
+                        }
+                        self.connect(from, to, Connection::new(idx, 0.0));
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+
+    // make matrix connection
+    pub fn connect_all(&mut self) {
+        let indices: Vec<NodeIndex> = self.graph.node_indices().collect();
+        for from in &indices {
+            for to in &indices {
+                self.connect_if_possible(*from, *to);
+            }
+        }
     }
 
     pub fn rnd_connect_if_necessary(&mut self, node: NodeIndex) {
@@ -820,8 +851,12 @@ impl UGenGraph {
         visited
     }
 
-    pub fn update_connections_and_flow(&mut self, flow: &mut Vec<NodeIndex>) {
-        self.ensure_connectivity();
+    pub fn update_connections_and_flow(&mut self, flow: &mut Vec<NodeIndex>, matrix_mode: bool) {
+        if matrix_mode {
+            self.connect_all();
+        } else {
+            self.ensure_connectivity();
+        }
         *flow = self.establish_flow();
     }
 
@@ -1094,6 +1129,10 @@ pub fn soundinput(index: usize) -> UGen {
         index: index,
         factor: lag::lag(1.0),
     })
+}
+
+pub fn vdp() -> UGen {
+    UGen::new(vanderpol(0.5, 0., 0.05))
 }
 
 // pub fn wrap(lo: f64, hi: f64) -> UGen {
