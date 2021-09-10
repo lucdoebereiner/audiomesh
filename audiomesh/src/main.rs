@@ -37,6 +37,7 @@ enum UpdateMessage {
     Randomize,
     RandomCircle,
     DumpGraph,
+    MatrixConnect,
     SetGraph(UGenGraphStructure, bool),
     AddEdge(NodeIndex, NodeIndex, f64, usize, bool),
     RemoveNode(usize, bool),
@@ -74,13 +75,16 @@ fn get_matrix(state: &State<Globals>) -> content::Json<Value> {
     content::Json(Value::Bool(*lock))
 }
 
-#[put("/matrix/on")]
+#[post("/matrix/on")]
 fn matrix_on(state: &State<Globals>) {
     let mut lock = state.matrix_mode.lock().unwrap();
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
     *lock = true;
+    sender.send(UpdateMessage::MatrixConnect).unwrap()
 }
 
-#[put("/matrix/off")]
+#[post("/matrix/off")]
 fn matrix_off(state: &State<Globals>) {
     let mut lock = state.matrix_mode.lock().unwrap();
     *lock = false;
@@ -385,6 +389,8 @@ fn handle_messages(
         UpdateMessage::SetParameter(node, idx, value) => {
             graph.set_parameter(NodeIndex::new(node), idx, value);
         }
+
+        UpdateMessage::MatrixConnect => graph.update_connections_and_flow(flow, true),
 
         _ => (),
     }

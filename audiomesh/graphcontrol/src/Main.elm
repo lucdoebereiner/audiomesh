@@ -1,4 +1,4 @@
-port module Main exposing (Msg(..), main, update, view)
+module Main exposing (Msg(..), main, update, view)
 
 import Api
 import Array exposing (Array)
@@ -22,8 +22,8 @@ import Html.Lazy as Lazy
 import Http
 import IntDict
 import Json.Decode as Dec
-import Json.Decode.Pipeline exposing (required)
 import Maybe.Extra as M
+import Midi
 import OutputIndices
 import Parameters exposing (Mapping(..), Parameter)
 import ProcessGraph exposing (..)
@@ -119,194 +119,8 @@ subscriptions m =
     Sub.batch
         [ Time.every 300 Tick
         , Time.every 500 UpdateDrawGraph
-        , midiCC (ReceivedMidi << decodeMidiCC)
+        , Midi.cc (ReceivedMidi << Midi.decodeCC)
         ]
-
-
-
---
-
-
-type alias MidiCC =
-    { channel : Int, controller : Int, value : Float }
-
-
-port midiCC : (Dec.Value -> msg) -> Sub msg
-
-
-port midiSend : ( Int, Int ) -> Cmd msg
-
-
-decodeMidiCC : Dec.Value -> Result Dec.Error MidiCC
-decodeMidiCC =
-    Dec.decodeValue
-        (Dec.succeed (\c co v -> { channel = c, controller = co, value = v })
-            |> required "channel" Dec.int
-            |> required "controller" Dec.int
-            |> required "value" Dec.float
-        )
-
-
-sendMidiProcessState : UGen -> Cmd msg
-sendMidiProcessState ugen =
-    let
-        outputAmp =
-            Parameters.explin ugen.output_amp 0.0 2.0 0.0 1.0
-                |> round
-                << (*) 127
-    in
-    midiSend ( 4, outputAmp )
-        :: List.indexedMap
-            (\i p ->
-                midiSend
-                    ( i + 5
-                    , round
-                        (Parameters.unmapped p p.value * 127)
-                    )
-            )
-            (processParameters ugen.process)
-        |> Cmd.batch
-
-
-sendMidiEdgeState : ProcessGraph.Link -> Cmd msg
-sendMidiEdgeState edge =
-    let
-        w =
-            round (Parameters.explin edge.strength 0.0 5.0 0.0 1.0 * 127)
-
-        d =
-            round (Parameters.explin edge.delay.delay 0.0 6.0 0.0 1.0 * 127)
-    in
-    List.map midiSend [ ( 14, d ), ( 15, w ) ]
-        |> Cmd.batch
-
-
-midiDict : ( Maybe (Graph.Node UGen), Maybe (Graph.Edge Link) ) -> Dict Int (Float -> Msg)
-midiDict ( node, edge ) =
-    let
-        nodeAmp =
-            \val ->
-                case node of
-                    Nothing ->
-                        NoMsg
-
-                    Just n ->
-                        SetNodeOutputAmp n.id (Parameters.linexp val 0.0 1.0 0.0 2.0)
-
-        processPars =
-            case node of
-                Nothing ->
-                    [ \_ -> NoMsg ]
-
-                Just n ->
-                    List.map
-                        (\p ->
-                            \v ->
-                                SetProcessParameter n.id
-                                    p.idx
-                                    (Parameters.mapped { p | value = v })
-                        )
-                        (processParameters
-                            n.label.process
-                        )
-
-        edgeW =
-            \v ->
-                Maybe.map
-                    (\e ->
-                        SetEdgeWeight e.label.id
-                            (Parameters.linexp v 0.0 1.0 0.0 5.0)
-                    )
-                    edge
-                    |> Maybe.withDefault NoMsg
-
-        edgeD =
-            \v ->
-                Maybe.map
-                    (\e ->
-                        SetEdgeDelay e.label.id
-                            (Parameters.linexp v 0.0 1.0 0.0 6.0)
-                    )
-                    edge
-                    |> Maybe.withDefault NoMsg
-
-        edgeF =
-            \v ->
-                Maybe.map
-                    (\e ->
-                        SetEdgeFreq e.label.id
-                            (Parameters.linexp v 0.0 1.0 1.0 20000.0)
-                    )
-                    edge
-                    |> Maybe.withDefault NoMsg
-    in
-    Dict.fromList <|
-        [ ( 29
-          , \v ->
-                if v > 0.5 then
-                    SelectPrevNode
-
-                else
-                    NoMsg
-          )
-        , ( 30
-          , \v ->
-                if v > 0.5 then
-                    SelectNextNode
-
-                else
-                    NoMsg
-          )
-        , ( 31
-          , \v ->
-                if v > 0.5 then
-                    SelectPrevEdge
-
-                else
-                    NoMsg
-          )
-        , ( 32
-          , \v ->
-                if v > 0.5 then
-                    SelectNextEdge
-
-                else
-                    NoMsg
-          )
-        , ( 0
-          , \v ->
-                SetVolume
-                    (Parameters.linexp v 0.0 1.0 0.0 1.0)
-          )
-        , ( 1
-          , \v ->
-                SetEdgeFac
-                    (Parameters.linexp v 0.0 1.0 0.05 5.0)
-          )
-        , ( 2, \v -> SetOutputs 0 v )
-        , ( 3, \v -> SetOutputs 1 v )
-        , ( 4, nodeAmp )
-        , ( 13, edgeF )
-        , ( 14, edgeD )
-        , ( 15, edgeW )
-        , ( 16, SetEdgeControlWeights 0 )
-        , ( 17, SetEdgeControlWeights 1 )
-        , ( 18, SetEdgeControlWeights 2 )
-        , ( 19, SetEdgeControlWeights 3 )
-        , ( 20, SetEdgeControlDelay 0 )
-        , ( 21, SetEdgeControlDelay 1 )
-        , ( 22, SetEdgeControlDelay 2 )
-        , ( 23, SetEdgeControlDelay 3 )
-        , ( 24, SetEdgeControlFreq 0 )
-        , ( 25, SetEdgeControlFreq 1 )
-        , ( 26, SetEdgeControlFreq 2 )
-        , ( 27, SetEdgeControlFreq 3 )
-        ]
-            ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
-
-
-
---
 
 
 main =
@@ -379,10 +193,36 @@ type Msg
     | SelectPrevEdge
     | SelectNextEdge
     | UpdateDrawGraph Time.Posix
-    | ReceivedMidi (Result Dec.Error MidiCC)
+    | ReceivedMidi (Result Dec.Error Midi.CC)
     | SetEdgeControlWeights Int Float
     | SetEdgeControlFreq Int Float
     | SetEdgeControlDelay Int Float
+    | MatrixToggle
+
+
+midiMsgs : Midi.Messages Msg
+midiMsgs =
+    { noMsg = NoMsg
+    , setNodeOutputAmp = SetNodeOutputAmp
+    , setProcessParameter = SetProcessParameter
+    , setEdgeWeight = SetEdgeWeight
+    , setEdgeDelay = SetEdgeDelay
+    , setEdgeFreq = SetEdgeFreq
+    , selectPrevNode = SelectPrevNode
+    , selectNextNode = SelectNextNode
+    , selectPrevEdge = SelectPrevEdge
+    , selectNextEdge = SelectNextEdge
+    , setVolume = SetVolume
+    , setEdgeFac = SetEdgeFac
+    , setOutputs = SetOutputs
+    , setEdgeControlWeights = SetEdgeControlWeights
+    , setEdgeControlDelay = SetEdgeControlDelay
+    , setEdgeControlFreq = SetEdgeControlFreq
+    }
+
+
+midiDict =
+    Midi.dict midiMsgs
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -418,7 +258,7 @@ selectNode model nextNode =
             getSelectedNode newModel
     in
     ( newModel
-    , Maybe.map (sendMidiProcessState << .label) selectedNode
+    , Maybe.map (Midi.sendProcessState << .label) selectedNode
         |> Maybe.withDefault Cmd.none
     )
 
@@ -433,12 +273,19 @@ selectEdge model nextEdge =
             getSelectedEdge newModel
     in
     ( newModel
-    , Maybe.map (sendMidiEdgeState << .label) selectedEdge
+    , Maybe.map (Midi.sendEdgeState << .label) selectedEdge
         |> Maybe.withDefault Cmd.none
     )
 
 
-updateFromEdgeControl : Int -> (Model -> EdgeControl) -> (Int -> Float -> Cmd Msg) -> (Int -> Float -> UGenGraph -> UGenGraph) -> (Float -> Float) -> Model -> ( Model, Cmd Msg )
+updateFromEdgeControl :
+    Int
+    -> (Model -> EdgeControl)
+    -> (Int -> Float -> Cmd Msg)
+    -> (Int -> Float -> UGenGraph -> UGenGraph)
+    -> (Float -> Float)
+    -> Model
+    -> ( Model, Cmd Msg )
 updateFromEdgeControl i getControl apiFun updateFun mapping model =
     case EdgeControl.getPositions i (getControl model) of
         Just pLst ->
@@ -446,8 +293,6 @@ updateFromEdgeControl i getControl apiFun updateFun mapping model =
                 pLstMapped =
                     List.map (\( e, w ) -> ( e, mapping w )) pLst
 
-                -- _ =
-                --     Debug.log "plst" pLstMapped
                 newGraph =
                     Maybe.map
                         (\g ->
@@ -460,12 +305,13 @@ updateFromEdgeControl i getControl apiFun updateFun mapping model =
                         )
                         model.graph
 
-                -- _ =
-                --     Debug.log "graph" newGraph
                 newModel =
                     { model | graph = newGraph }
             in
-            ( newModel, List.map (\( e, w ) -> apiFun e w) pLstMapped |> Cmd.batch )
+            ( newModel
+            , List.map (\( e, w ) -> apiFun e w) pLstMapped
+                |> Cmd.batch
+            )
 
         Nothing ->
             let
@@ -484,7 +330,13 @@ update msg model =
                     \v -> Parameters.linexp v 0.0 1.0 0.0 5.0
 
                 newModel =
-                    { model | edgeWeightControl = EdgeControl.setCenter i s model.edgeWeightControl }
+                    { model
+                        | edgeWeightControl =
+                            EdgeControl.setCenter
+                                i
+                                s
+                                model.edgeWeightControl
+                    }
             in
             updateFromEdgeControl
                 i
@@ -500,7 +352,13 @@ update msg model =
                     \v -> Parameters.linexp v 0.0 1.0 0.0 5.0
 
                 newModel =
-                    { model | edgeDelayControl = EdgeControl.setCenter i s model.edgeDelayControl }
+                    { model
+                        | edgeDelayControl =
+                            EdgeControl.setCenter
+                                i
+                                s
+                                model.edgeDelayControl
+                    }
             in
             updateFromEdgeControl
                 i
@@ -516,10 +374,13 @@ update msg model =
                     \v -> Parameters.linexp v 0.0 1.0 1.0 20000.0
 
                 newModel =
-                    { model | edgeFreqControl = EdgeControl.setCenter i s model.edgeFreqControl }
-
-                -- _ =
-                --     Debug.log "f" ( i, newModel.edgeFreqControl )
+                    { model
+                        | edgeFreqControl =
+                            EdgeControl.setCenter
+                                i
+                                s
+                                model.edgeFreqControl
+                    }
             in
             updateFromEdgeControl
                 i
@@ -530,7 +391,11 @@ update msg model =
                 newModel
 
         SetNodeOutputAmp id amp ->
-            ( { model | graph = Maybe.map (ProcessGraph.updateOutputAmp id amp) model.graph }
+            ( { model
+                | graph =
+                    Maybe.map (ProcessGraph.updateOutputAmp id amp)
+                        model.graph
+              }
             , Api.setNodeOutputAmp NoOp id amp
             )
 
@@ -539,13 +404,14 @@ update msg model =
                 selectedNode =
                     getSelectedNode model
 
-                -- _ =
-                --     Debug.log "midi and node" ( m, selectedNode )
                 selectedEdge =
                     getSelectedEdge model
 
                 ( newModel, cmds ) =
-                    Dict.get m.controller (midiDict ( selectedNode, selectedEdge ))
+                    Dict.get m.controller
+                        (midiDict
+                            ( selectedNode, selectedEdge )
+                        )
                         |> Maybe.map (\ms -> update (ms m.value) model)
                         |> Maybe.withDefault ( model, Cmd.none )
             in
@@ -590,14 +456,26 @@ update msg model =
         SelectPrevEdge ->
             let
                 nextEdge =
-                    Maybe.andThen (\g -> ProcessGraph.prevEdge g model.selectedEdge) model.graph
+                    Maybe.andThen
+                        (\g ->
+                            ProcessGraph.prevEdge
+                                g
+                                model.selectedEdge
+                        )
+                        model.graph
             in
             selectEdge model nextEdge
 
         SelectNextEdge ->
             let
                 nextEdge =
-                    Maybe.andThen (\g -> ProcessGraph.nextEdge g model.selectedEdge) model.graph
+                    Maybe.andThen
+                        (\g ->
+                            ProcessGraph.nextEdge
+                                g
+                                model.selectedEdge
+                        )
+                        model.graph
             in
             selectEdge model nextEdge
 
@@ -608,11 +486,15 @@ update msg model =
 
                 specs =
                     Maybe.map (OutputIndices.outputSpecs newIndices) model.graph
-
-                -- _ =
-                --     Debug.log "set outputs" specs
             in
-            ( { model | outputIndices = newIndices, graph = Maybe.map2 OutputIndices.updateGraphWithSpecs specs model.graph }
+            ( { model
+                | outputIndices = newIndices
+                , graph =
+                    Maybe.map2
+                        OutputIndices.updateGraphWithSpecs
+                        specs
+                        model.graph
+              }
             , Maybe.map
                 (Api.setOutputs
                     NoOp
@@ -639,19 +521,28 @@ update msg model =
             case ( model.waitingToConnect, model.selectedNode ) of
                 ( Just w, Just n ) ->
                     if i == n && i == w then
-                        ( { model | waitingToConnect = Nothing }, Cmd.none )
+                        ( { model | waitingToConnect = Nothing }
+                        , Cmd.none
+                        )
 
                     else
-                        ( { model | waitingToConnect = Just i }, Cmd.none )
+                        ( { model | waitingToConnect = Just i }
+                        , Cmd.none
+                        )
 
                 _ ->
-                    ( { model | waitingToConnect = Just i }, Cmd.none )
+                    ( { model | waitingToConnect = Just i }
+                    , Cmd.none
+                    )
 
         FileSelected f ->
             ( model, readFile f )
 
         LoadGraph ->
-            ( model, File.Select.file [ "application/json" ] FileSelected )
+            ( model
+            , File.Select.file [ "application/json" ]
+                FileSelected
+            )
 
         GraphJsonLoaded g ->
             ( model, Api.postGraph UpdatedGraph g )
@@ -675,11 +566,17 @@ update msg model =
                     ( { model
                         | graph = Just newGraph
                         , edgeWeightControl =
-                            EdgeControl.updateFromGraph newGraph model.edgeWeightControl
+                            EdgeControl.updateFromGraph
+                                newGraph
+                                model.edgeWeightControl
                         , edgeDelayControl =
-                            EdgeControl.updateFromGraph newGraph model.edgeDelayControl
+                            EdgeControl.updateFromGraph
+                                newGraph
+                                model.edgeDelayControl
                         , edgeFreqControl =
-                            EdgeControl.updateFromGraph newGraph model.edgeFreqControl
+                            EdgeControl.updateFromGraph
+                                newGraph
+                                model.edgeFreqControl
                       }
                     , Cmd.none
                     )
@@ -817,6 +714,13 @@ update msg model =
         NoMsg ->
             ( model, Cmd.none )
 
+        MatrixToggle ->
+            let
+                newMode =
+                    not model.matrixMode
+            in
+            ( { model | matrixMode = newMode }, Api.setMatrixMode NoOp newMode )
+
         AddProcess proc ->
             ( model, Api.addNode UpdatedGraph proc )
 
@@ -832,9 +736,12 @@ update msg model =
             , Api.setParameter NoOp nodeId parIdx val
             )
 
-        --            ( model, Cmd.none )
         SetEdgeWeight edgeId weight ->
-            ( { model | graph = Maybe.map (updateEdgeWeight edgeId weight) model.graph }
+            ( { model
+                | graph =
+                    Maybe.map (updateEdgeWeight edgeId weight)
+                        model.graph
+              }
             , Api.setEdgeWeight NoOp edgeId weight
             )
 
@@ -844,7 +751,11 @@ update msg model =
             )
 
         SetEdgeDelay edgeId delay ->
-            ( { model | graph = Maybe.map (updateEdgeDelay edgeId delay) model.graph }
+            ( { model
+                | graph =
+                    Maybe.map (updateEdgeDelay edgeId delay)
+                        model.graph
+              }
             , Api.setEdgeDelay NoOp edgeId delay
             )
 
@@ -888,7 +799,9 @@ displayNode polled waiting n =
     el [ padding 10, Border.width 1, Border.solid ] <|
         column [ width fill, height fill, spacing 20 ]
             [ row [ spacing 20, width fill ]
-                ([ el [ width (px 400) ] <| text (String.fromInt n.id ++ " " ++ ugenLabel n.label)
+                ([ el [ width (px 400) ] <|
+                    text
+                        (String.fromInt n.id ++ " " ++ ugenLabel n.label)
                  , simpleStateButton "Connect"
                     (M.isJust waiting)
                     (WaitingToConnect n.id)
@@ -942,7 +855,9 @@ slider msg par =
                     , Attr.max "1.0"
                     , Attr.class "slider"
                     , Attr.step "0.004"
-                    , Attr.value <| String.fromFloat (Parameters.unmapped par par.value)
+                    , Attr.value <|
+                        String.fromFloat
+                            (Parameters.unmapped par par.value)
                     , Events.onInput
                         (\v ->
                             case String.toFloat v of
