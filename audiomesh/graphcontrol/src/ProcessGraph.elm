@@ -22,6 +22,7 @@ module ProcessGraph exposing
     , processParameters
     , setInput
     , ugenLabel
+    , ugensWithIds
     , updateEdgeDelay
     , updateEdgeFreq
     , updateEdgeWeight

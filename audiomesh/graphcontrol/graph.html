@@ -68,7 +68,7 @@
 
      function getMIDIMessage(midiMessage) {
 	 console.log(midiMessage);
-	 app.ports.midiCC.send(parseMidiMessage(midiMessage));
+	 app.ports.cc.send(parseMidiMessage(midiMessage));
      }
 
      function parseMidiMessage(message) {
@@ -84,7 +84,7 @@
 	 console.log('Could not access your MIDI devices.');
      }
 
-     app.ports.midiSend.subscribe(function(message) {
+     app.ports.send.subscribe(function(message) {
 	 console.log(message);
 	 midiOutput.send([176, message[0], message[1]]); 
      });

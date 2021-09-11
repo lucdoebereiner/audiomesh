@@ -7,6 +7,7 @@ module Api exposing
     , disconnectMostConnected
     , getGraph
     , getGraphForDownload
+    , getMatrixMode
     , poll
     , postEdge
     , postGraph
@@ -99,6 +100,14 @@ setParameter msg ugenIdx parameter value =
                 ++ String.fromFloat value
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
+        }
+
+
+getMatrixMode : (Result Http.Error Bool -> msg) -> Cmd msg
+getMatrixMode msg =
+    Http.get
+        { url = baseUrl ++ "/matrix"
+        , expect = Http.expectJson msg Decode.bool
         }
 
 

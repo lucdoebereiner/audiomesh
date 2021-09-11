@@ -22,6 +22,7 @@ import Html.Lazy as Lazy
 import Http
 import IntDict
 import Json.Decode as Dec
+import Matrix exposing (Matrix)
 import Maybe.Extra as M
 import Midi
 import OutputIndices
@@ -34,6 +35,7 @@ import Utils exposing (..)
 
 type alias Model =
     { graph : Maybe UGenGraph
+    , matrix : Maybe Matrix
     , drawGraph : Maybe UGenGraph
     , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
@@ -76,6 +78,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     ( Model Nothing
         Nothing
+        Nothing
         (Array.fromList [ 0.0, 0.0 ])
         Nothing
         Nothing
@@ -110,7 +113,7 @@ init _ =
         EdgeControl.defaultControl
         EdgeControl.defaultControl
         False
-    , Api.getGraph GotGraph
+    , Cmd.batch [ Api.getGraph GotGraph, Api.getMatrixMode GotMatrixMode ]
     )
 
 
@@ -135,6 +138,7 @@ main =
 type Msg
     = GotGraph (Result Http.Error BackendGraph)
     | GetGraph
+    | GotMatrixMode (Result Http.Error Bool)
     | SetOutputs Int Float
     | SetNodeOutputAmp Graph.NodeId Float
     | Randomize
@@ -556,6 +560,14 @@ update msg model =
         DisconnectMostConnected ->
             ( model, Api.disconnectMostConnected UpdatedGraph )
 
+        GotMatrixMode res ->
+            case res of
+                Ok m ->
+                    ( { model | matrixMode = m }, Cmd.none )
+
+                _ ->
+                    ( model, Cmd.none )
+
         GotGraph res ->
             case res of
                 Ok g ->
@@ -577,6 +589,9 @@ update msg model =
                             EdgeControl.updateFromGraph
                                 newGraph
                                 model.edgeFreqControl
+                        , matrix =
+                            Just <|
+                                Matrix.matrixFromBackendGraph g
                       }
                     , Cmd.none
                     )
@@ -1352,25 +1367,30 @@ view model =
                 , simpleButton "Prev Edge" SelectPrevEdge
                 , simpleButton "Next Edge" SelectNextEdge
                 ]
-            , case model.drawGraph of
-                Just g ->
-                    html <|
-                        Lazy.lazy3
-                            (\graph n e ->
-                                DrawGraph.view graph
-                                    n
-                                    e
-                                    SelectNode
-                                    SelectEdge
-                                    (Maybe.map Connect model.waitingToConnect)
-                                    ( 1800, 1400 )
-                                    ( 2600, 2000 )
-                                    320.0
-                            )
-                            g
-                            model.selectedNode
-                            model.selectedEdge
+            , if model.matrixMode then
+                Maybe.map Matrix.view model.matrix
+                    |> Maybe.withDefault none
 
-                _ ->
-                    none
+              else
+                case model.drawGraph of
+                    Just g ->
+                        html <|
+                            Lazy.lazy3
+                                (\graph n e ->
+                                    DrawGraph.view graph
+                                        n
+                                        e
+                                        SelectNode
+                                        SelectEdge
+                                        (Maybe.map Connect model.waitingToConnect)
+                                        ( 1800, 1400 )
+                                        ( 2600, 2000 )
+                                        320.0
+                                )
+                                g
+                                model.selectedNode
+                                model.selectedEdge
+
+                    _ ->
+                        none
             ]
