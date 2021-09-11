@@ -47,7 +47,7 @@
 	 node: document.getElementById('elm-main')
      });
 
-     let output = null;
+     let outputs = [];
      
      // Midi Control
      navigator.requestMIDIAccess()
@@ -57,22 +57,22 @@
 	 for (var input of midiAccess.inputs.values())
              input.onmidimessage = getMIDIMessage;
 
-	 const outputs = midiAccess.outputs.values();
-	 for(const output of outputs) {
-//	     console.log(output);
-	     if (output.name == "BCF2000 MIDI 1") {
-		 midiOutput = output;
-	     }
+	 let midiOuts = midiAccess.outputs.values();
+	 for(const output of midiOuts) {
+             //	     console.log(output);
+             outputs.push(output)
 	 }
+         console.log(outputs);
      }
 
      function getMIDIMessage(midiMessage) {
 	 console.log(midiMessage);
 	 app.ports.cc.send(parseMidiMessage(midiMessage));
+         console.log(parseMidiMessage(midiMessage));
      }
 
      function parseMidiMessage(message) {
-	 console.log(message.data);
+	 //console.log(message.data);
 	 return {
 	     channel: message.data[0] & 0xf,
 	     controller: message.data[1],
@@ -85,11 +85,11 @@
      }
 
      app.ports.send.subscribe(function(message) {
-	 console.log(message);
-	 midiOutput.send([176, message[0], message[1]]); 
+	 //console.log(message);
+	 outputs.forEach(out => out.send([176, message[0], message[1]])); 
      });
      
-     //  setTimeout(() => midiOutput.send([176, 89, 0]), 3000); 
+     setTimeout(() => { console.log("sending"); outputs.forEach(out => out.send([185, 10, 0])) }, 1000); 
      
     </script>
 </html>
