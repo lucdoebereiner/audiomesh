@@ -94,8 +94,8 @@ type alias Messages msg =
     }
 
 
-dict : Messages msg -> ( Maybe (Graph.Node UGen), Maybe (Graph.Edge Link) ) -> Dict Int (Float -> msg)
-dict messages ( node, edge ) =
+dict : Messages msg -> List (List Int) -> ( Maybe (Graph.Node UGen), Maybe (Graph.Edge Link) ) -> Dict ( Int, Int ) (Float -> msg)
+dict messages edgeIndices ( node, edge ) =
     let
         nodeAmp =
             \val ->
@@ -154,7 +154,7 @@ dict messages ( node, edge ) =
                     |> Maybe.withDefault messages.noMsg
     in
     Dict.fromList <|
-        [ ( 29
+        [ ( ( 0, 29 )
           , \v ->
                 if v > 0.5 then
                     messages.selectPrevNode
@@ -162,7 +162,7 @@ dict messages ( node, edge ) =
                 else
                     messages.noMsg
           )
-        , ( 30
+        , ( ( 0, 30 )
           , \v ->
                 if v > 0.5 then
                     messages.selectNextNode
@@ -170,7 +170,7 @@ dict messages ( node, edge ) =
                 else
                     messages.noMsg
           )
-        , ( 31
+        , ( ( 0, 31 )
           , \v ->
                 if v > 0.5 then
                     messages.selectPrevEdge
@@ -178,7 +178,7 @@ dict messages ( node, edge ) =
                 else
                     messages.noMsg
           )
-        , ( 32
+        , ( ( 0, 32 )
           , \v ->
                 if v > 0.5 then
                     messages.selectNextEdge
@@ -186,33 +186,46 @@ dict messages ( node, edge ) =
                 else
                     messages.noMsg
           )
-        , ( 0
+        , ( ( 0, 0 )
           , \v ->
                 messages.setVolume
                     (Parameters.linexp v 0.0 1.0 0.0 1.0)
           )
-        , ( 1
+        , ( ( 0, 1 )
           , \v ->
                 messages.setEdgeFac
                     (Parameters.linexp v 0.0 1.0 0.05 5.0)
           )
-        , ( 2, \v -> messages.setOutputs 0 v )
-        , ( 3, \v -> messages.setOutputs 1 v )
-        , ( 4, nodeAmp )
-        , ( 13, edgeF )
-        , ( 14, edgeD )
-        , ( 15, edgeW )
-        , ( 16, messages.setEdgeControlWeights 0 )
-        , ( 17, messages.setEdgeControlWeights 1 )
-        , ( 18, messages.setEdgeControlWeights 2 )
-        , ( 19, messages.setEdgeControlWeights 3 )
-        , ( 20, messages.setEdgeControlDelay 0 )
-        , ( 21, messages.setEdgeControlDelay 1 )
-        , ( 22, messages.setEdgeControlDelay 2 )
-        , ( 23, messages.setEdgeControlDelay 3 )
-        , ( 24, messages.setEdgeControlFreq 0 )
-        , ( 25, messages.setEdgeControlFreq 1 )
-        , ( 26, messages.setEdgeControlFreq 2 )
-        , ( 27, messages.setEdgeControlFreq 3 )
+        , ( ( 0, 2 ), \v -> messages.setOutputs 0 v )
+        , ( ( 0, 3 ), \v -> messages.setOutputs 1 v )
+        , ( ( 0, 4 ), nodeAmp )
+        , ( ( 0, 13 ), edgeF )
+        , ( ( 0, 14 ), edgeD )
+        , ( ( 0, 15 ), edgeW )
+        , ( ( 0, 16 ), messages.setEdgeControlWeights 0 )
+        , ( ( 0, 17 ), messages.setEdgeControlWeights 1 )
+        , ( ( 0, 18 ), messages.setEdgeControlWeights 2 )
+        , ( ( 0, 19 ), messages.setEdgeControlWeights 3 )
+        , ( ( 0, 20 ), messages.setEdgeControlDelay 0 )
+        , ( ( 0, 21 ), messages.setEdgeControlDelay 1 )
+        , ( ( 0, 22 ), messages.setEdgeControlDelay 2 )
+        , ( ( 0, 23 ), messages.setEdgeControlDelay 3 )
+        , ( ( 0, 24 ), messages.setEdgeControlFreq 0 )
+        , ( ( 0, 25 ), messages.setEdgeControlFreq 1 )
+        , ( ( 0, 26 ), messages.setEdgeControlFreq 2 )
+        , ( ( 0, 27 ), messages.setEdgeControlFreq 3 )
         ]
-            ++ List.indexedMap (\i p -> ( i + 5, p )) processPars
+            ++ List.indexedMap (\i p -> ( ( 0, i + 5 ), p )) processPars
+            ++ (List.concat <|
+                    List.indexedMap
+                        (\ugenIdx ugenEdges ->
+                            List.indexedMap
+                                (\edgeIdx edgeId ->
+                                    ( ( 1, (ugenIdx * 8) + edgeIdx )
+                                    , messages.setEdgeWeight edgeId
+                                    )
+                                )
+                                ugenEdges
+                        )
+                        edgeIndices
+               )

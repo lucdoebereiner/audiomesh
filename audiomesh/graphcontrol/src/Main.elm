@@ -412,8 +412,9 @@ update msg model =
                     getSelectedEdge model
 
                 ( newModel, cmds ) =
-                    Dict.get m.controller
+                    Dict.get ( m.channel, m.controller )
                         (midiDict
+                            (Maybe.withDefault [] (Maybe.map Matrix.groupEdges model.matrix))
                             ( selectedNode, selectedEdge )
                         )
                         |> Maybe.map (\ms -> update (ms m.value) model)

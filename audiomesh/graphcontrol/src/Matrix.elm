@@ -111,6 +111,15 @@ verticalLabels ugens =
         )
 
 
+groupEdges : Matrix -> List (List Int)
+groupEdges matrix =
+    IntDict.toList
+        matrix.ugens
+        |> List.map (ugenWithConnections matrix)
+        |> List.map .outgoing
+        |> List.map (List.map (.id << .link))
+
+
 view : Matrix -> Element msg
 view matrix =
     let
