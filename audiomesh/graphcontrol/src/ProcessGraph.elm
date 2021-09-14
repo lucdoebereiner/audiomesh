@@ -12,6 +12,7 @@ module ProcessGraph exposing
     , defaultUGen
     , encodeProcess
     , getNodes
+    , graphEdges
     , isOutputProcess
     , mkGraph
     , mulAllEdges
@@ -1336,6 +1337,20 @@ getNodes gr =
 
 type alias UGenGraph =
     Graph.Graph UGen Link
+
+
+graphEdges : UGenGraph -> List Connection
+graphEdges gr =
+    List.map
+        (\e ->
+            { from = e.from
+            , to = e.to
+            , link = e.label
+            }
+        )
+        (Graph.edges
+            gr
+        )
 
 
 mkGraph : BackendGraph -> UGenGraph

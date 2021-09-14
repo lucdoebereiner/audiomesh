@@ -147,6 +147,7 @@ fn node_output_amp(id: usize, amp: f64, state: &State<Globals>) {
 fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
+    println!("setting outputs {:?}", specvec);
     sender
         .send(UpdateMessage::SetOutputs(specvec.into_inner()))
         .unwrap()
@@ -180,7 +181,6 @@ fn set_edge_fac(fac: f64, state: &State<Globals>) {
 fn set_edge_weight(id: usize, weight: f64, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
-    println!("got edge weight {} {}", id, weight);
     sender
         .send(UpdateMessage::SetEdgeWeight(id, weight))
         .unwrap()
@@ -328,7 +328,6 @@ fn handle_messages(
         }
         UpdateMessage::SetEdgeWeight(id, w) => {
             if let Some(e) = graph.graph.edge_weight_mut(EdgeIndex::new(id)) {
-                println!("found edge and set to {}", w);
                 e.set_weight(w)
             }
         }
