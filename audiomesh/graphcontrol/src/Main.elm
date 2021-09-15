@@ -35,7 +35,7 @@ import Utils exposing (..)
 
 type alias Model =
     { graph : Maybe UGenGraph
-    , matrix : Maybe Matrix
+    , backendGraph : Maybe BackendGraph
     , drawGraph : Maybe UGenGraph
     , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
@@ -414,7 +414,11 @@ update msg model =
                 ( newModel, cmds ) =
                     Dict.get ( m.channel, m.controller )
                         (midiDict
-                            (Maybe.withDefault [] (Maybe.map Matrix.groupEdges model.matrix))
+                            (Maybe.withDefault []
+                                (Maybe.map Matrix.groupEdges
+                                    (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
+                                )
+                            )
                             ( selectedNode, selectedEdge )
                         )
                         |> Maybe.map (\ms -> update (ms m.value) model)
@@ -578,6 +582,7 @@ update msg model =
                     in
                     ( { model
                         | graph = Just newGraph
+                        , backendGraph = Just g
                         , edgeWeightControl =
                             EdgeControl.updateFromGraph
                                 newGraph
@@ -590,9 +595,10 @@ update msg model =
                             EdgeControl.updateFromGraph
                                 newGraph
                                 model.edgeFreqControl
-                        , matrix =
-                            Just <|
-                                Matrix.matrixFromBackendGraph g
+
+                        -- , matrix =
+                        --     Just <|
+                        --         Matrix.matrixFromBackendGraph g
                       }
                     , Cmd.none
                     )
@@ -1369,7 +1375,7 @@ view model =
                 , simpleButton "Next Edge" SelectNextEdge
                 ]
             , if model.matrixMode then
-                Maybe.map Matrix.view model.matrix
+                Maybe.map Matrix.view (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
                     |> Maybe.withDefault none
 
               else

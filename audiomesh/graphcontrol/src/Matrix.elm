@@ -1,4 +1,4 @@
-module Matrix exposing (..)
+module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, holedIndices, matrixFromGraphs, ugenColumn, ugenWithConnections, verticalLabels, view)
 
 --import Element.Background as Background
 
@@ -12,6 +12,8 @@ import ProcessGraph
         , Connection
         , Process
         , UGen
+        , UGenGraph
+        , graphEdges
         , ugenLabel
         , ugensWithIds
         )
@@ -51,10 +53,10 @@ ugenWithConnections matrix ( id, ugen ) =
     }
 
 
-matrixFromBackendGraph : BackendGraph -> Matrix
-matrixFromBackendGraph gr =
-    { ugens = ugensWithIds gr.nodes gr.node_holes 0 IntDict.empty
-    , connections = gr.edges
+matrixFromGraphs : BackendGraph -> UGenGraph -> Matrix
+matrixFromGraphs gr ugenGr =
+    { ugens = ugensWithIds gr.nodes gr.node_holes 0 IntDict.empty -- todo update ugens from ugenGr for parameters
+    , connections = graphEdges ugenGr
     , nodeHoles = gr.node_holes
     }
 
