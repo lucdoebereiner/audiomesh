@@ -4,6 +4,7 @@ module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, holedIn
 
 import Element exposing (..)
 import Element.Border as Border
+import Graph
 import IntDict exposing (IntDict)
 import List.Extra as L
 import ProcessGraph
@@ -53,9 +54,35 @@ ugenWithConnections matrix ( id, ugen ) =
     }
 
 
+replaceUGensFromGraph : IntDict UGen -> UGenGraph -> IntDict UGen
+replaceUGensFromGraph ugensDict graph =
+    let
+        nodesFromGraph =
+            Graph.nodes graph
+
+        nodesFromDict =
+            IntDict.toList ugensDict
+    in
+    List.map
+        (\( id, u ) ->
+            case L.find (\grUGen -> grUGen.id == id) nodesFromGraph of
+                Nothing ->
+                    ( id, u )
+
+                Just grUGen ->
+                    ( id, grUGen.label )
+        )
+        nodesFromDict
+        |> IntDict.fromList
+
+
 matrixFromGraphs : BackendGraph -> UGenGraph -> Matrix
 matrixFromGraphs gr ugenGr =
-    { ugens = ugensWithIds gr.nodes gr.node_holes 0 IntDict.empty -- todo update ugens from ugenGr for parameters
+    let
+        ugensFromGr =
+            ugensWithIds gr.nodes gr.node_holes 0 IntDict.empty
+    in
+    { ugens = replaceUGensFromGraph ugensFromGr ugenGr
     , connections = graphEdges ugenGr
     , nodeHoles = gr.node_holes
     }
