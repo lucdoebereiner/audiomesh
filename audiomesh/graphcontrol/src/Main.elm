@@ -595,10 +595,6 @@ update msg model =
                             EdgeControl.updateFromGraph
                                 newGraph
                                 model.edgeFreqControl
-
-                        -- , matrix =
-                        --     Just <|
-                        --         Matrix.matrixFromBackendGraph g
                       }
                     , Cmd.none
                     )

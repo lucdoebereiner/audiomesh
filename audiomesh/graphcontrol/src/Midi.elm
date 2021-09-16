@@ -27,7 +27,7 @@ type alias CC =
 port cc : (Dec.Value -> msg) -> Sub msg
 
 
-port send : ( Int, Int ) -> Cmd msg
+port send : ( Int, Int, Int ) -> Cmd msg
 
 
 decodeCC : Dec.Value -> Result Dec.Error CC
@@ -48,11 +48,12 @@ sendProcessState ugen =
                 |> round
                 << (*) 127
     in
-    send ( 4, outputAmp )
+    send ( 0, 4, outputAmp )
         :: List.indexedMap
             (\i p ->
                 send
-                    ( i + 5
+                    ( 0
+                    , i + 5
                     , round
                         (Parameters.unmapped p p.value * 127)
                     )
@@ -70,7 +71,7 @@ sendEdgeState edge =
         d =
             round (Parameters.explin edge.delay.delay 0.0 6.0 0.0 1.0 * 127)
     in
-    List.map send [ ( 14, d ), ( 15, w ) ]
+    List.map send [ ( 0, 14, d ), ( 0, 15, w ) ]
         |> Cmd.batch
 
 
@@ -229,3 +230,7 @@ dict messages edgeIndices ( node, edge ) =
                         )
                         edgeIndices
                )
+
+
+
+-- TODO clear dictonary of edgeids <> midicc

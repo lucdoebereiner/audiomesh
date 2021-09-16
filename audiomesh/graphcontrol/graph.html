@@ -86,7 +86,7 @@
 
      app.ports.send.subscribe(function(message) {
 	 //console.log(message);
-	 outputs.forEach(out => out.send([176, message[0], message[1]])); 
+	 outputs.forEach(out => out.send([176+message[0], message[1], message[2]])); 
      });
      
      setTimeout(() => { console.log("sending"); outputs.forEach(out => out.send([185, 10, 0])) }, 1000); 
