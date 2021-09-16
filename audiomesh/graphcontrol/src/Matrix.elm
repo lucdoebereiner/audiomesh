@@ -1,9 +1,11 @@
-module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, holedIndices, matrixFromGraphs, ugenWithConnections, view)
+module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, groupEdgesIndices, holedIndices, matrixFromGraphs, ugenWithConnections, view)
 
 --import Element.Background as Background
 
 import Element exposing (..)
 import Element.Border as Border
+import Element.Events as Events
+import Element.Font as Font
 import Graph
 import IntDict exposing (IntDict)
 import List.Extra as L
@@ -22,7 +24,6 @@ import Utils exposing (..)
 
 
 
--- import Element.Font as Font
 -- import Element.Input as Input
 
 
@@ -88,8 +89,8 @@ matrixFromGraphs gr ugenGr =
     }
 
 
-ugenRow : List Int -> UGenWithOutgoingConnections -> Element msg
-ugenRow indices ugen =
+ugenRow : Maybe Graph.NodeId -> Maybe Int -> (Graph.NodeId -> msg) -> (Int -> msg) -> List Int -> UGenWithOutgoingConnections -> Element msg
+ugenRow selectedNode selectedEdge selectNodeMsg selectEdgeMsg indices ugen =
     let
         bottomBorder =
             Border.widthEach { left = 0, right = 2, bottom = 2, top = 0 }
@@ -99,22 +100,51 @@ ugenRow indices ugen =
                 (\idx ->
                     case L.find (\c -> c.to == idx) ugen.outgoing of
                         Nothing ->
-                            column [ height (px 30), paddingXY 10 10, bottomBorder, centerX, centerY, width fill ] [ none ]
+                            column [ height (px 30), paddingXY 5 10, bottomBorder, centerX, centerY, width fill ] [ none ]
 
                         Just c ->
-                            column [ height (px 30), paddingXY 10 10, bottomBorder, centerX, centerY, width fill ] [ paragraph [ centerX, width fill ] [ text (floatString c.link.strength) ] ]
+                            column [ height (px 30), paddingXY 5 10, bottomBorder, centerX, centerY, width fill ]
+                                [ paragraph
+                                    ([ Events.onClick (selectEdgeMsg c.link.id)
+                                     , pointer
+                                     , centerX
+                                     , width fill
+                                     ]
+                                        ++ boldIfSelected selectedEdge c.link
+                                    )
+                                    [ text (floatString c.link.strength) ]
+                                ]
                 )
                 indices
     in
     row [ Border.widthEach { left = 0, right = 0, bottom = 0, top = 0 }, width fill ]
-        ([ column [ height (px 30), width (px 300), paddingXY 10 10, bottomBorder ] [ text (ugenLabel ugen.ugen) ]
+        ([ column [ height (px 30), width (px 300), paddingXY 5 10, bottomBorder ]
+            [ paragraph
+                ([ Events.onClick (selectNodeMsg ugen.id), pointer, width fill ]
+                    ++ boldIfSelected selectedNode ugen
+                )
+                [ text (ugenLabel ugen.ugen) ]
+            ]
          ]
             ++ connectionColumns
         )
 
 
-horizontalLabels : List UGenWithOutgoingConnections -> Element msg
-horizontalLabels ugens =
+boldIfSelected selectedNode ugen =
+    case selectedNode of
+        Nothing ->
+            []
+
+        Just n ->
+            if ugen.id == n then
+                [ Font.bold ]
+
+            else
+                []
+
+
+horizontalLabels : Maybe Graph.NodeId -> (Graph.NodeId -> msg) -> List UGenWithOutgoingConnections -> Element msg
+horizontalLabels selectedNode selectNodeMsg ugens =
     let
         bottomBorder =
             Border.widthEach { left = 0, right = 2, bottom = 2, top = 0 }
@@ -122,7 +152,10 @@ horizontalLabels ugens =
         labels =
             List.map
                 (\ugen ->
-                    column [ height (px 50), paddingXY 10 10, bottomBorder, width fill ] [ paragraph [ width fill ] [ text (ugenLabel ugen.ugen) ] ]
+                    column [ height (px 50), paddingXY 5 10, bottomBorder, width fill ]
+                        [ paragraph ([ Events.onClick (selectNodeMsg ugen.id), pointer, width fill ] ++ boldIfSelected selectedNode ugen)
+                            [ text (ugenLabel ugen.ugen) ]
+                        ]
                 )
                 ugens
     in
@@ -134,18 +167,23 @@ horizontalLabels ugens =
         )
 
 
-groupEdges : Matrix -> List (List Int)
+groupEdges : Matrix -> List (List Connection)
 groupEdges matrix =
     IntDict.toList
         matrix.ugens
         |> List.map (ugenWithConnections matrix)
         |> List.map .outgoing
         |> List.map (List.sortBy .to)
+
+
+groupEdgesIndices : Matrix -> List (List Int)
+groupEdgesIndices matrix =
+    groupEdges matrix
         |> List.map (List.map (.id << .link))
 
 
-view : Matrix -> Element msg
-view matrix =
+view : Maybe Graph.NodeId -> Maybe Int -> (Graph.NodeId -> msg) -> (Int -> msg) -> Matrix -> Element msg
+view selectedNode selectedEdge selectNodeMsg selectEdgeMsg matrix =
     let
         ugensList =
             IntDict.toList
@@ -155,9 +193,15 @@ view matrix =
             List.map (ugenWithConnections matrix) ugensList
     in
     column [ centerX ]
-        (horizontalLabels withConnections
+        (horizontalLabels selectedNode selectNodeMsg withConnections
             :: (withConnections
-                    |> List.map (ugenRow (List.map Tuple.first ugensList))
+                    |> List.map
+                        (ugenRow selectedNode
+                            selectedEdge
+                            selectNodeMsg
+                            selectEdgeMsg
+                            (List.map Tuple.first ugensList)
+                        )
                )
         )
 

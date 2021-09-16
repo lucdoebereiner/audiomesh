@@ -414,7 +414,7 @@ update msg model =
                 ( newModel, cmds ) =
                     let
                         grouped =
-                            Maybe.map Matrix.groupEdges
+                            Maybe.map Matrix.groupEdgesIndices
                                 (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
 
                         -- _ =
@@ -585,6 +585,10 @@ update msg model =
                     let
                         newGraph =
                             mkGraph g
+
+                        sendEdgesCmd =
+                            (Midi.sendEdges << Matrix.groupEdges)
+                                (Matrix.matrixFromGraphs g newGraph)
                     in
                     ( { model
                         | graph = Just newGraph
@@ -602,7 +606,7 @@ update msg model =
                                 newGraph
                                 model.edgeFreqControl
                       }
-                    , Cmd.none
+                    , sendEdgesCmd
                     )
 
                 _ ->
@@ -1377,7 +1381,13 @@ view model =
                 , simpleButton "Next Edge" SelectNextEdge
                 ]
             , if model.matrixMode then
-                Maybe.map Matrix.view (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
+                Maybe.map
+                    (Matrix.view model.selectedNode
+                        model.selectedEdge
+                        SelectNode
+                        SelectEdge
+                    )
+                    (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
                     |> Maybe.withDefault none
 
               else

@@ -6,6 +6,7 @@ port module Midi exposing
     , dict
     , send
     , sendEdgeState
+    , sendEdges
     , sendProcessState
     )
 
@@ -59,6 +60,21 @@ sendProcessState ugen =
                     )
             )
             (processParameters ugen.process)
+        |> Cmd.batch
+
+
+sendEdges : List (List Connection) -> Cmd msg
+sendEdges connections =
+    List.indexedMap
+        (\ugenIdx ugenEdges ->
+            List.indexedMap
+                (\edgeIdx edge ->
+                    send ( 1, (ugenIdx * 8) + edgeIdx, round (edge.link.strength * 127) )
+                )
+                ugenEdges
+                |> Cmd.batch
+        )
+        connections
         |> Cmd.batch
 
 
@@ -203,10 +219,11 @@ dict messages edgeIndices ( node, edge ) =
         , ( ( 0, 13 ), edgeF )
         , ( ( 0, 14 ), edgeD )
         , ( ( 0, 15 ), edgeW )
-        , ( ( 0, 16 ), messages.setEdgeControlWeights 0 )
-        , ( ( 0, 17 ), messages.setEdgeControlWeights 1 )
-        , ( ( 0, 18 ), messages.setEdgeControlWeights 2 )
-        , ( ( 0, 19 ), messages.setEdgeControlWeights 3 )
+
+        -- , ( ( 0, 16 ), messages.setEdgeControlWeights 0 )
+        -- , ( ( 0, 17 ), messages.setEdgeControlWeights 1 )
+        -- , ( ( 0, 18 ), messages.setEdgeControlWeights 2 )
+        -- , ( ( 0, 19 ), messages.setEdgeControlWeights 3 )
         , ( ( 0, 20 ), messages.setEdgeControlDelay 0 )
         , ( ( 0, 21 ), messages.setEdgeControlDelay 1 )
         , ( ( 0, 22 ), messages.setEdgeControlDelay 2 )

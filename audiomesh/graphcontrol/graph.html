@@ -62,11 +62,11 @@
              //	     console.log(output);
              outputs.push(output)
 	 }
-         console.log(outputs);
+         //console.log(outputs);
      }
 
      function getMIDIMessage(midiMessage) {
-	 console.log(midiMessage);
+	 //console.log(midiMessage);
 	 app.ports.cc.send(parseMidiMessage(midiMessage));
          console.log(parseMidiMessage(midiMessage));
      }
@@ -86,10 +86,10 @@
 
      app.ports.send.subscribe(function(message) {
 	 //console.log(message);
-	 outputs.forEach(out => out.send([176+message[0], message[1], message[2]])); 
+	 setTimeout(() => outputs.forEach(out => out.send([176 + message[0], message[1], message[2]])), 100); 
      });
      
-     setTimeout(() => { console.log("sending"); outputs.forEach(out => out.send([185, 10, 0])) }, 1000); 
+//     setTimeout(() => { console.log("sending"); outputs.forEach(out => out.send([177, 1, 127])) }, 1000); 
      
     </script>
 </html>

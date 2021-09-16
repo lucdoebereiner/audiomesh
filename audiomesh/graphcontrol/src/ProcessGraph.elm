@@ -771,10 +771,10 @@ processToString p =
             "Fold thresh:" ++ floatString f.threshold
 
         VanDerPol v ->
-            "VanDerPol e:" ++ String.fromFloat v.e
+            "VanDerPol e:" ++ floatString v.e
 
         Duffing v ->
-            "Duffing e:" ++ String.fromFloat v.e
+            "Duffing e:" ++ floatString v.e
 
         Filter f ->
             filterTypeToString f.filterType
