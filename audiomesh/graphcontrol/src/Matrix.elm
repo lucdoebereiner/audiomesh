@@ -1,4 +1,4 @@
-module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, holedIndices, matrixFromGraphs, ugenColumn, ugenWithConnections, verticalLabels, view)
+module Matrix exposing (Matrix, UGenWithOutgoingConnections, groupEdges, holedIndices, matrixFromGraphs, ugenWithConnections, view)
 
 --import Element.Background as Background
 
@@ -88,53 +88,47 @@ matrixFromGraphs gr ugenGr =
     }
 
 
-ugenColumn : List Int -> UGenWithOutgoingConnections -> Element msg
-ugenColumn indices ugen =
+ugenRow : List Int -> UGenWithOutgoingConnections -> Element msg
+ugenRow indices ugen =
     let
         bottomBorder =
-            Border.widthEach { left = 0, right = 0, bottom = 2, top = 0 }
+            Border.widthEach { left = 0, right = 2, bottom = 2, top = 0 }
 
-        connectionRows =
+        connectionColumns =
             List.map
                 (\idx ->
                     case L.find (\c -> c.to == idx) ugen.outgoing of
                         Nothing ->
-                            row [ height (px 30), paddingXY 10 0, bottomBorder, centerX, width fill ] [ none ]
+                            column [ height (px 30), paddingXY 10 10, bottomBorder, centerX, centerY, width fill ] [ none ]
 
                         Just c ->
-                            row [ height (px 30), paddingXY 10 0, bottomBorder, centerX, width fill ] [ paragraph [ centerX, width fill ] [ text (floatString c.link.strength) ] ]
+                            column [ height (px 30), paddingXY 10 10, bottomBorder, centerX, centerY, width fill ] [ paragraph [ centerX, width fill ] [ text (floatString c.link.strength) ] ]
                 )
                 indices
     in
-    column [ Border.widthEach { left = 0, right = 2, bottom = 0, top = 0 } ]
-        ([ row [ height (px 30), paddingXY 10 0, bottomBorder, width fill ] [ text (ugenLabel ugen.ugen) ]
+    row [ Border.widthEach { left = 0, right = 0, bottom = 0, top = 0 }, width fill ]
+        ([ column [ height (px 30), width (px 300), paddingXY 10 10, bottomBorder ] [ text (ugenLabel ugen.ugen) ]
          ]
-            ++ connectionRows
+            ++ connectionColumns
         )
 
 
-verticalLabels : List UGenWithOutgoingConnections -> Element msg
-verticalLabels ugens =
+horizontalLabels : List UGenWithOutgoingConnections -> Element msg
+horizontalLabels ugens =
     let
         bottomBorder =
-            Border.widthEach { left = 0, right = 0, bottom = 2, top = 0 }
+            Border.widthEach { left = 0, right = 2, bottom = 2, top = 0 }
 
         labels =
             List.map
                 (\ugen ->
-                    row [ height (px 30), paddingXY 10 0, bottomBorder, width fill ] [ text (ugenLabel ugen.ugen) ]
+                    column [ height (px 50), paddingXY 10 10, bottomBorder, width fill ] [ paragraph [ width fill ] [ text (ugenLabel ugen.ugen) ] ]
                 )
                 ugens
     in
-    column
-        [ Border.widthEach
-            { left = 0
-            , right = 2
-            , bottom = 0
-            , top = 0
-            }
-        ]
-        ([ row [ height (px 30), bottomBorder, width fill ] [ none ]
+    row
+        []
+        ([ column [ height (px 50), bottomBorder, width (px 300) ] [ none ]
          ]
             ++ labels
         )
@@ -146,6 +140,7 @@ groupEdges matrix =
         matrix.ugens
         |> List.map (ugenWithConnections matrix)
         |> List.map .outgoing
+        |> List.map (List.sortBy .to)
         |> List.map (List.map (.id << .link))
 
 
@@ -159,10 +154,10 @@ view matrix =
         withConnections =
             List.map (ugenWithConnections matrix) ugensList
     in
-    row [ centerX ]
-        (verticalLabels withConnections
+    column [ centerX ]
+        (horizontalLabels withConnections
             :: (withConnections
-                    |> List.map (ugenColumn (List.map Tuple.first ugensList))
+                    |> List.map (ugenRow (List.map Tuple.first ugensList))
                )
         )
 

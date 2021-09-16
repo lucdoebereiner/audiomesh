@@ -412,12 +412,18 @@ update msg model =
                     getSelectedEdge model
 
                 ( newModel, cmds ) =
+                    let
+                        grouped =
+                            Maybe.map Matrix.groupEdges
+                                (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
+
+                        -- _ =
+                        --     Debug.log "grouped edges" grouped
+                    in
                     Dict.get ( m.channel, m.controller )
                         (midiDict
                             (Maybe.withDefault []
-                                (Maybe.map Matrix.groupEdges
-                                    (Maybe.map2 Matrix.matrixFromGraphs model.backendGraph model.graph)
-                                )
+                                grouped
                             )
                             ( selectedNode, selectedEdge )
                         )

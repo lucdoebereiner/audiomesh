@@ -147,7 +147,7 @@ fn node_output_amp(id: usize, amp: f64, state: &State<Globals>) {
 fn set_outputs(specvec: Json<Vec<OutputSpec>>, state: &State<Globals>) {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
-    println!("setting outputs {:?}", specvec);
+    //    println!("setting outputs {:?}", specvec);
     sender
         .send(UpdateMessage::SetOutputs(specvec.into_inner()))
         .unwrap()
