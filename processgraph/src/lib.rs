@@ -1,5 +1,6 @@
 mod compenv;
 mod filters;
+pub mod integrator;
 pub mod lag;
 pub mod process;
 pub mod tapdelay;

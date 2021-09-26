@@ -1,6 +1,7 @@
 use crate::compenv::*;
 use crate::filters;
 use crate::lag;
+use crate::integrator;
 use crate::numerical;
 use crate::tapdelay;
 use serde::{Deserialize, Serialize};
