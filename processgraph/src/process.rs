@@ -1,7 +1,7 @@
 use crate::compenv::*;
 use crate::filters;
+use crate::integrator::runge_kutta;
 use crate::lag;
-use crate::integrator;
 use crate::numerical;
 use crate::tapdelay;
 use serde::{Deserialize, Serialize};
@@ -134,12 +134,15 @@ pub enum Process {
     VanDerPol {
         #[serde(skip)]
         input: f64,
+        // #[serde(skip_serializing)]
+        // #[serde(default = "vdp_x")]
+        // x: f64,
+        // #[serde(skip_serializing)]
+        // #[serde(default = "vdp_y")]
+        // y: f64,
         #[serde(skip_serializing)]
-        #[serde(default = "vdp_x")]
-        x: f64,
-        #[serde(skip_serializing)]
-        #[serde(default = "vdp_y")]
-        y: f64,
+        #[serde(default = "vdp_state")]
+        state: Vec<f64>,
         frac: lag::Lag,
         e: lag::Lag,
         a: lag::Lag,
@@ -459,8 +462,9 @@ fn dynsys_compressor() -> Box<Process> {
 pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
     Process::VanDerPol {
         input: 0.0,
-        x: 0.0,
-        y: 0.0,
+        state: vdp_state(),
+        // x: 0.0,
+        // y: 0.0,
         frac: lag::lag(frac),
         e: lag::lag(e),
         a: lag::lag(a),
@@ -471,6 +475,12 @@ pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
         y_compr: dynsys_compressor(),
     }
 }
+
+
+fn vdp_state() -> Vec<f64> {
+    vec![0.1, 0.2]
+}
+
 
 fn vdp_x() -> f64 {
     0.1
@@ -537,11 +547,28 @@ fn kaneko_logisitc(x: f64, a: f64) -> f64 {
 }
 
 #[inline]
-fn vdp_calc(x: f64, y: f64, e: f64, a: f64, input: f64) -> (f64, f64) {
-    let d_x = y + (input * a);
-    let d_y = (e * (1.0 - x.powi(2)) * y) - x;
-    (d_x, d_y)
+fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> {
+    let attrition = 0.1;
+    let x = state[0];
+    let y = state[1];
+    let d_x = y - x * attrition;
+    let d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)  + (additional_vars.input * additional_vars.a) - y * attrition;
+    vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
+
+struct VDPAdditionalVars {
+    e: f64,
+    a: f64,
+    input: f64,
+    f: f64,
+}
+
+// #[inline]
+// fn vdp_calc(x: f64, y: f64, e: f64, a: f64, input: f64) -> (f64, f64) {
+//     let d_x = y + (input * a);
+//     let d_y = (e * (1.0 - x.powi(2)) * y) - x;
+//     (d_x, d_y)
+// }
 
 impl Process {
     pub fn process(&mut self, external_input: &[f64]) -> f64 {
@@ -578,8 +605,9 @@ impl Process {
             }
             Process::VanDerPol {
                 input,
-                ref mut x,
-                ref mut y,
+                ref mut state,
+                // ref mut x,
+                // ref mut y,
                 ref mut frac,
                 ref mut e,
                 ref mut a,
@@ -593,80 +621,37 @@ impl Process {
                 let f = frac.tick();
                 let this_a = a.tick();
 
-                let deltas1 = vdp_calc(*x, *y, this_e, this_a, *input);
+                let additional_vars = VDPAdditionalVars { e: this_e, input : *input, a: this_a, f: f};
+                let new_state = runge_kutta(&vdp_calc_vec, &state, &additional_vars, 3.0/get_sr());
+              //  println!("state: {:?}, new_state: {:?}", state, new_state);
+                state[0] = new_state[0];
+                state[1] = new_state[1];
+                state[0]
 
-                let deltas2 = vdp_calc(
-                    *x + (deltas1.0 * f),
-                    *y + (deltas1.1 * f),
-                    this_e,
-                    this_a,
-                    *input,
-                );
-
-                // let mut d_x = (*y + (*input * this_a)) * f;
-                // let mut d_y = ((this_e * *y * (1.0 - (*x).powi(2))) - *x) * f;
-
-                // let mut d_x_n = *y + (*input * this_a);
-                // let mut d_y_n = (this_e * *y * (1.0 - (*x).powi(2))) - *x;
-
-                // d_x_n = zapgremlins(d_x_n);
-                // d_y_n = zapgremlins(d_y_n);
-
-                // let x_1 = *x + (d_x_n * f);
-                // let y_1 = *y + (d_y_n * f);
-
-                // let mut d_x_1 = y_1 + (*input * this_a);
-                // let mut d_y_1 = (this_e * y_1 * (1.0 - (x_1).powi(2))) - x_1;
-
-                // d_x_1 = zapgremlins(d_x_1);
-                // d_y_1 = zapgremlins(d_y_1);
-
-                let d_x = ((deltas1.0 + deltas2.0) / 2.0) * f;
-                let d_y = ((deltas1.1 + deltas2.1) / 2.0) * f;
-
-                let mut new_x = *x + d_x;
-                let mut new_y = *y + d_y;
-
-                // x_filter.input = zapgremlins(new_x);
-                // y_filter.input = zapgremlins(new_y);
-                // new_x = x_filter.process();
-                // new_y = y_filter.process();
-                x_compr.set_input(0, new_x, false);
-                y_compr.set_input(0, new_y, false);
-                new_x = x_compr.process(external_input);
-                new_y = y_compr.process(external_input);
-
-                //hard reset
-                // if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
-                //     //                    println!("reset vdp x{} y{}", d_x, d_y);
-                //     d_x = 0.05;
-                //     d_y = 0.1;
-                //     *x = 0.0;
-                //     *y = 0.0;
-                // }
-
-                *x = (new_x * 0.5).tanh() * 2.; //*x + (deltas1.0 * f); //.tanh();
-                *y = (new_y * 0.5).tanh() * 2.; //*y + (deltas1.1 * f); //.tanh();
-                                                //     println!("e: {}, f: {}, a: {}, x: {}, y: {}", this_e, f, this_a, x, y);
-
-                // println!(
-                //     "d1: {}, d2: {}, f: {}, x: {}, y: {}",
-                //     deltas1.0, deltas1.1, f, x, y
+                // let deltas1 = vdp_calc(*x, *y, this_e, this_a, *input);
+                // let deltas2 = vdp_calc(
+                //     *x + (deltas1.0 * f),
+                //     *y + (deltas1.1 * f),
+                //     this_e,
+                //     this_a,
+                //     *input,
                 // );
-                *x
-                //                output.input = *x;
-                //              output.process()
+                // let d_x = ((deltas1.0 + deltas2.0) / 2.0) * f;
+                // let d_y = ((deltas1.1 + deltas2.1) / 2.0) * f;
+                // let mut new_x = *x + d_x;
+                // let mut new_y = *y + d_y;
+                // x_compr.set_input(0, new_x, false);
+                // y_compr.set_input(0, new_y, false);
+                // new_x = x_compr.process(external_input);
+                // new_y = y_compr.process(external_input);
 
-                // output.input = *input;
-                // output.process()
+                // *x = (new_x * 0.5).tanh() * 2.; //*x + (deltas1.0 * f); //.tanh();
+                // *y = (new_y * 0.5).tanh() * 2.; //*y + (deltas1.1 * f); //.tanh();
+                //                                 //     println!("e: {}, f: {}, a: {}, x: {}, y: {}", this_e, f, this_a, x, y);
+                // *x
 
-                // let in_before = (*input * this_a);
-                // x_filter.input = in_before;
-                // let in_filter = x_filter.process();
-                // x_compr.set_input(0, in_filter, false);
-                // let in_after = x_compr.process(external_input);
-                // println!("before: {}, after: {}", in_before, in_after);
-                // in_after
+
+
             }
             Process::Duffing {
                 input,
