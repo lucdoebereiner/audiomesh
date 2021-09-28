@@ -547,12 +547,16 @@ fn kaneko_logisitc(x: f64, a: f64) -> f64 {
 }
 
 #[inline]
+fn attrition(val: f64) -> f64 {
+    1.0f64.min(0.2 * val.abs().powf(1.2) * val.signum() * val)
+}
+
+#[inline]
 fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> {
-    let attrition = 0.1;
     let x = state[0];
     let y = state[1];
-    let d_x = y - x * attrition;
-    let d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)  + (additional_vars.input * additional_vars.a) - y * attrition;
+    let d_x = y - attrition(x);
+    let d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)  + (additional_vars.input * additional_vars.a) - attrition(y);
     vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
 
