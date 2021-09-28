@@ -476,11 +476,9 @@ pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
     }
 }
 
-
 fn vdp_state() -> Vec<f64> {
     vec![0.1, 0.2]
 }
-
 
 fn vdp_x() -> f64 {
     0.1
@@ -548,15 +546,19 @@ fn kaneko_logisitc(x: f64, a: f64) -> f64 {
 
 #[inline]
 fn attrition(val: f64) -> f64 {
-    1.0f64.min(0.2 * val.abs().powf(1.2) * val.signum() * val)
+    1.0f64.min(0.25 * val.abs().powf(1.2) * val)
 }
 
 #[inline]
 fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
-    let d_x = y - attrition(x);
-    let d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)  + (additional_vars.input * additional_vars.a) - attrition(y);
+    let tan_fac = 10.0;
+    let mut d_x = y;
+    d_x = ((d_x/tan_fac).tanh() * tan_fac) - attrition(x);
+    let mut d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)
+        + (additional_vars.input * additional_vars.a);
+    d_y = ((d_y/tan_fac).tanh() * tan_fac) - attrition(y);
     vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
 
@@ -625,11 +627,21 @@ impl Process {
                 let f = frac.tick();
                 let this_a = a.tick();
 
-                let additional_vars = VDPAdditionalVars { e: this_e, input : *input, a: this_a, f: f};
-                let new_state = runge_kutta(&vdp_calc_vec, &state, &additional_vars, 3.0/get_sr());
-              //  println!("state: {:?}, new_state: {:?}", state, new_state);
+                let additional_vars = VDPAdditionalVars {
+                    e: this_e,
+                    input: *input,
+                    a: this_a,
+                    f: f,
+                };
+                let new_state =
+                    runge_kutta(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+                //  println!("state: {:?}, new_state: {:?}", state, new_state);
                 state[0] = new_state[0];
                 state[1] = new_state[1];
+                if (state[0].abs() > 10.0) || (state[1].abs() > 10.0) {
+                    state[0] = state[0] - (state[0] * 0.1);
+                    state[1] = state[1] - (state[1] * 0.1);
+                }
                 state[0]
 
                 // let deltas1 = vdp_calc(*x, *y, this_e, this_a, *input);
@@ -653,9 +665,6 @@ impl Process {
                 // *y = (new_y * 0.5).tanh() * 2.; //*y + (deltas1.1 * f); //.tanh();
                 //                                 //     println!("e: {}, f: {}, a: {}, x: {}, y: {}", this_e, f, this_a, x, y);
                 // *x
-
-
-
             }
             Process::Duffing {
                 input,
