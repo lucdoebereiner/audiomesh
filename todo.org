@@ -1,4 +1,4 @@
-* TODO graph synth rust [62/105]
+* TODO graph synth rust [63/108]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -87,6 +87,9 @@
   - [X] edge facs specific control
   - [X] edge delays specific control
   - [X] edge lpf specific control
+- [X] runge-kutta integration
+- [ ] chua
+- [ ] all ugens separate out
 - [ ] lang for expressing networks
 - [ ] move flow into ugengraph struct
 - [ ] general input fader
