@@ -131,7 +131,7 @@ type Process
     | Ducking
     | GateIfGreater
     | VanDerPol { e : Float, frac : Float, a : Float }
-    | Duffing { e : Float, frac : Float, a : Float }
+    | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
     | Env
         { min_target : Float
@@ -240,10 +240,11 @@ processParameters p =
             , Parameter 3 a Exp "a" 0.0001 30.0
             ]
 
-        Duffing { e, frac, a } ->
+        Duffing { e, frac, a, b } ->
             [ Parameter 1 e Exp "E" 0.05 20
-            , Parameter 2 frac Exp "dt" 0.001 0.9
+            , Parameter 2 frac Exp "dt" 0.01 2000.0
             , Parameter 3 a Exp "a" 0.001 10.0
+            , Parameter 4 b Exp "b" 0.001 20.0
             ]
 
         Env { min_target, max_target, max_n, sustain_fac, rest_fac } ->
@@ -382,6 +383,9 @@ setInput ( parIdx, val ) proc =
 
                 3 ->
                     Duffing { s | a = val }
+
+                4 ->
+                    Duffing { s | b = val }
 
                 _ ->
                     proc
@@ -712,6 +716,7 @@ encodeProcess p =
                     [ ( "e", JE.float s.e )
                     , ( "frac", JE.float s.frac )
                     , ( "a", JE.float s.a )
+                    , ( "b", JE.float s.b )
                     ]
                 )
 
@@ -918,10 +923,11 @@ decodeVanDerPol =
 
 decodeDuffing : Decoder Process
 decodeDuffing =
-    Decode.succeed (\e f a -> Duffing { e = e, frac = f, a = a })
+    Decode.succeed (\e f a b -> Duffing { e = e, b = b, frac = f, a = a })
         |> required "e" float
         |> required "frac" float
         |> required "a" float
+        |> required "b" float
 
 
 decodeEnv : Decoder Process

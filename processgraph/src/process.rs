@@ -9,7 +9,7 @@ use serde::{Deserializer, Serializer};
 use std::f64;
 const PI: f64 = f64::consts::PI;
 
-use crate::numerical::{zapgremlins, TWOPI};
+use crate::numerical::TWOPI;
 
 static mut SR: f64 = 44100f64;
 static mut FREQ_FAC: f64 = unsafe { 2.0 * PI / SR };
@@ -134,47 +134,23 @@ pub enum Process {
     VanDerPol {
         #[serde(skip)]
         input: f64,
-        // #[serde(skip_serializing)]
-        // #[serde(default = "vdp_x")]
-        // x: f64,
-        // #[serde(skip_serializing)]
-        // #[serde(default = "vdp_y")]
-        // y: f64,
         #[serde(skip_serializing)]
         #[serde(default = "vdp_state")]
         state: Vec<f64>,
         frac: lag::Lag,
         e: lag::Lag,
         a: lag::Lag,
-        #[serde(skip_serializing)]
-        #[serde(default = "dc_remove_filter")]
-        output: filters::OnePoleHP,
-        #[serde(skip_serializing)]
-        #[serde(default = "dc_remove_filter")]
-        x_filter: filters::OnePoleHP,
-        #[serde(skip_serializing)]
-        #[serde(default = "dc_remove_filter")]
-        y_filter: filters::OnePoleHP,
-        #[serde(skip_serializing)]
-        #[serde(default = "dynsys_compressor")]
-        x_compr: Box<Process>,
-        #[serde(skip_serializing)]
-        #[serde(default = "dynsys_compressor")]
-        y_compr: Box<Process>,
     },
     Duffing {
         #[serde(skip)]
         input: f64,
-        #[serde(skip)]
-        x: f64,
-        #[serde(skip)]
-        y: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "vdp_state")]
+        state: Vec<f64>,
         frac: lag::Lag,
         e: lag::Lag,
         a: lag::Lag,
-        #[serde(skip_serializing)]
-        #[serde(default = "dc_remove_filter")]
-        output: filters::OnePoleHP,
+        b: lag::Lag,
     },
     Ducking {
         #[serde(skip)]
@@ -468,24 +444,11 @@ pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
         frac: lag::lag(frac),
         e: lag::lag(e),
         a: lag::lag(a),
-        output: dc_remove_filter(),
-        x_filter: dc_remove_filter(),
-        y_filter: dc_remove_filter(),
-        x_compr: dynsys_compressor(),
-        y_compr: dynsys_compressor(),
     }
 }
 
 fn vdp_state() -> Vec<f64> {
     vec![0.1, 0.2]
-}
-
-fn vdp_x() -> f64 {
-    0.1
-}
-
-fn vdp_y() -> f64 {
-    0.2
 }
 
 fn ducking_lag() -> lag::Lag {
@@ -555,10 +518,10 @@ fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> 
     let y = state[1];
     let tan_fac = 10.0;
     let mut d_x = y;
-    d_x = ((d_x/tan_fac).tanh() * tan_fac) - attrition(x);
+    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
     let mut d_y = ((additional_vars.e * (1.0 - x.powi(2)) * y) - x)
         + (additional_vars.input * additional_vars.a);
-    d_y = ((d_y/tan_fac).tanh() * tan_fac) - attrition(y);
+    d_y = ((d_y / tan_fac).tanh() * tan_fac) - attrition(y);
     vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
 
@@ -569,12 +532,29 @@ struct VDPAdditionalVars {
     f: f64,
 }
 
-// #[inline]
-// fn vdp_calc(x: f64, y: f64, e: f64, a: f64, input: f64) -> (f64, f64) {
-//     let d_x = y + (input * a);
-//     let d_y = (e * (1.0 - x.powi(2)) * y) - x;
-//     (d_x, d_y)
-// }
+struct DuffingAdditionalVars {
+    e: f64,
+    a: f64,
+    b: f64,
+    input: f64,
+    f: f64,
+}
+
+#[inline]
+fn duffing_calc_vec(state: &[f64], additional_vars: &DuffingAdditionalVars) -> Vec<f64> {
+    let x = state[0];
+    let y = state[1];
+    let tan_fac = 10.0;
+    let mut d_x = y;
+    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
+    let mut d_y = x - (additional_vars.b * x.powi(3)) - (additional_vars.e * y)
+        + (additional_vars.input * additional_vars.a);
+    d_y = ((d_y / tan_fac).tanh() * tan_fac) - attrition(y);
+    vec![d_x * additional_vars.f, d_y * additional_vars.f]
+}
+
+// let mut d_x_n = *y;
+// let mut d_y_n = *x - (*x).powi(3) - this_e * *y + (*input * this_a);
 
 impl Process {
     pub fn process(&mut self, external_input: &[f64]) -> f64 {
@@ -612,16 +592,9 @@ impl Process {
             Process::VanDerPol {
                 input,
                 ref mut state,
-                // ref mut x,
-                // ref mut y,
                 ref mut frac,
                 ref mut e,
                 ref mut a,
-                ref mut output,
-                ref mut x_filter,
-                ref mut y_filter,
-                ref mut x_compr,
-                ref mut y_compr,
             } => {
                 let this_e = e.tick();
                 let f = frac.tick();
@@ -635,7 +608,7 @@ impl Process {
                 };
                 let new_state =
                     runge_kutta(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
-                //  println!("state: {:?}, new_state: {:?}", state, new_state);
+
                 state[0] = new_state[0];
                 state[1] = new_state[1];
                 if (state[0].abs() > 10.0) || (state[1].abs() > 10.0) {
@@ -643,73 +616,37 @@ impl Process {
                     state[1] = state[1] - (state[1] * 0.1);
                 }
                 state[0]
-
-                // let deltas1 = vdp_calc(*x, *y, this_e, this_a, *input);
-                // let deltas2 = vdp_calc(
-                //     *x + (deltas1.0 * f),
-                //     *y + (deltas1.1 * f),
-                //     this_e,
-                //     this_a,
-                //     *input,
-                // );
-                // let d_x = ((deltas1.0 + deltas2.0) / 2.0) * f;
-                // let d_y = ((deltas1.1 + deltas2.1) / 2.0) * f;
-                // let mut new_x = *x + d_x;
-                // let mut new_y = *y + d_y;
-                // x_compr.set_input(0, new_x, false);
-                // y_compr.set_input(0, new_y, false);
-                // new_x = x_compr.process(external_input);
-                // new_y = y_compr.process(external_input);
-
-                // *x = (new_x * 0.5).tanh() * 2.; //*x + (deltas1.0 * f); //.tanh();
-                // *y = (new_y * 0.5).tanh() * 2.; //*y + (deltas1.1 * f); //.tanh();
-                //                                 //     println!("e: {}, f: {}, a: {}, x: {}, y: {}", this_e, f, this_a, x, y);
-                // *x
             }
             Process::Duffing {
                 input,
-                ref mut x,
-                ref mut y,
+                ref mut state,
                 ref mut frac,
                 ref mut e,
                 ref mut a,
-                ref mut output,
+                ref mut b,
             } => {
                 let this_e = e.tick();
                 let f = frac.tick();
                 let this_a = a.tick();
+                let this_b = b.tick();
 
-                let mut d_x_n = *y;
-                let mut d_y_n = *x - (*x).powi(3) - this_e * *y + (*input * this_a);
+                let additional_vars = DuffingAdditionalVars {
+                    e: this_e,
+                    input: *input,
+                    a: this_a,
+                    b: this_b,
+                    f: f,
+                };
+                let new_state =
+                    runge_kutta(&duffing_calc_vec, &state, &additional_vars, 6.0 / get_sr());
 
-                d_x_n = zapgremlins(d_x_n);
-                d_y_n = zapgremlins(d_y_n);
-
-                let x_1 = *x + (d_x_n * f);
-                let y_1 = *y + (d_y_n * f);
-
-                let mut d_x_1 = y_1;
-                let mut d_y_1 = x_1 - (x_1).powi(3) - this_e * y_1 + (*input * this_a);
-
-                d_x_1 = zapgremlins(d_x_1);
-                d_y_1 = zapgremlins(d_y_1);
-
-                let mut d_x = ((d_x_n + d_x_1) / 2.0) * f;
-                let mut d_y = ((d_y_n + d_y_1) / 2.0) * f;
-
-                //hard reset
-                if d_x.abs() > 300.0 || d_y.abs() > 300.0 {
-                    //                    println!("reset vdp x{} y{}", d_x, d_y);
-                    d_x = 0.0;
-                    d_y = 0.0;
-                    *x = 0.0;
-                    *y = 0.0;
+                state[0] = new_state[0];
+                state[1] = new_state[1];
+                if (state[0].abs() > 10.0) || (state[1].abs() > 10.0) {
+                    state[0] = state[0] - (state[0] * 0.1);
+                    state[1] = state[1] - (state[1] * 0.1);
                 }
-
-                *x = *x + d_x;
-                *y = *y + d_y;
-                output.input = *x * 0.5;
-                output.process()
+                state[0]
             }
             Process::PLL {
                 input,
@@ -1077,12 +1014,14 @@ impl Process {
                 ref mut e,
                 ref mut frac,
                 ref mut a,
+                ref mut b,
                 ..
             } => match idx {
                 0 => set_or_add(input, input_value, add),
                 1 => e.set_target(input_value),
                 2 => frac.set_target(input_value),
                 3 => a.set_target(input_value),
+                4 => b.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::SinOsc {
@@ -1630,12 +1569,8 @@ impl Process {
 	        clear_chain(input_level);
 	    },
 
-            | Process::VanDerPol { ref mut input, ref mut x_compr, ref mut y_compr, ref mut x_filter, ref mut y_filter, .. } => {
+            | Process::VanDerPol { ref mut input, .. } => {
 	        *input = 0.0;
-                x_filter.input = 0.0;
-                y_filter.input = 0.0;
-                x_compr.clear_inputs();
-                y_compr.clear_inputs();
             }
 
 	    Process::GateDecision { ref mut input, ref mut other_level, .. } => {

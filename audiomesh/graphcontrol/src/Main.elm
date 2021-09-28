@@ -1255,7 +1255,7 @@ processRow m =
         -- , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         -- , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , addProcess "VanDerPol" (VanDerPol { e = 0.5, frac = 0.03, a = 1.0 })
-        , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5 })
+        , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
         , soundInInput m.soundInIndex
         , kanekoChainInput m.kanekoChainN
