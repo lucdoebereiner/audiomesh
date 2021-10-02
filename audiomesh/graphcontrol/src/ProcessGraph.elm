@@ -130,6 +130,7 @@ type Process
     | Softclip
     | Ducking
     | GateIfGreater
+    | Chua { a : Float, b : Float, frac : Float, coupling : Float }
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
@@ -236,8 +237,15 @@ processParameters p =
 
         VanDerPol { e, frac, a } ->
             [ Parameter 1 e Exp "E" 0.02 10
-            , Parameter 2 frac Exp "dt" 0.01 6000.0
+            , Parameter 2 frac Exp "freq" 0.01 6000.0
             , Parameter 3 a Exp "a" 0.0001 30.0
+            ]
+
+        Chua { a, b, frac, coupling } ->
+            [ Parameter 1 a Exp "a" 0.02 10
+            , Parameter 2 b Exp "b" 0.02 10
+            , Parameter 3 frac Exp "freq" 0.01 6000.0
+            , Parameter 4 coupling Exp "coupling" 0.0001 30.0
             ]
 
         Duffing { e, frac, a, b } ->
@@ -369,6 +377,23 @@ setInput ( parIdx, val ) proc =
 
                 3 ->
                     VanDerPol { s | a = val }
+
+                _ ->
+                    proc
+
+        Chua s ->
+            case parIdx of
+                1 ->
+                    Chua { s | a = val }
+
+                2 ->
+                    Chua { s | b = val }
+
+                3 ->
+                    Chua { s | frac = val }
+
+                4 ->
+                    Chua { s | coupling = val }
 
                 _ ->
                     proc
@@ -512,6 +537,9 @@ processName p =
 
         VarDelay _ ->
             "VarDelay"
+
+        Chua _ ->
+            "Chua"
 
         Fold _ ->
             "Fold"
@@ -710,6 +738,16 @@ encodeProcess p =
                     ]
                 )
 
+        Chua s ->
+            encObj p
+                (JE.object
+                    [ ( "a", JE.float s.a )
+                    , ( "b", JE.float s.b )
+                    , ( "frac", JE.float s.frac )
+                    , ( "coupling", JE.float s.coupling )
+                    ]
+                )
+
         Duffing s ->
             encObj p
                 (JE.object
@@ -777,6 +815,9 @@ processToString p =
 
         VanDerPol v ->
             "VanDerPol e:" ++ floatString v.e
+
+        Chua v ->
+            "Chua a:" ++ floatString v.a
 
         Duffing v ->
             "Duffing e:" ++ floatString v.e
@@ -919,6 +960,15 @@ decodeVanDerPol =
         |> required "e" float
         |> required "frac" float
         |> required "a" float
+
+
+decodeChua : Decoder Process
+decodeChua =
+    Decode.succeed (\a b f c -> Chua { a = a, b = b, frac = f, coupling = c })
+        |> required "a" float
+        |> required "b" float
+        |> required "frac" float
+        |> required "coupling" float
 
 
 decodeDuffing : Decoder Process
@@ -1154,6 +1204,7 @@ decodeUGen =
                 , field "EnvFollow" (decodeSimpleProcess EnvFollow)
                 , field "PLL" decodePLL
                 , field "VanDerPol" decodeVanDerPol
+                , field "Chua" decodeChua
                 , field "Duffing" decodeDuffing
                 , field "Resonator" decodeResonator
                 , field "SoundIn" decodeSoundIn
