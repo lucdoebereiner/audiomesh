@@ -1,6 +1,6 @@
 use crate::compenv::*;
 use crate::filters;
-use crate::integrator::runge_kutta;
+use crate::integrator::{runge_kutta, runge_kutta_6};
 use crate::lag;
 use crate::numerical;
 use crate::tapdelay;
@@ -546,10 +546,12 @@ fn duffing_calc_vec(state: &[f64], additional_vars: &DuffingAdditionalVars) -> V
     let y = state[1];
     let tan_fac = 10.0;
     let mut d_x = y;
-    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
+    d_x = d_x - attrition(x);
+//    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
     let mut d_y = x - (additional_vars.b * x.powi(3)) - (additional_vars.e * y)
         + (additional_vars.input * additional_vars.a);
-    d_y = ((d_y / tan_fac).tanh() * tan_fac) - attrition(y);
+    d_y = d_y - attrition(y);
+    //  d_y = ((d_y / tan_fac).tanh() * tan_fac) - attrition(y);
     vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
 
@@ -607,7 +609,7 @@ impl Process {
                     f: f,
                 };
                 let new_state =
-                    runge_kutta(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+                    runge_kutta_6(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
 
                 state[0] = new_state[0];
                 state[1] = new_state[1];
