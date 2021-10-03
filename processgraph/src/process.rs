@@ -151,6 +151,7 @@ pub enum Process {
         coupling: lag::Lag,
         a: lag::Lag,
         b: lag::Lag,
+        c: lag::Lag,
     },
     Duffing {
         #[serde(skip)]
@@ -463,7 +464,7 @@ fn vdp_state() -> Vec<f64> {
 }
 
 fn chua_state() -> Vec<f64> {
-    vec![0.09, 0.12, 0.012]
+    vec![0.2, -0.2, 0.1]
 }
 
 fn ducking_lag() -> lag::Lag {
@@ -530,32 +531,41 @@ fn attrition(val: f64) -> f64 {
 struct ChuaAdditionalVars {
     a: f64,
     b: f64,
+    c: f64,
     coupling: f64,
     input: f64,
     f: f64,
 }
 
-#[inline]
-fn chua_h(x: f64) -> f64 {
-    let m0 = -1.0 * (1.0/7.0);
-    let m1 = 2.0/7.0;
-    m1 + (1.0/2.0)*(m0 - m1)*((x+1.0).abs() - (x-1.0).abs())
-}
+// #[inline]
+// fn chua_h(x: f64) -> f64 {
+//     let m0 = -1.0 * (8.0/7.0);
+//     let m1 = -1.0 * (5.0/7.0);
+//     m1 + ( (m0 - m1)*((x+1.0).abs() - (x-1.0).abs()) / 2.0)
+// }
 
 #[inline]
 fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
     let z = state[2];
-    let tan_fac = 20.0;
-    let mut d_x = additional_vars.a * (y - chua_h(x))
+//    let tan_fac = 20.0;
+    let a = additional_vars.a;
+    let b = additional_vars.b;
+    let c = additional_vars.c;
+//    let b = 3.49;
+//    let c = -0.29;
+    let mut d_x = a * (y - x.powi(3) - (c * x))
         + (additional_vars.coupling * additional_vars.input);
+
+    // let mut d_x = additional_vars.a * (y - x - chua_h(x))
+    //     + (additional_vars.coupling * additional_vars.input);
     // let mut d_x = additional_vars.a * y - x + (x + 1.0).abs() - (x - 1.0).abs()
     //     + (additional_vars.coupling * additional_vars.input);
   //  d_x = ((d_x / tan_fac).tanh() * tan_fac); // - attrition(x);
     let mut d_y = x - y + z;
 //    d_y = ((d_y / tan_fac).tanh() * tan_fac); // - attrition(y);
-    let mut d_z = -1.0 * additional_vars.b * y;
+    let mut d_z = -1.0 * b * y;
   //  d_z = ((d_z / tan_fac).tanh() * tan_fac); // - attrition(z);
     vec![
         d_x * additional_vars.f,
@@ -678,10 +688,12 @@ impl Process {
                 ref mut frac,
                 ref mut a,
                 ref mut b,
+                ref mut c,
                 ref mut coupling,
             } => {
                 let this_coupling = coupling.tick();
                 let f = frac.tick();
+                let this_c = c.tick();
                 let this_a = a.tick();
                 let this_b = b.tick();
 
@@ -689,20 +701,21 @@ impl Process {
                     input: *input,
                     a: this_a,
                     b: this_b,
-                    f: f,
+                    c: this_c,
+                    f,
                     coupling: this_coupling,
                 };
                 let new_state =
-                    runge_kutta_6(&chua_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+                    runge_kutta_5(&chua_calc_vec, &state, &additional_vars, 5.0 / get_sr());
 
                 state[0] = new_state[0];
                 state[1] = new_state[1];
                 state[2] = new_state[2];
-                if (state[0].abs() > 10.0) || (state[1].abs() > 10.0) || (state[2].abs() > 10.0) {
-                    state[0] = state[0] - (state[0] * 0.1);
-                    state[1] = state[1] - (state[1] * 0.1);
-                    state[2] = state[2] - (state[2] * 0.1);
-                }
+                // if (state[0].abs() > 30.0) || (state[1].abs() > 30.0) || (state[2].abs() > 30.0) {
+                //     state[0] = state[0] - (state[0] * 0.1);
+                //     state[1] = state[1] - (state[1] * 0.1);
+                //     state[2] = state[2] - (state[2] * 0.1);
+                // }
                 state[0]
             }
             Process::Duffing {
@@ -1068,6 +1081,7 @@ impl Process {
                 ref mut input,
                 ref mut a,
                 ref mut b,
+                ref mut c,
                 ref mut coupling,
                 ref mut frac,
                 ..
@@ -1075,8 +1089,9 @@ impl Process {
                 0 => set_or_add(input, input_value, add),
                 1 => a.set_target(input_value),
                 2 => b.set_target(input_value),
-                3 => frac.set_target(input_value),
-                4 => coupling.set_target(input_value),
+                3 => c.set_target(input_value),
+                4 => frac.set_target(input_value),
+                5 => coupling.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::Fold {

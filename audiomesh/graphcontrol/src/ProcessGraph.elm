@@ -130,7 +130,7 @@ type Process
     | Softclip
     | Ducking
     | GateIfGreater
-    | Chua { a : Float, b : Float, frac : Float, coupling : Float }
+    | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float }
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
@@ -237,15 +237,16 @@ processParameters p =
 
         VanDerPol { e, frac, a } ->
             [ Parameter 1 e Exp "E" 0.02 10
-            , Parameter 2 frac Exp "freq" 0.01 6000.0
+            , Parameter 2 frac Exp "freq" 0.01 4000.0
             , Parameter 3 a Exp "a" 0.0001 30.0
             ]
 
-        Chua { a, b, frac, coupling } ->
-            [ Parameter 1 a Exp "a" 0.02 10
-            , Parameter 2 b Exp "b" 0.02 10
-            , Parameter 3 frac Exp "freq" 0.01 6000.0
-            , Parameter 4 coupling Exp "coupling" 0.0001 30.0
+        Chua { a, b, c, frac, coupling } ->
+            [ Parameter 1 a Lin "a" 2.6 10
+            , Parameter 2 b Lin "b" 2 6
+            , Parameter 3 c Lin "c" -0.5 0.5
+            , Parameter 4 frac Exp "freq" 0.01 2000.0
+            , Parameter 5 coupling Exp "coupling" 0.0001 30.0
             ]
 
         Duffing { e, frac, a, b } ->
@@ -390,9 +391,12 @@ setInput ( parIdx, val ) proc =
                     Chua { s | b = val }
 
                 3 ->
-                    Chua { s | frac = val }
+                    Chua { s | c = val }
 
                 4 ->
+                    Chua { s | frac = val }
+
+                5 ->
                     Chua { s | coupling = val }
 
                 _ ->
@@ -743,6 +747,7 @@ encodeProcess p =
                 (JE.object
                     [ ( "a", JE.float s.a )
                     , ( "b", JE.float s.b )
+                    , ( "c", JE.float s.c )
                     , ( "frac", JE.float s.frac )
                     , ( "coupling", JE.float s.coupling )
                     ]
@@ -964,9 +969,10 @@ decodeVanDerPol =
 
 decodeChua : Decoder Process
 decodeChua =
-    Decode.succeed (\a b f c -> Chua { a = a, b = b, frac = f, coupling = c })
+    Decode.succeed (\a b c f coup -> Chua { a = a, b = b, c = c, frac = f, coupling = coup })
         |> required "a" float
         |> required "b" float
+        |> required "c" float
         |> required "frac" float
         |> required "coupling" float
 
