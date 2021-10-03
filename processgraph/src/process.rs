@@ -671,7 +671,7 @@ impl Process {
                     f: f,
                 };
                 let new_state =
-                    runge_kutta_5(&vdp_calc_vec, &state, &additional_vars, 5.0 / get_sr());
+                    runge_kutta_5(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
                 //                    runge_kutta_6(&vdp_calc_vec, &state, &additional_vars, 6.0 / get_sr());
 
                 state[0] = new_state[0];
