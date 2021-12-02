@@ -11,11 +11,13 @@ module ProcessGraph exposing
     , decodeGraph
     , defaultUGen
     , encodeProcess
+    , getEdge
     , getNodes
     , graphEdges
     , isOutputProcess
-    , mkGraph
-    , mulAllEdges
+    ,  mkGraph
+       --    , mulAllEdges
+
     , nextEdge
     , nextNode
     , prevEdge
@@ -24,9 +26,10 @@ module ProcessGraph exposing
     , setInput
     , ugenLabel
     , ugensWithIds
+    , updateEdgeBias
     , updateEdgeDelay
+    , updateEdgeFactor
     , updateEdgeFreq
-    , updateEdgeWeight
     , updateOutputAmp
     , updateProcessParameter
     , upsertOutputSend
@@ -1257,7 +1260,7 @@ decodeUGen =
 
 type alias Link =
     { index : Int
-    , strength : Float
+    , strength : { bias : Float, factor : Float }
     , delay : { delay : Float, maxdelay : Float }
     , id : Int
     , freq : Float
@@ -1285,7 +1288,7 @@ decodeLinkObj : Decoder Link
 decodeLinkObj =
     Decode.succeed
         (\idx w d m f ->
-            Link idx w { delay = d, maxdelay = m } -1 f
+            Link idx { bias = w, factor = 1.0 } { delay = d, maxdelay = m } -1 f
         )
         |> required "input_idx" int
         |> required "weight" float
@@ -1560,12 +1563,38 @@ updateOutputAmp nodeId amp graph =
         graph
 
 
-updateEdgeWeight : Int -> Float -> UGenGraph -> UGenGraph
-updateEdgeWeight edgeId weight graph =
+getEdge : Int -> UGenGraph -> Maybe Link
+getEdge edgeId graph =
+    Graph.edges graph |> L.find (\e -> e.label.id == edgeId) |> Maybe.map .label
+
+
+updateEdgeBias : Int -> Float -> UGenGraph -> UGenGraph
+updateEdgeBias edgeId weight graph =
     Graph.mapEdges
         (\e ->
             if e.id == edgeId then
-                { e | strength = weight }
+                let
+                    s =
+                        e.strength
+                in
+                { e | strength = { s | bias = weight } }
+
+            else
+                e
+        )
+        graph
+
+
+updateEdgeFactor : Int -> Float -> UGenGraph -> UGenGraph
+updateEdgeFactor edgeId factor graph =
+    Graph.mapEdges
+        (\e ->
+            if e.id == edgeId then
+                let
+                    s =
+                        e.strength
+                in
+                { e | strength = { s | factor = factor } }
 
             else
                 e
@@ -1606,10 +1635,11 @@ updateEdgeDelay edgeId d graph =
         graph
 
 
-mulAllEdges : Float -> UGenGraph -> UGenGraph
-mulAllEdges f graph =
-    Graph.mapEdges
-        (\e ->
-            { e | strength = e.strength * f }
-        )
-        graph
+
+-- mulAllEdges : Float -> UGenGraph -> UGenGraph
+-- mulAllEdges f graph =
+--     Graph.mapEdges
+--         (\e ->
+--             { e | strength = e.strength * f }
+--         )
+--         graph

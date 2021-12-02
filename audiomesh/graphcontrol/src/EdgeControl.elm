@@ -33,7 +33,7 @@ defaultGroup =
 
 
 defaultControl =
-    Array.fromList [ defaultGroup, defaultGroup, defaultGroup, defaultGroup ]
+    Array.fromList [ defaultGroup, defaultGroup, defaultGroup, defaultGroup, defaultGroup, defaultGroup, defaultGroup, defaultGroup ]
 
 
 setSpread : Int -> Float -> EdgeControl -> EdgeControl
@@ -71,7 +71,7 @@ addEdge i e =
     else
         let
             idx =
-                modBy 4 i
+                modBy 8 i
 
             length =
                 Array.length e

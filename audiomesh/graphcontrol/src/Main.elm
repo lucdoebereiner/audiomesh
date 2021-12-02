@@ -68,7 +68,7 @@ type alias Model =
     , spikeTRest : String
     , kanekoChainN : String
     , soundInIndex : String
-    , edgeWeightControl : EdgeControl
+    , edgeFactorControl : EdgeControl
     , edgeDelayControl : EdgeControl
     , edgeFreqControl : EdgeControl
     , matrixMode : Bool
@@ -178,7 +178,8 @@ type Msg
     | SetKanekoChainN String
     | SetSoundInIndex String
     | SetProcessParameter Graph.NodeId Int Float
-    | SetEdgeWeight Int Float
+    | SetEdgeFactor Int Float
+    | SetEdgeBias Int Float
     | SetEdgeDelay Int Float
     | SetEdgeFreq Int Float
     | DeleteEdge Int
@@ -201,7 +202,7 @@ type Msg
     | SelectNextEdge
     | UpdateDrawGraph Time.Posix
     | ReceivedMidi (Result Dec.Error Midi.CC)
-    | SetEdgeControlWeights Int Float
+    | SetEdgeControlFactors Int Float
     | SetEdgeControlFreq Int Float
     | SetEdgeControlDelay Int Float
     | MatrixToggle
@@ -212,7 +213,8 @@ midiMsgs =
     { noMsg = NoMsg
     , setNodeOutputAmp = SetNodeOutputAmp
     , setProcessParameter = SetProcessParameter
-    , setEdgeWeight = SetEdgeWeight
+    , setEdgeFactor = SetEdgeFactor
+    , setEdgeBias = SetEdgeBias
     , setEdgeDelay = SetEdgeDelay
     , setEdgeFreq = SetEdgeFreq
     , selectPrevNode = SelectPrevNode
@@ -223,7 +225,7 @@ midiMsgs =
     , setInputGain = SetInputGain
     , setEdgeFac = SetEdgeFac
     , setOutputs = SetOutputs
-    , setEdgeControlWeights = SetEdgeControlWeights
+    , setEdgeControlFactors = SetEdgeControlFactors
     , setEdgeControlDelay = SetEdgeControlDelay
     , setEdgeControlFreq = SetEdgeControlFreq
     }
@@ -336,25 +338,39 @@ updateFromEdgeControl i getControl apiFun updateFun mapping model =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        SetEdgeControlWeights i s ->
+        SetEdgeControlFactors i s ->
             let
                 mapping =
-                    \v -> Parameters.lincubic v -2.0 2.0
+                    \v -> Parameters.linlin v 0.0 1.0 0.0 6.0
 
                 newModel =
                     { model
-                        | edgeWeightControl =
+                        | edgeFactorControl =
                             EdgeControl.setCenter
                                 i
                                 s
-                                model.edgeWeightControl
+                                model.edgeFactorControl
                     }
+
+                _ =
+                    Debug.log "fact ctrl" newModel.edgeFactorControl
             in
             updateFromEdgeControl
                 i
-                .edgeWeightControl
-                (Api.setEdgeWeight NoOp)
-                updateEdgeWeight
+                .edgeFactorControl
+                (\eId w ->
+                    let
+                        strength =
+                            Maybe.andThen (ProcessGraph.getEdge eId) model.graph
+                                |> Maybe.map .strength
+                                |> Maybe.map (\str -> { str | factor = w })
+                                |> Maybe.map
+                                    Parameters.calcEdgeStrength
+                                |> Maybe.withDefault 1.0
+                    in
+                    Api.setEdgeWeight NoOp eId strength
+                )
+                updateEdgeFactor
                 mapping
                 newModel
 
@@ -605,10 +621,10 @@ update msg model =
                     ( { model
                         | graph = Just newGraph
                         , backendGraph = Just g
-                        , edgeWeightControl =
+                        , edgeFactorControl =
                             EdgeControl.updateFromGraph
                                 newGraph
-                                model.edgeWeightControl
+                                model.edgeFactorControl
                         , edgeDelayControl =
                             EdgeControl.updateFromGraph
                                 newGraph
@@ -780,23 +796,42 @@ update msg model =
             , Api.setParameter NoOp nodeId parIdx val
             )
 
-        SetEdgeWeight edgeId weight ->
+        SetEdgeBias edgeId weight ->
             let
-                -- _ =
-                --     Debug.log "setting edge weight" weight
                 newGraph =
-                    Maybe.map (updateEdgeWeight edgeId weight)
+                    Maybe.map (updateEdgeBias edgeId weight)
                         model.graph
 
-                -- _ =
-                --     Debug.log "old graph" model.graph
-                -- _ =
-                --     Debug.log "new graph" newGraph
+                strength =
+                    Maybe.andThen (ProcessGraph.getEdge edgeId) newGraph
+                        |> Maybe.map .strength
+                        |> Maybe.map
+                            Parameters.calcEdgeStrength
+                        |> Maybe.withDefault 1.0
             in
             ( { model
                 | graph = newGraph
               }
-            , Api.setEdgeWeight NoOp edgeId weight
+            , Api.setEdgeWeight NoOp edgeId strength
+            )
+
+        SetEdgeFactor edgeId fac ->
+            let
+                newGraph =
+                    Maybe.map (updateEdgeFactor edgeId fac)
+                        model.graph
+
+                strength =
+                    Maybe.andThen (ProcessGraph.getEdge edgeId) newGraph
+                        |> Maybe.map .strength
+                        |> Maybe.map
+                            Parameters.calcEdgeStrength
+                        |> Maybe.withDefault 1.0
+            in
+            ( { model
+                | graph = newGraph
+              }
+            , Api.setEdgeWeight NoOp edgeId strength
             )
 
         SetEdgeFreq edgeId f ->
@@ -1339,10 +1374,10 @@ showSelectedEdge model =
     in
     Maybe.map
         (\l ->
-            let
-                _ =
-                    Debug.log "weight: " l.label.strength
-            in
+            -- let
+            --     _ =
+            --         Debug.log "weight: " (Parameters.calcEdgeStrength l.label.strength)
+            -- in
             el [ padding 10, Border.width 1, Border.solid ] <|
                 row [ spacing 10 ]
                     [ --text ("Link weight: " ++ floatString l.label.strength)
@@ -1350,8 +1385,10 @@ showSelectedEdge model =
                         (Parameter -1 l.label.freq Exp "freq" 1.0 20000.0)
                     , slider (SetEdgeDelay l.label.id)
                         (Parameter -1 l.label.delay.delay Exp "Delay" 0.0 6.0)
-                    , slider (SetEdgeWeight l.label.id)
-                        (Parameter -1 l.label.strength Cubic "weight" -2.0 2.0)
+                    , slider (SetEdgeBias l.label.id)
+                        (Parameter -1 l.label.strength.bias Cubic "bias" -2.0 2.0)
+                    , slider (SetEdgeFactor l.label.id)
+                        (Parameter -1 l.label.strength.factor Lin "factor" 0.0 6.0)
                     , simpleButton "Delete" (DeleteEdge l.label.id)
                     ]
         )

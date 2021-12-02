@@ -9,6 +9,7 @@ import Element.Font as Font
 import Graph
 import IntDict exposing (IntDict)
 import List.Extra as L
+import Parameters
 import ProcessGraph
     exposing
         ( BackendGraph
@@ -112,7 +113,7 @@ ugenRow selectedNode selectedEdge selectNodeMsg selectEdgeMsg indices ugen =
                                      ]
                                         ++ boldIfSelected selectedEdge c.link
                                     )
-                                    [ text (floatString c.link.strength) ]
+                                    [ text (floatString (Parameters.calcEdgeStrength c.link.strength)) ]
                                 ]
                 )
                 indices

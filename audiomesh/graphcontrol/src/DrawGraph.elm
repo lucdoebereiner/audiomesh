@@ -7,6 +7,7 @@ import Html exposing (Html)
 import IntDict
 import List exposing (range)
 import Maybe.Extra as M
+import Parameters
 import ProcessGraph exposing (Link, ProcessType(..), UGen, UGenGraph, defaultUGen, mkGraph, ugenLabel)
 import Scale exposing (SequentialScale)
 import Scale.Color
@@ -111,7 +112,7 @@ linkElement selectedEdge graph msg edge =
     in
     if source == target then
         circle
-            [ strokeWidth (3 * (edge.label.strength ^ 2))
+            [ strokeWidth (3 * (Parameters.calcEdgeStrength edge.label.strength ^ 2))
             , stroke color
             , noFill
             , cx source.x
@@ -141,7 +142,7 @@ linkElement selectedEdge graph msg edge =
         in
         g []
             [ line
-                [ strokeWidth (3 * (edge.label.strength ^ 2))
+                [ strokeWidth (3 * (Parameters.calcEdgeStrength edge.label.strength ^ 2))
                 , stroke (Paint Color.black) --<| Scale.convert colorScale source.x
                 , x1 source.x
                 , y1 source.y

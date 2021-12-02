@@ -73,6 +73,7 @@
          if (blockedCCs.has(msg.controller)) {
              blockedCCs.delete(msg.controller);
          } else {
+             console.log(msg);
 	     app.ports.cc.send(msg);
              //         console.log(parseMidiMessage(midiMessage));
          }

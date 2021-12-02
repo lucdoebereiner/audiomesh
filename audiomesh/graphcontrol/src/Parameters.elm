@@ -147,3 +147,12 @@ softclip x =
 
     else
         (absx - 0.25) / x
+
+
+calcEdgeStrength : { bias : Float, factor : Float } -> Float
+calcEdgeStrength strength =
+    if strength.factor <= 1.0 then
+        strength.bias * strength.factor
+
+    else
+        tanh (strength.bias * strength.factor * 0.5) * 2.0
