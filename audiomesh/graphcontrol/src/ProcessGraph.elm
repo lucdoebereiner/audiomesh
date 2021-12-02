@@ -128,6 +128,7 @@ type Process
     | Mul
     | Fold { threshold : Float, mul : Float, add : Float }
     | Softclip
+    | Perceptron { bias : Float }
     | Ducking
     | GateIfGreater
     | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float }
@@ -200,6 +201,9 @@ processParameters p =
 
         PLL { factor } ->
             [ Parameter 1 factor Exp "Fac" 0.05 2.0 ]
+
+        Perceptron { bias } ->
+            [ Parameter 1 bias Cubic "bias" -2.0 2.0 ]
 
         SoundIn { index, factor } ->
             [ Parameter 1 factor Exp "Fac" 0.0 10.0 ]
@@ -314,6 +318,9 @@ setInput ( parIdx, val ) proc =
 
         VarDelay d ->
             VarDelay { d | delay = val }
+
+        Perceptron p ->
+            Perceptron { p | bias = val }
 
         Kaneko k ->
             case parIdx of
@@ -584,6 +591,9 @@ processName p =
         Softclip ->
             "Softclip"
 
+        Perceptron _ ->
+            "Perceptron"
+
         Ring ->
             "Ring"
 
@@ -640,6 +650,9 @@ encodeProcess p =
             JE.object [ ( processName proc, ob ) ]
     in
     case p of
+        Perceptron per ->
+            encObj p (JE.object [ ( "bias", JE.float per.bias ) ])
+
         Mem m ->
             encObj p (JE.object [ ( "last_value", JE.float m.lastValue ) ])
 
@@ -937,6 +950,12 @@ decodeKanekoChain =
         |> required "last_outputs" int
 
 
+decodePerceptron : Decoder Process
+decodePerceptron =
+    Decode.succeed (\b -> Perceptron { bias = b })
+        |> required "bias" float
+
+
 decodeSoundIn : Decoder Process
 decodeSoundIn =
     Decode.succeed (\input f -> SoundIn { index = input, factor = f })
@@ -1197,6 +1216,7 @@ decodeUGen =
                 , field "Mem" decodeMem
                 , field "Mul" (decodeSimpleProcess Mul)
                 , field "Softclip" (decodeSimpleProcess Softclip)
+                , field "Perceptron" decodePerceptron
                 , field "Ring" (decodeSimpleProcess Ring)
                 , field "RMS" (decodeSimpleProcess RMS)
                 , field "Env" decodeEnv

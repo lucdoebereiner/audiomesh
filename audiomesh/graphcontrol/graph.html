@@ -47,6 +47,7 @@
 	 node: document.getElementById('elm-main')
      });
 
+     let blockedCCs = new Set();
      let outputs = [];
      
      // Midi Control
@@ -62,13 +63,19 @@
              //	     console.log(output);
              outputs.push(output)
 	 }
-         //console.log(outputs);
+         /* console.log("GOT MIDI")
+          * console.log(outputs); */
      }
 
      function getMIDIMessage(midiMessage) {
 	 //console.log(midiMessage);
-	 app.ports.cc.send(parseMidiMessage(midiMessage));
-         console.log(parseMidiMessage(midiMessage));
+         let msg = parseMidiMessage(midiMessage);
+         if (blockedCCs.has(msg.controller)) {
+             blockedCCs.delete(msg.controller);
+         } else {
+	     app.ports.cc.send(msg);
+             //         console.log(parseMidiMessage(midiMessage));
+         }
      }
 
      function parseMidiMessage(message) {
@@ -85,7 +92,8 @@
      }
 
      app.ports.send.subscribe(function(message) {
-	 //console.log(message);
+	 console.log(message);
+         blockedCCs.add(message[1]);
 	 setTimeout(() => outputs.forEach(out => out.send([176 + message[0], message[1], message[2]])), 100); 
      });
      

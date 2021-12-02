@@ -65,7 +65,7 @@ impl UGen {
             clip: ClipType::None,
             output_sends: vec![],
             process_type: Some(pt),
-            output_amp: lag::lag(1.0),
+            output_amp: lag::lag(0.0),
         }
     }
 
@@ -206,6 +206,7 @@ impl Connection {
     }
 
     pub fn set_weight(&mut self, weight: f64) {
+//        println!("set target to {}", weight);
         self.weight.set_target(weight);
     }
 
@@ -1135,6 +1136,11 @@ pub fn soundinput(index: usize) -> UGen {
 pub fn vdp() -> UGen {
     UGen::new(vanderpol(0.5, 0., 0.05))
 }
+
+pub fn perceptron() -> UGen {
+    UGen::new(Process::Perceptron { input: 0.0, bias: lag::lag(0.0) })
+}
+
 
 // pub fn wrap(lo: f64, hi: f64) -> UGen {
 //     UGen::new(Process::Wrap { input: 0.0, lo, hi })

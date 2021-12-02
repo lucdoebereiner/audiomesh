@@ -69,7 +69,12 @@ sendEdges connections =
         (\ugenIdx ugenEdges ->
             List.indexedMap
                 (\edgeIdx edge ->
-                    send ( 1, (ugenIdx * 8) + edgeIdx, round (edge.link.strength * 127) )
+                    --                    send ( 1, (ugenIdx * 8) + edgeIdx, round (edge.link.strength * 127) )
+                    send
+                        ( 1
+                        , (ugenIdx * 8) + edgeIdx
+                        , round (Parameters.uncubic (Parameters.linlin edge.link.strength -2.0 2.0 -1.0 1.0) * 127)
+                        )
                 )
                 ugenEdges
                 |> Cmd.batch
@@ -82,12 +87,18 @@ sendEdgeState : ProcessGraph.Link -> Cmd msg
 sendEdgeState edge =
     let
         w =
-            round (Parameters.explin edge.strength 0.0 5.0 0.0 1.0 * 127)
+            round (Parameters.uncubic (Parameters.linlin edge.strength -2.0 2.0 -1.0 1.0) * 127)
+
+        _ =
+            Debug.log "midi edge state: " w
+
+        f =
+            round (Parameters.explin edge.freq 1.0 20000.0 0.0 1.0 * 127)
 
         d =
             round (Parameters.explin edge.delay.delay 0.0 6.0 0.0 1.0 * 127)
     in
-    List.map send [ ( 0, 14, d ), ( 0, 15, w ) ]
+    List.map send [ ( 0, 25, f ), ( 0, 26, d ), ( 0, 27, w ) ]
         |> Cmd.batch
 
 
@@ -103,6 +114,7 @@ type alias Messages msg =
     , selectPrevEdge : msg
     , selectNextEdge : msg
     , setVolume : Float -> msg
+    , setInputGain : Float -> msg
     , setEdgeFac : Float -> msg
     , setOutputs : Int -> Float -> msg
     , setEdgeControlWeights : Int -> Float -> msg
@@ -145,7 +157,7 @@ dict messages edgeIndices ( node, edge ) =
                 Maybe.map
                     (\e ->
                         messages.setEdgeWeight e.label.id
-                            (Parameters.linexp v 0.0 1.0 0.0 5.0)
+                            (Parameters.lincubic v -2.0 2.0)
                     )
                     edge
                     |> Maybe.withDefault messages.noMsg
@@ -216,22 +228,23 @@ dict messages edgeIndices ( node, edge ) =
         , ( ( 0, 2 ), \v -> messages.setOutputs 0 v )
         , ( ( 0, 3 ), \v -> messages.setOutputs 1 v )
         , ( ( 0, 4 ), nodeAmp )
-        , ( ( 0, 13 ), edgeF )
-        , ( ( 0, 14 ), edgeD )
-        , ( ( 0, 15 ), edgeW )
-
-        -- , ( ( 0, 16 ), messages.setEdgeControlWeights 0 )
-        -- , ( ( 0, 17 ), messages.setEdgeControlWeights 1 )
-        -- , ( ( 0, 18 ), messages.setEdgeControlWeights 2 )
-        -- , ( ( 0, 19 ), messages.setEdgeControlWeights 3 )
+        , ( ( 0, 16 ), messages.setEdgeControlWeights 0 )
+        , ( ( 0, 17 ), messages.setEdgeControlWeights 1 )
+        , ( ( 0, 18 ), messages.setEdgeControlWeights 2 )
+        , ( ( 0, 19 ), messages.setEdgeControlWeights 3 )
         , ( ( 0, 20 ), messages.setEdgeControlDelay 0 )
         , ( ( 0, 21 ), messages.setEdgeControlDelay 1 )
         , ( ( 0, 22 ), messages.setEdgeControlDelay 2 )
         , ( ( 0, 23 ), messages.setEdgeControlDelay 3 )
-        , ( ( 0, 24 ), messages.setEdgeControlFreq 0 )
-        , ( ( 0, 25 ), messages.setEdgeControlFreq 1 )
-        , ( ( 0, 26 ), messages.setEdgeControlFreq 2 )
-        , ( ( 0, 27 ), messages.setEdgeControlFreq 3 )
+        , ( ( 0, 24 ), \v -> messages.setInputGain (Parameters.linexp v 0.0 1.0 0.0 6.0) )
+        , ( ( 0, 25 ), edgeF )
+        , ( ( 0, 26 ), edgeD )
+        , ( ( 0, 27 ), edgeW )
+
+        -- , ( ( 0, 24 ), messages.setEdgeControlFreq 0 )
+        -- , ( ( 0, 25 ), messages.setEdgeControlFreq 1 )
+        -- , ( ( 0, 26 ), messages.setEdgeControlFreq 2 )
+        -- , ( ( 0, 27 ), messages.setEdgeControlFreq 3 )
         ]
             ++ List.indexedMap (\i p -> ( ( 0, i + 5 ), p )) processPars
             ++ (List.concat <|

@@ -1,6 +1,6 @@
 use crate::compenv::*;
 use crate::filters;
-use crate::integrator::{runge_kutta_4, runge_kutta_5, runge_kutta_6};
+use crate::integrator::{runge_kutta_4, runge_kutta_5};
 use crate::lag;
 use crate::numerical;
 use crate::tapdelay;
@@ -252,6 +252,11 @@ pub enum Process {
     Softclip {
         #[serde(skip)]
         input: f64,
+    },
+    Perceptron {
+        #[serde(skip)]
+        input: f64,
+        bias: lag::Lag,
     },
     Delay {
         #[serde(serialize_with = "vector_serialize")]
@@ -525,7 +530,7 @@ fn kaneko_logisitc(x: f64, a: f64) -> f64 {
 
 #[inline]
 fn attrition(val: f64) -> f64 {
-    1.0f64.min(0.2 * val.abs().powf(1.1) * val)
+    1.0f64.min(0.1 * val.abs().powf(1.08) * val)
 }
 
 struct ChuaAdditionalVars {
@@ -549,24 +554,24 @@ fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64
     let x = state[0];
     let y = state[1];
     let z = state[2];
-//    let tan_fac = 20.0;
+    //    let tan_fac = 20.0;
     let a = additional_vars.a;
     let b = additional_vars.b;
     let c = additional_vars.c;
-//    let b = 3.49;
-//    let c = -0.29;
-    let mut d_x = a * (y - x.powi(3) - (c * x))
-        + (additional_vars.coupling * additional_vars.input);
+    //    let b = 3.49;
+    //    let c = -0.29;
+    let mut d_x =
+        a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
 
     // let mut d_x = additional_vars.a * (y - x - chua_h(x))
     //     + (additional_vars.coupling * additional_vars.input);
     // let mut d_x = additional_vars.a * y - x + (x + 1.0).abs() - (x - 1.0).abs()
     //     + (additional_vars.coupling * additional_vars.input);
-  //  d_x = ((d_x / tan_fac).tanh() * tan_fac); // - attrition(x);
+    //  d_x = ((d_x / tan_fac).tanh() * tan_fac); // - attrition(x);
     let mut d_y = x - y + z;
-//    d_y = ((d_y / tan_fac).tanh() * tan_fac); // - attrition(y);
+    //    d_y = ((d_y / tan_fac).tanh() * tan_fac); // - attrition(y);
     let mut d_z = -1.0 * b * y;
-  //  d_z = ((d_z / tan_fac).tanh() * tan_fac); // - attrition(z);
+    //  d_z = ((d_z / tan_fac).tanh() * tan_fac); // - attrition(z);
     vec![
         d_x * additional_vars.f,
         d_y * additional_vars.f,
@@ -680,7 +685,7 @@ impl Process {
                     state[0] = state[0] - (state[0] * 0.1);
                     state[1] = state[1] - (state[1] * 0.1);
                 }
-                state[0]
+                state[0] * (((50.0 - this_e) / 50.0) + 0.1).min(1.0)
             }
             Process::Chua {
                 input,
@@ -988,6 +993,10 @@ impl Process {
             }
             Process::Wrap { input, lo, hi } => numerical::wrap(*input, *lo, *hi),
             Process::Softclip { input } => input.tanh(),
+            Process::Perceptron { input, bias } => {
+                bias.tick();
+                (*input + bias.current).tanh()
+            },
             Process::Delay {
                 input,
                 ref mut rec_idx,
@@ -1077,6 +1086,15 @@ impl Process {
                 1 => factor.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
+            Process::Perceptron {
+                ref mut input,
+                ref mut bias,
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => bias.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
             Process::Chua {
                 ref mut input,
                 ref mut a,
@@ -1571,6 +1589,11 @@ impl Process {
                 ProcessType::TransparentProcessor,
                 vec![InputType::Any],
             ),
+            Process::Perceptron { .. } => procspec(
+                "perceptron",
+                ProcessType::TransparentProcessor,
+                vec![InputType::Any, InputType::Factor],
+            ),
             Process::Square { .. } => procspec(
                 "square",
                 ProcessType::TransparentProcessor,
@@ -1676,6 +1699,7 @@ impl Process {
 	    | Process::Sqrt { ref mut input }
             | Process::Gauss { ref mut input }
             | Process::Softclip { ref mut input }
+            | Process::Perceptron { ref mut input, .. }
             | Process::Mem { ref mut input, .. }
 	    | Process::RMS { ref mut input, .. }
             | Process::LPF1 { ref mut input, .. }

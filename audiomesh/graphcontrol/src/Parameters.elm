@@ -4,6 +4,7 @@ module Parameters exposing (..)
 type Mapping
     = Lin
     | Exp
+    | Cubic
 
 
 type alias Parameter =
@@ -16,15 +17,6 @@ type alias Parameter =
     }
 
 
-
--- type alias ParameterSpec =
---     { value : Float
---     , mapping : Mapping
---     , min : Float
---     , max : Float
---     }
-
-
 mapped : Parameter -> Float
 mapped p =
     case p.mapping of
@@ -33,6 +25,9 @@ mapped p =
 
         Exp ->
             linexp p.value 0.0 1.0 p.min p.max
+
+        Cubic ->
+            lincubic p.value p.min p.max
 
 
 
@@ -47,6 +42,9 @@ unmapped p v =
 
         Exp ->
             explin v p.min p.max 0.0 1.0
+
+        Cubic ->
+            uncubic (linlin v p.min p.max -1.0 1.0)
 
 
 
@@ -109,3 +107,43 @@ explin x a b c d =
 
     else
         logE (x / a_shifted) / logE (b / a_shifted) * (d - c) + c
+
+
+lincubic : Float -> Float -> Float -> Float
+lincubic x a b =
+    let
+        cubic =
+            ((x - 0.5) * 2.0) ^ 3
+    in
+    linlin cubic -1.0 1.0 a b
+
+
+uncubic : Float -> Float
+uncubic v =
+    let
+        vsign =
+            if v < 0.0 then
+                -1.0
+
+            else
+                1.0
+    in
+    ((abs v ^ (1.0 / 3.0)) * vsign) / 2.0 + 0.5
+
+
+tanh : Float -> Float
+tanh x =
+    ((e ^ x) - (e ^ -x)) / ((e ^ x) + (e ^ -x))
+
+
+softclip : Float -> Float
+softclip x =
+    let
+        absx =
+            abs x
+    in
+    if absx <= 0.5 then
+        x
+
+    else
+        (absx - 0.25) / x

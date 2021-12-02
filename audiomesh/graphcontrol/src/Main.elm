@@ -41,6 +41,7 @@ type alias Model =
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
     , volume : Float
+    , inputGain : Float
     , edgesFac : Float
     , delayLength : String
     , sinMul : String
@@ -83,6 +84,7 @@ init _ =
         Nothing
         Nothing
         0.4
+        1.0
         1.0
         ""
         ""
@@ -149,6 +151,7 @@ type Msg
     | SelectEdge Int
     | DeleteNode Int
     | SetVolume Float
+    | SetInputGain Float
     | NoOp (Result Http.Error ())
     | NoMsg
     | AddProcess Process
@@ -217,6 +220,7 @@ midiMsgs =
     , selectPrevEdge = SelectPrevEdge
     , selectNextEdge = SelectNextEdge
     , setVolume = SetVolume
+    , setInputGain = SetInputGain
     , setEdgeFac = SetEdgeFac
     , setOutputs = SetOutputs
     , setEdgeControlWeights = SetEdgeControlWeights
@@ -262,6 +266,7 @@ selectNode model nextNode =
             getSelectedNode newModel
     in
     ( newModel
+      --    , Cmd.none
     , Maybe.map (Midi.sendProcessState << .label) selectedNode
         |> Maybe.withDefault Cmd.none
     )
@@ -275,6 +280,9 @@ selectEdge model nextEdge =
 
         selectedEdge =
             getSelectedEdge newModel
+
+        -- _ =
+        --     Debug.log "edge selected" selectedEdge
     in
     ( newModel
     , Maybe.map (Midi.sendEdgeState << .label) selectedEdge
@@ -331,7 +339,7 @@ update msg model =
         SetEdgeControlWeights i s ->
             let
                 mapping =
-                    \v -> Parameters.linexp v 0.0 1.0 0.0 5.0
+                    \v -> Parameters.lincubic v -2.0 2.0
 
                 newModel =
                     { model
@@ -411,6 +419,8 @@ update msg model =
                 selectedEdge =
                     getSelectedEdge model
 
+                -- _ =
+                --     Debug.log "got midi" m
                 ( newModel, cmds ) =
                     let
                         grouped =
@@ -586,6 +596,8 @@ update msg model =
                         newGraph =
                             mkGraph g
 
+                        -- _ =
+                        --     Debug.log "got graph" newGraph
                         sendEdgesCmd =
                             (Midi.sendEdges << Matrix.groupEdges)
                                 (Matrix.matrixFromGraphs g newGraph)
@@ -606,7 +618,8 @@ update msg model =
                                 newGraph
                                 model.edgeFreqControl
                       }
-                    , sendEdgesCmd
+                    , Cmd.none
+                      -- , sendEdgesCmd
                     )
 
                 _ ->
@@ -669,6 +682,9 @@ update msg model =
 
         SetVolume v ->
             ( { model | volume = v }, Api.setVolume NoOp v )
+
+        SetInputGain g ->
+            ( { model | inputGain = g }, Api.setInputGain NoOp g )
 
         SetDelayLength s ->
             ( { model | delayLength = s }, Cmd.none )
@@ -765,10 +781,20 @@ update msg model =
             )
 
         SetEdgeWeight edgeId weight ->
-            ( { model
-                | graph =
+            let
+                -- _ =
+                --     Debug.log "setting edge weight" weight
+                newGraph =
                     Maybe.map (updateEdgeWeight edgeId weight)
                         model.graph
+
+                -- _ =
+                --     Debug.log "old graph" model.graph
+                -- _ =
+                --     Debug.log "new graph" newGraph
+            in
+            ( { model
+                | graph = newGraph
               }
             , Api.setEdgeWeight NoOp edgeId weight
             )
@@ -930,6 +956,11 @@ slider msg par =
 volumeSlider : Float -> Element Msg
 volumeSlider v =
     slider SetVolume (Parameter -1 v Exp "Output volume" 0.0 1.0)
+
+
+inputGainSlider : Float -> Element Msg
+inputGainSlider v =
+    slider SetInputGain (Parameter -1 v Exp "Input gain" 0.0 6.0)
 
 
 outputSlider : Int -> Float -> Element Msg
@@ -1258,6 +1289,7 @@ processRow m =
         , addProcess "Chua" (Chua { a = 3.74, b = 3.49, c = -0.29, frac = 1.0, coupling = 0.1 })
         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
+        , addProcess "Perceptron" (Perceptron { bias = 0.0 })
         , soundInInput m.soundInIndex
         , kanekoChainInput m.kanekoChainN
         , delayInput m.delayLength
@@ -1307,6 +1339,10 @@ showSelectedEdge model =
     in
     Maybe.map
         (\l ->
+            let
+                _ =
+                    Debug.log "weight: " l.label.strength
+            in
             el [ padding 10, Border.width 1, Border.solid ] <|
                 row [ spacing 10 ]
                     [ --text ("Link weight: " ++ floatString l.label.strength)
@@ -1315,7 +1351,7 @@ showSelectedEdge model =
                     , slider (SetEdgeDelay l.label.id)
                         (Parameter -1 l.label.delay.delay Exp "Delay" 0.0 6.0)
                     , slider (SetEdgeWeight l.label.id)
-                        (Parameter -1 l.label.strength Exp "weight" 0.0 5.0)
+                        (Parameter -1 l.label.strength Cubic "weight" -2.0 2.0)
                     , simpleButton "Delete" (DeleteEdge l.label.id)
                     ]
         )
@@ -1360,6 +1396,7 @@ view model =
                 ]
             , row [ spacing 10 ]
                 ([ volumeSlider model.volume
+                 , inputGainSlider model.inputGain
                  , edgesSlider model.edgesFac
                  ]
                     ++ List.map (\( i, f ) -> outputSlider i f) (Array.toIndexedList model.outputIndices)

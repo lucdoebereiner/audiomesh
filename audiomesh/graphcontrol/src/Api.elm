@@ -17,6 +17,7 @@ module Api exposing
     , setEdgeFac
     , setEdgeFreq
     , setEdgeWeight
+    , setInputGain
     , setMatrixMode
     , setNodeOutputAmp
     , setOutputs
@@ -188,6 +189,15 @@ setVolume : (Result Http.Error () -> msg) -> Float -> Cmd msg
 setVolume msg amp =
     Http.post
         { url = baseUrl ++ "/volume/" ++ String.fromFloat amp
+        , body = Http.emptyBody
+        , expect = Http.expectWhatever msg
+        }
+
+
+setInputGain : (Result Http.Error () -> msg) -> Float -> Cmd msg
+setInputGain msg gain =
+    Http.post
+        { url = baseUrl ++ "/inputgain/" ++ String.fromFloat gain
         , body = Http.emptyBody
         , expect = Http.expectWhatever msg
         }

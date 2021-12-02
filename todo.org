@@ -1,4 +1,4 @@
-* TODO graph synth rust [63/108]
+* TODO graph synth rust [65/108]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -88,13 +88,14 @@
   - [X] edge delays specific control
   - [X] edge lpf specific control
 - [X] runge-kutta integration
-- [ ] chua
+- [X] chua
+- [X] general input fader
 - [ ] all ugens separate out
 - [ ] lang for expressing networks
 - [ ] move flow into ugengraph struct
-- [ ] general input fader
 - [ ] prelisten solo mode
 - [ ] simpler addition of ugens, auto elm decoder/types
+- [ ] refactor elm parameters for central spec
 - [ ] trait obj instead of enum?
 - [ ] slow compression
 - [ ] delay feedbacks with compression and leakage

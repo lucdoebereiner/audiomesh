@@ -16,7 +16,7 @@ use std::sync::Mutex;
 //use rocket_contrib::json::*;
 use rocket_cors;
 //use rocket_cors::AllowedHeaders;
-
+use rand::Rng;
 // use petgraph::dot::{Config, Dot};
 use petgraph::stable_graph::*;
 use serde_json;
@@ -43,6 +43,7 @@ enum UpdateMessage {
     RemoveNode(usize, bool),
     AddNode(Process, bool),
     RemoveEdge(usize, bool),
+    SetInputGain(f64),
     SetEdgeWeight(usize, f64),
     SetEdgeFreq(usize, f64),
     SetEdgeDelay(usize, f64),
@@ -96,6 +97,14 @@ fn set_volume(amp: f64, state: &State<Globals>) {
     let sender = &shared_data.sender;
     sender.send(UpdateMessage::SetVolume(amp)).unwrap()
 }
+
+#[post("/inputgain/<gain>")]
+fn set_input_gain(gain: f64, state: &State<Globals>) {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    sender.send(UpdateMessage::SetInputGain(gain)).unwrap()
+}
+
 
 #[delete("/node/<id>")]
 fn remove_node(id: usize, state: &State<Globals>) {
@@ -404,6 +413,7 @@ struct JackProc {
     flow: Vec<NodeIndex>,
     frame_buffer: Vec<f64>,
     amplitude: lag::Lag,
+    input_gain: lag::Lag,
     g: UGenGraph,
     s_ret: Sender<ReturnMessage>,
 }
@@ -415,6 +425,7 @@ impl jack::ProcessHandler for JackProc {
         while let Ok(update) = self.rx.try_recv() {
             match update {
                 UpdateMessage::SetVolume(a) => self.amplitude.set_target(a),
+                UpdateMessage::SetInputGain(g) => self.input_gain.set_target(g),
                 _ => handle_messages(update, &mut self.g, &mut self.flow, &self.s_ret),
             }
         }
@@ -431,8 +442,9 @@ impl jack::ProcessHandler for JackProc {
 
         // Write output
         for i in 0..ps.n_frames() {
+            let input_gain = self.input_gain.tick();
             let input_samples: Vec<f64> =
-                ins.iter().map(|input| input[i as usize] as f64).collect();
+                ins.iter().map(|input| input[i as usize] as f64 * input_gain).collect();
             let amp = self.amplitude.tick();
             self.g
                 .process(&self.flow, &input_samples, &mut self.frame_buffer);
@@ -475,9 +487,42 @@ fn rocket() -> _ {
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
 
     // Create graph and init
-    let g = UGenGraph::new();
+    let mut g = UGenGraph::new();
+    let mut flow = vec![];
 
-    let flow = vec![];
+    // ann
+    // let layer1_ids: Vec<NodeIndex> = (0..4).map(|_i| g.add(perceptron())).collect();
+    // let layer2_ids: Vec<NodeIndex> = (0..4).map(|_i| g.add(perceptron())).collect();
+    // let output_ids: Vec<NodeIndex> = (0..2).map(|i| {
+    //     let mut p = perceptron();
+    //     p.set_output(i, 1.0);
+    //     g.add(p)
+    // }).collect();
+    // let mut rng = rand::thread_rng();
+
+    // for l1 in layer1_ids.iter() {
+    //     for l2 in layer2_ids.iter() {
+    //         let strength = rng.gen_range(-1.0..1.0);
+    //         g.connect(*l1, *l2, Connection::new(0, strength));
+    //     }
+    // }
+    
+    // for l2 in layer2_ids.iter() {
+    //     for out in output_ids.iter() {
+    //         let strength = rng.gen_range(-1.0..1.0);
+    //         g.connect(*l2, *out, Connection::new(0, strength));
+    //     }
+    // }
+
+    // for out in output_ids.iter() {
+    //     for l1 in layer1_ids.iter() {
+    //         let strength = rng.gen_range(-1.0..1.0);
+    //         g.connect(*out, *l1, Connection::new(0, strength));
+    //     }
+    // }
+
+    // g.update_connections_and_flow(&mut flow, false);
+
     let n_outs = 2;
     let frame_buffer = vec![0.0; n_outs];
     let mut dc_leak_outs = vec![];
@@ -504,7 +549,7 @@ fn rocket() -> _ {
     }
 
     // Setting up input ports
-    const N_INS: usize = 2;
+    const N_INS: usize = 8;
     let mut in_ports = Vec::new();
     for i in 1..(N_INS + 1) {
         let name = String::from(format!("in_{}", i));
@@ -516,6 +561,7 @@ fn rocket() -> _ {
     }
 
     let amplitude = lag::lag(0.4);
+    let input_gain = lag::lag(1.0);
 
     let jack_process = JackProc {
         in_ports,
@@ -524,6 +570,7 @@ fn rocket() -> _ {
         flow,
         frame_buffer,
         amplitude,
+        input_gain,
         g,
         s_ret,
     };
@@ -552,6 +599,7 @@ fn rocket() -> _ {
                 //                get_outputs,
                 add_edge,
                 set_volume,
+                set_input_gain,
                 least_connected,
                 most_connected,
                 set_parameter,

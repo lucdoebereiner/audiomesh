@@ -17,6 +17,7 @@ rocket_cors = { git = "https://github.com/lawliet89/rocket_cors", branch = "mast
 # rocket_cors = "0.5.2"
 futures = "0.3.15"
 lazy_static = "1.4.0"
+rand = "0.8.4"
 
 [dependencies.rocket]
 version = "0.5.0-rc.1"
