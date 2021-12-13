@@ -135,6 +135,7 @@ type Process
     | Ducking
     | GateIfGreater
     | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float, bp : Float, m0 : Float, m1 : Float }
+    | NoseHoover { a : Float, frac : Float, coupling : Float }
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
@@ -240,6 +241,12 @@ processParameters p =
         SinOsc { freq, freq_mul } ->
             [ Parameter 1 freq Exp "Freq" 0.0 10000.0
             , Parameter 2 freq_mul Exp "Freq Mul" 0.1 10000.0
+            ]
+
+        NoseHoover { a, frac, coupling } ->
+            [ Parameter 1 a Exp "a" 0.1 20.0
+            , Parameter 2 frac Exp "frac" 0.1 10000.0
+            , Parameter 3 coupling Lin "coupling" 0.0 1.0
             ]
 
         VanDerPol { e, frac, a } ->
@@ -391,6 +398,20 @@ setInput ( parIdx, val ) proc =
 
                 3 ->
                     VanDerPol { s | a = val }
+
+                _ ->
+                    proc
+
+        NoseHoover s ->
+            case parIdx of
+                1 ->
+                    NoseHoover { s | a = val }
+
+                2 ->
+                    NoseHoover { s | frac = val }
+
+                3 ->
+                    NoseHoover { s | coupling = val }
 
                 _ ->
                     proc
@@ -560,6 +581,9 @@ processName p =
 
         Delay _ ->
             "Delay"
+
+        NoseHoover _ ->
+            "NoseHoover"
 
         VarDelay _ ->
             "VarDelay"
@@ -794,6 +818,15 @@ encodeProcess p =
                     ]
                 )
 
+        NoseHoover s ->
+            encObj p
+                (JE.object
+                    [ ( "a", JE.float s.a )
+                    , ( "frac", JE.float s.frac )
+                    , ( "coupling", JE.float s.coupling )
+                    ]
+                )
+
         Constant c ->
             encObj p (JE.object [ ( "value", JE.float c.value ) ])
 
@@ -851,6 +884,9 @@ processToString p =
 
         VanDerPol v ->
             "VanDerPol e:" ++ floatString v.e
+
+        NoseHoover _ ->
+            "NoseHoover"
 
         Chua v ->
             "Chua a:" ++ floatString v.a
@@ -1002,6 +1038,14 @@ decodeVanDerPol =
         |> required "e" float
         |> required "frac" float
         |> required "a" float
+
+
+decodeNoseHoover : Decoder Process
+decodeNoseHoover =
+    Decode.succeed (\a f c -> NoseHoover { a = a, frac = f, coupling = c })
+        |> required "a" float
+        |> required "frac" float
+        |> required "coupling" float
 
 
 decodeChua : Decoder Process
@@ -1263,6 +1307,7 @@ decodeUGen =
                 , field "EnvFollow" (decodeSimpleProcess EnvFollow)
                 , field "PLL" decodePLL
                 , field "VanDerPol" decodeVanDerPol
+                , field "NoseHoover" decodeNoseHoover
                 , field "Chua" decodeChua
                 , field "Duffing" decodeDuffing
                 , field "Resonator" decodeResonator

@@ -1,4 +1,4 @@
-* TODO graph synth rust [67/120]
+* TODO graph synth rust [68/119]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -92,17 +92,18 @@
 - [X] general input fader
 - [X] list/matrix of processes for easier selection
 - [X] more chua tests for parameters and centering
+- [X] Nosé hoover
 - [ ] hard sync osc (with nth zero crossing)
 - [ ] freq follow based on hard sync
 - [ ] more gating experiments
 - [ ] all ugens separate out
-- [ ] lang for expressing networks
 - [ ] move flow into ugengraph struct
 - [ ] prelisten solo mode
 - [ ] simpler addition of ugens, auto elm decoder/types
 - [ ] refactor elm parameters for central spec
-- [ ] trait obj instead of enum?
 - [ ] slow compression
+- [ ] trait obj instead of enum?
+- [ ] lang for expressing networks
 - [ ] delay feedbacks with compression and leakage
 - [ ] sanitize output
 - [ ] output compressor
@@ -110,7 +111,6 @@
 - [ ] accumulation in tapdelay
 - [ ] halfwave stuff
 - [ ] fdn with matrix
-- [ ] zero crossing follow
 - [ ] spike envs (make sparse)
 - [ ] (other) mod vcf, cytomic svf
 - [ ] spike durations flexible (derive from input)
@@ -118,10 +118,9 @@
 - [ ] kuramoto
 - [ ] jerk sprott
 - [ ] multiscroll systems
-- [ ] Nosé hoover
-- [ ] Ueda
 - [ ] Fitz hugh nagumo
 - [ ] lotka volterra
+- [ ] replacing process
 - [ ] learning (some persistent trace)
 - [ ] types of output and conversion when linking
 - [ ] exchange process with another
@@ -134,7 +133,7 @@
 - [ ] comparison
 - [ ] slew env ala serge (lag2)
 - [ ] s and hp
-- [ ] hopf with filters
+- [ ] hopf (with filters)
 - [ ] comb filter
 - [ ] subgraphs
 - [ ] reset graph

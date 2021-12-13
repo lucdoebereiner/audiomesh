@@ -1333,6 +1333,13 @@ processRow m =
                 , m1 = -0.714
                 }
             )
+        , addProcess "NoseHoover"
+            (NoseHoover
+                { a = 1.0
+                , frac = 100.0
+                , coupling = 0.0
+                }
+            )
         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
         , addProcess "Perceptron" (Perceptron { bias = 0.0 })

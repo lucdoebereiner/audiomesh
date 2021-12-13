@@ -141,6 +141,16 @@ pub enum Process {
         e: lag::Lag,
         a: lag::Lag,
     },
+    NoseHoover {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "chua_state")]
+        state: Vec<f64>,
+        frac: lag::Lag,
+        a: lag::Lag,
+        coupling: lag::Lag,
+    },
     Chua {
         #[serde(skip)]
         input: f64,
@@ -472,7 +482,7 @@ fn vdp_state() -> Vec<f64> {
 }
 
 fn chua_state() -> Vec<f64> {
-    vec![0.0, 0.0, 0.001]
+    vec![0.001, 0.01, 0.001]
 }
 
 fn ducking_lag() -> lag::Lag {
@@ -535,6 +545,14 @@ fn kaneko_logisitc(x: f64, a: f64) -> f64 {
 fn attrition(val: f64) -> f64 {
     1.0f64.min(0.1 * val.abs().powf(1.08) * val)
 }
+
+struct NoseHooverAdditionalVars {
+    a: f64,
+    coupling: f64,
+    input: f64,
+    f: f64,
+}
+
 
 struct ChuaAdditionalVars {
     a: f64,
@@ -618,6 +636,21 @@ fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64
         d_z * additional_vars.f,
     ]
 }
+
+
+#[inline]
+fn nose_hoover_calc_vec(state: &[f64], additional_vars: &NoseHooverAdditionalVars) -> Vec<f64> {
+    let x = state[0];
+    let y = state[1];
+    let z = state[2];
+
+    let d_x = additional_vars.a * y  + (additional_vars.input * additional_vars.coupling);
+    let d_y = -x + (y * z);
+    let d_z = 1.0 - y.powi(2);
+
+    vec![d_x * additional_vars.f, d_y * additional_vars.f, d_z * additional_vars.f]
+}
+
 
 #[inline]
 fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> {
@@ -776,6 +809,33 @@ impl Process {
                 // }
                 state[0]
             }
+
+            Process::NoseHoover {
+                input,
+                ref mut state,
+                ref mut frac,
+                ref mut coupling,
+                ref mut a,
+            } => {
+                let this_coupling = coupling.tick();
+                let f = frac.tick();
+                let this_a = a.tick();
+
+                let additional_vars = NoseHooverAdditionalVars {
+                    input: *input,
+                    a: this_a,
+                    f: f,
+                    coupling: this_coupling,
+                };
+                let new_state =
+                    runge_kutta_5(&nose_hoover_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+
+                state[0] = (new_state[0] / 100.0).tanh() * 100.0;
+                state[1] = (new_state[1] / 100.0).tanh() * 100.0;
+                state[2] = (new_state[2] / 100.0).tanh() * 100.0;
+                
+                state[0] 
+            }            
             Process::Duffing {
                 input,
                 ref mut state,
@@ -1205,6 +1265,21 @@ impl Process {
                 3 => a.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
+
+            Process::NoseHoover {
+                ref mut input,
+                ref mut coupling,
+                ref mut frac,
+                ref mut a,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => a.set_target(input_value),
+                2 => frac.set_target(input_value),
+                3 => coupling.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
             Process::Duffing {
                 ref mut input,
                 ref mut e,
@@ -1526,6 +1601,17 @@ impl Process {
                     InputType::Amplitude,
                 ],
             ),
+            Process::NoseHoover { .. } => procspec(
+                "nosehover",
+                ProcessType::OpaqueProcessor,
+                vec![
+                    InputType::Audio,
+                    InputType::Factor,
+                    InputType::Frequency,
+                    InputType::Factor,
+                ],
+            ),
+
             Process::Chua { .. } => procspec(
                 "chua",
                 ProcessType::OpaqueProcessor,
@@ -1768,6 +1854,7 @@ impl Process {
 	    | Process::Duffing { ref mut input, .. }
             | Process::Chua { ref mut input, .. }
 	    | Process::Fold { ref mut input, .. }
+            | Process::NoseHoover { ref mut input, .. }
 	    | Process::BitNeg { ref mut input } => *input = 0.0,
             Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	    Process::Compressor { ref mut input, ref mut input_level, .. }
