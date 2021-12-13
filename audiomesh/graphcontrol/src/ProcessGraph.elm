@@ -134,7 +134,7 @@ type Process
     | Perceptron { bias : Float }
     | Ducking
     | GateIfGreater
-    | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float }
+    | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float, bp : Float, m0 : Float, m1 : Float }
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
@@ -248,12 +248,15 @@ processParameters p =
             , Parameter 3 a Exp "a" 0.0001 30.0
             ]
 
-        Chua { a, b, c, frac, coupling } ->
-            [ Parameter 1 a Lin "a" 2.6 10
-            , Parameter 2 b Lin "b" 2 6
-            , Parameter 3 c Lin "c" -0.5 0.5
+        Chua { a, b, c, bp, m0, m1, frac, coupling } ->
+            [ Parameter 1 a Lin "a" -20 30
+            , Parameter 2 b Lin "b" -12 40
+            , Parameter 3 c Lin "c" -2 2
             , Parameter 4 frac Exp "freq" 0.01 2000.0
             , Parameter 5 coupling Exp "coupling" 0.0001 30.0
+            , Parameter 6 bp Exp "bp" 0.1 2.5
+            , Parameter 7 m0 Lin "m0" -2.5 -0.1
+            , Parameter 8 m1 Lin "m1" -2.5 -0.1
             ]
 
         Duffing { e, frac, a, b } ->
@@ -408,6 +411,15 @@ setInput ( parIdx, val ) proc =
 
                 5 ->
                     Chua { s | coupling = val }
+
+                6 ->
+                    Chua { s | bp = val }
+
+                7 ->
+                    Chua { s | m0 = val }
+
+                8 ->
+                    Chua { s | m1 = val }
 
                 _ ->
                     proc
@@ -764,8 +776,11 @@ encodeProcess p =
                     [ ( "a", JE.float s.a )
                     , ( "b", JE.float s.b )
                     , ( "c", JE.float s.c )
+                    , ( "bp", JE.float s.bp )
                     , ( "frac", JE.float s.frac )
                     , ( "coupling", JE.float s.coupling )
+                    , ( "m0", JE.float s.m0 )
+                    , ( "m1", JE.float s.m1 )
                     ]
                 )
 
@@ -991,12 +1006,27 @@ decodeVanDerPol =
 
 decodeChua : Decoder Process
 decodeChua =
-    Decode.succeed (\a b c f coup -> Chua { a = a, b = b, c = c, frac = f, coupling = coup })
+    Decode.succeed
+        (\a b c f coup bp m0 m1 ->
+            Chua
+                { a = a
+                , b = b
+                , c = c
+                , frac = f
+                , coupling = coup
+                , bp = bp
+                , m0 = m0
+                , m1 = m1
+                }
+        )
         |> required "a" float
         |> required "b" float
         |> required "c" float
         |> required "frac" float
         |> required "coupling" float
+        |> required "bp" float
+        |> required "m0" float
+        |> required "m1" float
 
 
 decodeDuffing : Decoder Process

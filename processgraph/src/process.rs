@@ -1,6 +1,6 @@
 use crate::compenv::*;
 use crate::filters;
-use crate::integrator::{runge_kutta_4, runge_kutta_5};
+use crate::integrator::{runge_kutta_4, runge_kutta_5, runge_kutta_6};
 use crate::lag;
 use crate::numerical;
 use crate::tapdelay;
@@ -152,6 +152,9 @@ pub enum Process {
         a: lag::Lag,
         b: lag::Lag,
         c: lag::Lag,
+        bp: lag::Lag,
+        m0: lag::Lag,
+        m1: lag::Lag,
     },
     Duffing {
         #[serde(skip)]
@@ -469,7 +472,7 @@ fn vdp_state() -> Vec<f64> {
 }
 
 fn chua_state() -> Vec<f64> {
-    vec![0.2, -0.2, 0.1]
+    vec![0.0, 0.0, 0.001]
 }
 
 fn ducking_lag() -> lag::Lag {
@@ -537,41 +540,78 @@ struct ChuaAdditionalVars {
     a: f64,
     b: f64,
     c: f64,
+    bp: f64,
     coupling: f64,
     input: f64,
     f: f64,
+    m0: f64,
+    m1: f64,
 }
 
 // #[inline]
-// fn chua_h(x: f64) -> f64 {
-//     let m0 = -1.0 * (8.0/7.0);
-//     let m1 = -1.0 * (5.0/7.0);
-//     m1 + ( (m0 - m1)*((x+1.0).abs() - (x-1.0).abs()) / 2.0)
+// fn chua_diode(x: f64) -> f64 {
+//     let m0 = -1.0 * (1.0/7.0);
+//     let m1 = 2.0/7.0;
+//     (m1 * x) + ( 0.5 *  (m0 - m1) * ((x+1.0).abs() - (x-1.0).abs()))
 // }
+
+// fn chua_diode(x: f64, bp: f64, m0: f64, m1: f64) -> f64 {
+// //    let m0 = -4.0/7.0;
+// //    let m1 = -2.0/7.0;
+//     let out = (m1 * x) + ( 0.5 *  (m0 - m1) * ((x+bp).abs() - (x-bp).abs()));
+//     out
+// //    out.tanh()
+// //    (m1 * x) + ( 0.5 *  (m0 - m1) * ((x+bp).abs() - (x-bp).abs()))
+// }
+
+fn chua_diode(x: f64, bp: f64, m0: f64, m1: f64) -> f64 {
+    if (x >= -bp) && (x <= bp) {
+        m0 * x
+    } else if x >= bp {
+        m1 * x + (m0 - m1)
+    } else {
+        m1 * x + (m1 - m0)
+    }
+}
 
 #[inline]
 fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
     let z = state[2];
-    //    let tan_fac = 20.0;
+
     let a = additional_vars.a;
     let b = additional_vars.b;
     let c = additional_vars.c;
-    //    let b = 3.49;
-    //    let c = -0.29;
-    let mut d_x =
-        a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
+    let bp = additional_vars.bp;
+    let m0 = additional_vars.m0;
+    let m1 = additional_vars.m1;
+    // cubic
+//    let mut d_x =
+  //      a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
 
+    let mut d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
+    let mut d_y = x - y + z;
+    let mut d_z = -b * y - (c * z); 
+
+    // d_x = (d_x / 2.0).tanh() * 2.0;
+    // d_y = (d_y / 2.0).tanh() * 2.0;
+    // d_z = (d_z / 2.0).tanh() * 2.0;
+    
+    // let mut d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
+    // let mut d_y = x - y + z;
+    // let mut d_z = -b * y - (c * z);
+    
     // let mut d_x = additional_vars.a * (y - x - chua_h(x))
     //     + (additional_vars.coupling * additional_vars.input);
     // let mut d_x = additional_vars.a * y - x + (x + 1.0).abs() - (x - 1.0).abs()
     //     + (additional_vars.coupling * additional_vars.input);
     //  d_x = ((d_x / tan_fac).tanh() * tan_fac); // - attrition(x);
-    let mut d_y = x - y + z;
+    
     //    d_y = ((d_y / tan_fac).tanh() * tan_fac); // - attrition(y);
-    let mut d_z = -1.0 * b * y;
+
     //  d_z = ((d_z / tan_fac).tanh() * tan_fac); // - attrition(z);
+
     vec![
         d_x * additional_vars.f,
         d_y * additional_vars.f,
@@ -694,28 +734,41 @@ impl Process {
                 ref mut a,
                 ref mut b,
                 ref mut c,
+                ref mut bp,
                 ref mut coupling,
+                ref mut m0,
+                ref mut m1,
             } => {
                 let this_coupling = coupling.tick();
                 let f = frac.tick();
                 let this_c = c.tick();
                 let this_a = a.tick();
                 let this_b = b.tick();
+                let this_bp = bp.tick();
+                let this_m0 = m0.tick();
+                let this_m1 = m1.tick();
 
                 let additional_vars = ChuaAdditionalVars {
                     input: *input,
                     a: this_a,
                     b: this_b,
                     c: this_c,
+                    bp: this_bp,
                     f,
                     coupling: this_coupling,
+                    m0: this_m0,
+                    m1: this_m1,
                 };
                 let new_state =
-                    runge_kutta_5(&chua_calc_vec, &state, &additional_vars, 5.0 / get_sr());
+                    runge_kutta_5(&chua_calc_vec, &state, &additional_vars, 6.0 / get_sr());
 
-                state[0] = new_state[0];
-                state[1] = new_state[1];
-                state[2] = new_state[2];
+                // state[0] = new_state[0];
+                // state[1] = new_state[1];
+                // state[2] = new_state[2];
+                
+                state[0] = (new_state[0] / 100.0).tanh() * 100.0;
+                state[1] = (new_state[1] / 100.0).tanh() * 100.0;
+                state[2] = (new_state[2] / 100.0).tanh() * 100.0;
                 // if (state[0].abs() > 30.0) || (state[1].abs() > 30.0) || (state[2].abs() > 30.0) {
                 //     state[0] = state[0] - (state[0] * 0.1);
                 //     state[1] = state[1] - (state[1] * 0.1);
@@ -1100,8 +1153,11 @@ impl Process {
                 ref mut a,
                 ref mut b,
                 ref mut c,
+                ref mut bp,
                 ref mut coupling,
                 ref mut frac,
+                ref mut m0,
+                ref mut m1,
                 ..
             } => match idx {
                 0 => set_or_add(input, input_value, add),
@@ -1110,6 +1166,9 @@ impl Process {
                 3 => c.set_target(input_value),
                 4 => frac.set_target(input_value),
                 5 => coupling.set_target(input_value),
+                6 => bp.set_target(input_value),
+                7 => m0.set_target(input_value),
+                8 => m1.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
             Process::Fold {

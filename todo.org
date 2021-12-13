@@ -1,4 +1,4 @@
-* TODO graph synth rust [65/108]
+* TODO graph synth rust [67/120]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -90,6 +90,11 @@
 - [X] runge-kutta integration
 - [X] chua
 - [X] general input fader
+- [X] list/matrix of processes for easier selection
+- [X] more chua tests for parameters and centering
+- [ ] hard sync osc (with nth zero crossing)
+- [ ] freq follow based on hard sync
+- [ ] more gating experiments
 - [ ] all ugens separate out
 - [ ] lang for expressing networks
 - [ ] move flow into ugengraph struct
@@ -111,7 +116,12 @@
 - [ ] spike durations flexible (derive from input)
 - [ ] spike ducking 
 - [ ] kuramoto
-- [ ] list of processes for easier selection
+- [ ] jerk sprott
+- [ ] multiscroll systems
+- [ ] Nosé hoover
+- [ ] Ueda
+- [ ] Fitz hugh nagumo
+- [ ] lotka volterra
 - [ ] learning (some persistent trace)
 - [ ] types of output and conversion when linking
 - [ ] exchange process with another
@@ -131,5 +141,6 @@
 - [ ] dynamically change clipping function
 - [ ] variations/evolving graph setups
 - [ ] fix visual scaling of graph in elm
+- [ ] fix visualization of strongly connected graphs
 - [ ] scope
 

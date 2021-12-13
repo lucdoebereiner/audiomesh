@@ -1321,7 +1321,18 @@ processRow m =
         -- , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
         -- , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
         , addProcess "VanDerPol" (VanDerPol { e = 0.5, frac = 60.0, a = 0.5 })
-        , addProcess "Chua" (Chua { a = 3.74, b = 3.49, c = -0.29, frac = 1.0, coupling = 0.1 })
+        , addProcess "Chua"
+            (Chua
+                { a = 15.74
+                , b = 28.49
+                , c = 0.029
+                , frac = 100.0
+                , coupling = 0.0
+                , bp = 1.0
+                , m0 = -1.143
+                , m1 = -0.714
+                }
+            )
         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
         , addProcess "Perceptron" (Perceptron { bias = 0.0 })
