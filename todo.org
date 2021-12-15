@@ -1,4 +1,4 @@
-* TODO graph synth rust [68/119]
+* TODO graph synth rust [67/95]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -92,54 +92,62 @@
 - [X] general input fader
 - [X] list/matrix of processes for easier selection
 - [X] more chua tests for parameters and centering
-- [X] Nosé hoover
-- [ ] hard sync osc (with nth zero crossing)
-- [ ] freq follow based on hard sync
-- [ ] more gating experiments
-- [ ] all ugens separate out
-- [ ] move flow into ugengraph struct
-- [ ] prelisten solo mode
-- [ ] simpler addition of ugens, auto elm decoder/types
-- [ ] refactor elm parameters for central spec
-- [ ] slow compression
+- [ ] process spec api
+  - [ ] simpler addition of ugens, auto elm decoder/types
+  - [ ] refactor elm parameters for central spec
+  - [ ] types of output and conversion when linking
+- [ ] a generalized compressor/gate in every edge
 - [ ] trait obj instead of enum?
+- [ ] sync
+  - [ ] hard sync osc (with nth zero crossing)
+  - [ ] freq follow based on hard sync
+- [ ] all ugens separate out
+- [ ] in sc
+  - [ ] more gating experiments
+  - [ ] prelisten solo mode
+  - [ ] steto in sc
+  - [ ] sanitize output
+  - [ ] output compressor
+- [ ] move flow into ugengraph struct
+- [ ] slow compression
 - [ ] lang for expressing networks
 - [ ] delay feedbacks with compression and leakage
-- [ ] sanitize output
-- [ ] output compressor
-- [ ] insert process in edge (between)
+- [ ] control
+  - [ ] insert process in edge (between)
+  - [ ] replacing process
+  - [ ] fade in/out when adding/removing process
+  - [ ] lock parts of patch from rnd
+  - [ ] variations/evolving graph setups
+  - [ ] subgraphs
+  - [ ] reset graph
+  - [ ] dynamically change clipping function
+  - [ ] temporary connections
 - [ ] accumulation in tapdelay
 - [ ] halfwave stuff
 - [ ] fdn with matrix
-- [ ] spike envs (make sparse)
 - [ ] (other) mod vcf, cytomic svf
-- [ ] spike durations flexible (derive from input)
-- [ ] spike ducking 
-- [ ] kuramoto
-- [ ] jerk sprott
-- [ ] multiscroll systems
-- [ ] Fitz hugh nagumo
-- [ ] lotka volterra
-- [ ] replacing process
+- [ ] spikes
+  - [ ] spike envs (make sparse)
+  - [ ] spike durations flexible (derive from input)
+  - [ ] spike ducking 
+- [-] systems
+  - [X] Nosé hoover
+  - [X] Fitz hugh nagumo
+  - [ ] kuramoto
+  - [ ] jerk sprott
+  - [ ] lotka volterra
+  - [ ] hopf (with filters)
 - [ ] learning (some persistent trace)
-- [ ] types of output and conversion when linking
-- [ ] exchange process with another
 - [ ] pll mod outputting freq and connection logic 
-- [ ] fade in/out when adding/removing process
 - [ ] record process for later looping/addition as separate process
 - [ ] other waveshapers (musicdsp)
-- [ ] lock parts of patch from rnd
-- [ ] temporary connections
 - [ ] comparison
 - [ ] slew env ala serge (lag2)
 - [ ] s and hp
-- [ ] hopf (with filters)
 - [ ] comb filter
-- [ ] subgraphs
-- [ ] reset graph
-- [ ] dynamically change clipping function
-- [ ] variations/evolving graph setups
-- [ ] fix visual scaling of graph in elm
-- [ ] fix visualization of strongly connected graphs
-- [ ] scope
+- [ ] clean up warnings
+- [ ] visual
+  - [ ] fix visual scaling of graph in elm
+  - [ ] fix visualization of strongly connected graphs
+
 

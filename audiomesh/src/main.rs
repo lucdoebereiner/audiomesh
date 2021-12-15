@@ -5,9 +5,9 @@ extern crate rocket;
 
 use crossbeam_channel::bounded;
 use crossbeam_channel::{Receiver, Sender};
-use futures::executor::block_on;
+//use futures::executor::block_on;
 use jack;
-use rocket::http::Method;
+//use rocket::http::Method;
 use rocket::serde::json::*;
 use rocket_cors::AllowedMethods;
 use rocket_cors::AllowedOrigins;
@@ -16,7 +16,7 @@ use std::sync::Mutex;
 //use rocket_contrib::json::*;
 use rocket_cors;
 //use rocket_cors::AllowedHeaders;
-use rand::Rng;
+// use rand::Rng;
 // use petgraph::dot::{Config, Dot};
 use petgraph::stable_graph::*;
 use serde_json;
@@ -37,6 +37,7 @@ enum UpdateMessage {
     Randomize,
     RandomCircle,
     DumpGraph,
+    DumpSpecs,
     MatrixConnect,
     SetGraph(UGenGraphStructure, bool),
     AddEdge(NodeIndex, NodeIndex, f64, usize, bool),
@@ -59,6 +60,7 @@ enum UpdateMessage {
 }
 
 enum ReturnMessage {
+    Specs(String),
     Graph(String),
     //  Outputs(String),
     PollOutput(String),
@@ -258,11 +260,26 @@ fn get_graph(state: &State<Globals>) -> content::Json<String> {
     let shared_data: &Globals = state.inner();
     let sender = &shared_data.sender;
     let receiver = &shared_data.receiver;
-    let res = sender.send(UpdateMessage::DumpGraph);
+    let _res = sender.send(UpdateMessage::DumpGraph);
     match receiver.recv().unwrap() {
-        ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => content::Json(g),
+        ReturnMessage::Graph(g)  => content::Json(g),
+        _ => content::Json("".to_string()),
     }
 }
+
+
+#[get("/specs")]
+fn get_specs(state: &State<Globals>) -> content::Json<String> {
+    let shared_data: &Globals = state.inner();
+    let sender = &shared_data.sender;
+    let receiver = &shared_data.receiver;
+    let _res = sender.send(UpdateMessage::DumpSpecs);
+    match receiver.recv().unwrap() {
+        ReturnMessage::Specs(g)  => content::Json(g),
+        _ => content::Json("".to_string()),
+    }
+}
+
 
 #[get("/node/<id>/poll")]
 fn poll_node(id: usize, state: &State<Globals>) -> content::Json<String> {
@@ -273,7 +290,8 @@ fn poll_node(id: usize, state: &State<Globals>) -> content::Json<String> {
         .send(UpdateMessage::PollNode(NodeIndex::new(id)))
         .unwrap();
     match receiver.recv().unwrap() {
-        ReturnMessage::Graph(g) | ReturnMessage::PollOutput(g) => content::Json(g),
+        ReturnMessage::PollOutput(g) => content::Json(g),
+        _ => content::Json("".to_string()),
     }
 }
 
@@ -308,6 +326,10 @@ fn handle_messages(
         UpdateMessage::DumpGraph => {
             let j = serde_json::to_string(&graph.graph).unwrap();
             sender.send(ReturnMessage::Graph(j)).unwrap()
+        }
+        UpdateMessage::DumpSpecs => {
+            let j = serde_json::to_string(&processspec::specs_vec()).unwrap();
+            sender.send(ReturnMessage::Specs(j)).unwrap()
         }
         UpdateMessage::PollNode(node) => {
             let n = graph.graph.node_weight(node);
@@ -384,7 +406,7 @@ fn handle_messages(
             graph.init_after_deserialization();
             graph.update_connections_and_flow(flow, matrix)
         }
-        UpdateMessage::AddEdge(node_from, node_to, weight, index, matrix) => {
+        UpdateMessage::AddEdge(node_from, node_to, weight, index, _matrix) => {
             let _idx = graph.connect(node_from, node_to, Connection::new(index as u32, weight));
         }
         UpdateMessage::ConnectLeastConnected => {
@@ -487,8 +509,8 @@ fn rocket() -> _ {
     let (s_ret, r_ret): (Sender<ReturnMessage>, Receiver<ReturnMessage>) = bounded(100);
 
     // Create graph and init
-    let mut g = UGenGraph::new();
-    let mut flow = vec![];
+    let g = UGenGraph::new();
+    let flow = vec![];
 
     // ann
     // let layer1_ids: Vec<NodeIndex> = (0..4).map(|_i| g.add(perceptron())).collect();
@@ -607,6 +629,7 @@ fn rocket() -> _ {
                 poll_node,
                 set_graph,
                 random_circle,
+                get_specs,
                 set_outputs,
                 set_edge_fac,
                 node_output_amp,

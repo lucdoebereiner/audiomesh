@@ -923,7 +923,7 @@ displayNode polled waiting n =
                         )
                         (IntDict.toList n.label.output_sends)
                 )
-            , row [ spacing 20, width fill ] <|
+            , wrappedRow [ spacing 20, width fill ] <|
                 List.map
                     (\p -> slider (SetProcessParameter n.id p.idx) p)
                     (processParameters
@@ -1336,6 +1336,15 @@ processRow m =
         , addProcess "NoseHoover"
             (NoseHoover
                 { a = 1.0
+                , frac = 100.0
+                , coupling = 0.0
+                }
+            )
+        , addProcess "FitzHughNagumo"
+            (FitzHughNagumo
+                { a = 0.2
+                , b = 0.3
+                , c = 0.5
                 , frac = 100.0
                 , coupling = 0.0
                 }

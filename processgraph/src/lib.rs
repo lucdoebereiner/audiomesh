@@ -2,8 +2,10 @@ mod compenv;
 mod filters;
 pub mod integrator;
 pub mod lag;
+pub mod processspec;
 pub mod process;
 pub mod tapdelay;
+use crate::processspec::*;
 use crate::lag::{lag_freq_deserialize, lag_freq_serialize, Lag};
 use crate::process::*;
 use crate::tapdelay::TapDelay;
@@ -48,14 +50,14 @@ pub struct UGen {
     sum_inputs: bool,
     clip: ClipType,
     pub output_sends: Vec<(usize, lag::Lag)>,
-    #[serde(skip_deserializing)]
-    process_type: Option<ProcessType>,
+    // #[serde(skip_deserializing)]
+    // process_type: Option<ProcessType>,
     pub output_amp: lag::Lag,
 }
 
 impl UGen {
     pub fn new(process: Process) -> Self {
-        let pt = process.spec().process_type;
+        // let pt = process.spec().process_type;
         UGen {
             feedback_delay: false,
             process,
@@ -64,13 +66,13 @@ impl UGen {
             last_value: 0.0,
             clip: ClipType::None,
             output_sends: vec![],
-            process_type: Some(pt),
+            // process_type: Some(pt),
             output_amp: lag::lag(0.0),
         }
     }
 
     pub fn init_after_deserialization(&mut self) {
-        self.process_type = Some(self.process.spec().process_type);
+        // self.process_type = Some(self.process.spec().process_type);
         self.output_amp.set_duration(2.0);
     }
 
@@ -421,9 +423,9 @@ impl UGenGraph {
 
     pub fn init_after_deserialization(&mut self) {
         self.edge_fac.set_duration(2.0);
-        self.graph
-            .node_weights_mut()
-            .for_each(|u| u.process_type = Some(u.process.spec().process_type));
+        // self.graph
+        //     .node_weights_mut()
+        //     .for_each(|u| u.process_type = Some(u.process.spec().process_type));
     }
 
     pub fn set_parameter(&mut self, node_idx: NodeIndex, idx: u32, input_value: f64) {
@@ -478,7 +480,7 @@ impl UGenGraph {
         })
     }
 
-    pub fn get_spec(&self, node: NodeIndex) -> Option<ProcessSpec> {
+    pub fn get_spec(&self, node: NodeIndex) -> Option<&ProcessSpec> {
         self.graph.node_weight(node).map(|u| u.process.spec())
     }
 

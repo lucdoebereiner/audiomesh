@@ -136,6 +136,7 @@ type Process
     | GateIfGreater
     | Chua { a : Float, b : Float, c : Float, frac : Float, coupling : Float, bp : Float, m0 : Float, m1 : Float }
     | NoseHoover { a : Float, frac : Float, coupling : Float }
+    | FitzHughNagumo { a : Float, b : Float, c : Float, frac : Float, coupling : Float }
     | VanDerPol { e : Float, frac : Float, a : Float }
     | Duffing { e : Float, frac : Float, a : Float, b : Float }
     | EnvFollow
@@ -247,6 +248,14 @@ processParameters p =
             [ Parameter 1 a Exp "a" 0.1 20.0
             , Parameter 2 frac Exp "frac" 0.1 10000.0
             , Parameter 3 coupling Lin "coupling" 0.0 1.0
+            ]
+
+        FitzHughNagumo { a, b, c, frac, coupling } ->
+            [ Parameter 1 a Exp "a" 0.01 2.0
+            , Parameter 2 b Exp "b" 0.01 2.0
+            , Parameter 3 c Exp "c" 0.01 2.0
+            , Parameter 4 frac Exp "frac" 0.1 10000.0
+            , Parameter 5 coupling Cubic "coupling" -2.0 2.0
             ]
 
         VanDerPol { e, frac, a } ->
@@ -412,6 +421,26 @@ setInput ( parIdx, val ) proc =
 
                 3 ->
                     NoseHoover { s | coupling = val }
+
+                _ ->
+                    proc
+
+        FitzHughNagumo s ->
+            case parIdx of
+                1 ->
+                    FitzHughNagumo { s | a = val }
+
+                2 ->
+                    FitzHughNagumo { s | b = val }
+
+                3 ->
+                    FitzHughNagumo { s | c = val }
+
+                4 ->
+                    FitzHughNagumo { s | frac = val }
+
+                5 ->
+                    FitzHughNagumo { s | coupling = val }
 
                 _ ->
                     proc
@@ -590,6 +619,9 @@ processName p =
 
         Chua _ ->
             "Chua"
+
+        FitzHughNagumo _ ->
+            "FitzHughNagumo"
 
         Fold _ ->
             "Fold"
@@ -827,6 +859,17 @@ encodeProcess p =
                     ]
                 )
 
+        FitzHughNagumo s ->
+            encObj p
+                (JE.object
+                    [ ( "a", JE.float s.a )
+                    , ( "b", JE.float s.b )
+                    , ( "c", JE.float s.c )
+                    , ( "frac", JE.float s.frac )
+                    , ( "coupling", JE.float s.coupling )
+                    ]
+                )
+
         Constant c ->
             encObj p (JE.object [ ( "value", JE.float c.value ) ])
 
@@ -887,6 +930,9 @@ processToString p =
 
         NoseHoover _ ->
             "NoseHoover"
+
+        FitzHughNagumo _ ->
+            "FitzHughNagumo"
 
         Chua v ->
             "Chua a:" ++ floatString v.a
@@ -1044,6 +1090,20 @@ decodeNoseHoover : Decoder Process
 decodeNoseHoover =
     Decode.succeed (\a f c -> NoseHoover { a = a, frac = f, coupling = c })
         |> required "a" float
+        |> required "frac" float
+        |> required "coupling" float
+
+
+decodeFitzHughNagumo : Decoder Process
+decodeFitzHughNagumo =
+    Decode.succeed
+        (\a b c f coupling ->
+            FitzHughNagumo
+                { a = a, b = b, c = c, frac = f, coupling = coupling }
+        )
+        |> required "a" float
+        |> required "b" float
+        |> required "c" float
         |> required "frac" float
         |> required "coupling" float
 
@@ -1308,6 +1368,7 @@ decodeUGen =
                 , field "PLL" decodePLL
                 , field "VanDerPol" decodeVanDerPol
                 , field "NoseHoover" decodeNoseHoover
+                , field "FitzHughNagumo" decodeFitzHughNagumo
                 , field "Chua" decodeChua
                 , field "Duffing" decodeDuffing
                 , field "Resonator" decodeResonator

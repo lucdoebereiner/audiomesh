@@ -1,12 +1,15 @@
 use crate::compenv::*;
 use crate::filters;
-use crate::integrator::{runge_kutta_4, runge_kutta_5, runge_kutta_6};
+use crate::integrator::{runge_kutta_4, runge_kutta_5};
 use crate::lag;
+use crate::processspec::*;
 use crate::numerical;
 use crate::tapdelay;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
 use std::f64;
+use strum_macros;
+use strum::EnumProperty;
 const PI: f64 = f64::consts::PI;
 
 use crate::numerical::TWOPI;
@@ -25,13 +28,16 @@ pub fn get_sr() -> f64 {
     unsafe { SR }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, strum_macros::EnumProperty)]
+#[allow(dead_code)]
 pub enum Process {
+    #[strum(props(Name="Sin"))]
     Sin {
         #[serde(skip)]
         input: f64,
         mul: lag::Lag,
     },
+    #[strum(props(Name="SinOsc"))]
     SinOsc {
         #[serde(skip)]
         input: f64,
@@ -40,6 +46,7 @@ pub enum Process {
         #[serde(skip)]
         phase: f64,
     },
+    #[strum(props(Name="Mul"))]
     Mul {
         #[serde(skip)]
         inputs: Vec<f64>,
@@ -149,6 +156,18 @@ pub enum Process {
         state: Vec<f64>,
         frac: lag::Lag,
         a: lag::Lag,
+        coupling: lag::Lag,
+    },
+    FitzHughNagumo {
+        #[serde(skip)]
+        input: f64,
+        #[serde(skip_serializing)]
+        #[serde(default = "fitz_state")]
+        state: Vec<f64>,
+        frac: lag::Lag,
+        a: lag::Lag,
+        b: lag::Lag,
+        c: lag::Lag,
         coupling: lag::Lag,
     },
     Chua {
@@ -401,46 +420,7 @@ fn rms_proc() -> Process {
 //     CompEnv::new(0.6, 0.001, get_sr() as usize * 4)
 // }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum InputType {
-    Any,
-    Audio,
-    Frequency,
-    Q,
-    Phase,
-    Index,
-    Factor,
-    Threshold,
-    Parameter,
-    Amplitude,
-    Seconds,
-    Offset,
-}
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
-pub enum ProcessType {
-    NoInputGenerator,
-    TransparentProcessor,
-    OpaqueProcessor,
-    SidechainEnv,
-    TwoInputs,
-    MultipleInputs,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ProcessSpec {
-    pub name: String,
-    pub process_type: ProcessType,
-    pub inputs: Vec<InputType>,
-}
-
-fn procspec(name: &'static str, process_type: ProcessType, inputs: Vec<InputType>) -> ProcessSpec {
-    ProcessSpec {
-        name: name.to_string(),
-        process_type,
-        inputs,
-    }
-}
 
 fn rms_chain() -> Vec<Process> {
     vec![
@@ -455,15 +435,15 @@ fn rms_chain() -> Vec<Process> {
     ]
 }
 
-fn dynsys_compressor() -> Box<Process> {
-    Box::new(Process::Compressor {
-        input_level: vec![],
-        input: 0.0,
-        threshold: lag::lag(0.25),
-        ratio: lag::lag(6.0),
-        makeup: lag::lag(1.0),
-    })
-}
+// fn dynsys_compressor() -> Box<Process> {
+//     Box::new(Process::Compressor {
+//         input_level: vec![],
+//         input: 0.0,
+//         threshold: lag::lag(0.25),
+//         ratio: lag::lag(6.0),
+//         makeup: lag::lag(1.0),
+//     })
+// }
 
 pub fn vanderpol(e: f64, a: f64, frac: f64) -> Process {
     Process::VanDerPol {
@@ -484,6 +464,11 @@ fn vdp_state() -> Vec<f64> {
 fn chua_state() -> Vec<f64> {
     vec![0.001, 0.01, 0.001]
 }
+
+fn fitz_state() -> Vec<f64> {
+    vec![0.01, 0.01]
+}
+
 
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
@@ -608,9 +593,9 @@ fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64
 //    let mut d_x =
   //      a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
 
-    let mut d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
-    let mut d_y = x - y + z;
-    let mut d_z = -b * y - (c * z); 
+    let d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
+    let d_y = x - y + z;
+    let d_z = -b * y - (c * z); 
 
     // d_x = (d_x / 2.0).tanh() * 2.0;
     // d_y = (d_y / 2.0).tanh() * 2.0;
@@ -680,11 +665,33 @@ struct DuffingAdditionalVars {
     f: f64,
 }
 
+struct FitzAdditionalVars {
+    a: f64,
+    b: f64,
+    c: f64,
+    input: f64,
+    f: f64,
+    coupling: f64,
+}
+
+
+#[inline]
+fn fitz_calc_vec(state: &[f64], additional_vars: &FitzAdditionalVars) -> Vec<f64> {
+    let x = state[0];
+    let y = state[1];
+
+    let d_x = x - x.powi(3) - y + (additional_vars.input * additional_vars.coupling);
+    let d_y = additional_vars.a + (additional_vars.b * x) - (additional_vars.c * y);
+        
+    vec![d_x * additional_vars.f, d_y * additional_vars.f]
+}
+
+
 #[inline]
 fn duffing_calc_vec(state: &[f64], additional_vars: &DuffingAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
-    let tan_fac = 10.0;
+//    let tan_fac = 10.0;
     let mut d_x = y;
     d_x = d_x - attrition(x);
     //    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
@@ -809,7 +816,6 @@ impl Process {
                 // }
                 state[0]
             }
-
             Process::NoseHoover {
                 input,
                 ref mut state,
@@ -835,7 +841,38 @@ impl Process {
                 state[2] = (new_state[2] / 100.0).tanh() * 100.0;
                 
                 state[0] 
-            }            
+            }
+            Process::FitzHughNagumo {
+                input,
+                ref mut state,
+                ref mut frac,
+                ref mut coupling,
+                ref mut a,
+                ref mut b,
+                ref mut c,
+            } => {
+                let this_coupling = coupling.tick();
+                let f = frac.tick();
+                let this_a = a.tick();
+                let this_b = b.tick();
+                let this_c = c.tick();
+
+                let additional_vars = FitzAdditionalVars {
+                    input: *input,
+                    a: this_a,
+                    b: this_b,
+                    c: this_c,
+                    f: f,
+                    coupling: this_coupling,
+                };
+                let new_state =
+                    runge_kutta_5(&fitz_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+
+                state[0] = (new_state[0] / 100.0).tanh() * 100.0;
+                state[1] = (new_state[1] / 100.0).tanh() * 100.0;
+                
+                state[0] 
+            }                     
             Process::Duffing {
                 input,
                 ref mut state,
@@ -1207,7 +1244,6 @@ impl Process {
                 1 => bias.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
-
             Process::Chua {
                 ref mut input,
                 ref mut a,
@@ -1277,6 +1313,24 @@ impl Process {
                 1 => a.set_target(input_value),
                 2 => frac.set_target(input_value),
                 3 => coupling.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
+            Process::FitzHughNagumo {
+                ref mut input,
+                ref mut coupling,
+                ref mut frac,
+                ref mut a,
+                ref mut b,
+                ref mut c,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => a.set_target(input_value),
+                2 => b.set_target(input_value),
+                3 => c.set_target(input_value),
+                4 => frac.set_target(input_value),
+                5 => coupling.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
 
@@ -1574,257 +1628,13 @@ impl Process {
         }
     }
 
-    pub fn spec(&self) -> ProcessSpec {
-        match self {
-            Process::Spike { .. } => procspec(
-                "spike",
-                ProcessType::OpaqueProcessor,
-                vec![
-                    InputType::Any,
-                    InputType::Threshold,
-                    InputType::Parameter,
-                    InputType::Parameter,
-                ],
-            ),
-            Process::SoundIn { .. } => procspec(
-                "soundin",
-                ProcessType::NoInputGenerator,
-                vec![InputType::Index, InputType::Factor],
-            ),
-            Process::VanDerPol { .. } => procspec(
-                "vanderpool",
-                ProcessType::OpaqueProcessor,
-                vec![
-                    InputType::Audio,
-                    InputType::Factor,
-                    InputType::Factor,
-                    InputType::Amplitude,
-                ],
-            ),
-            Process::NoseHoover { .. } => procspec(
-                "nosehover",
-                ProcessType::OpaqueProcessor,
-                vec![
-                    InputType::Audio,
-                    InputType::Factor,
-                    InputType::Frequency,
-                    InputType::Factor,
-                ],
-            ),
-
-            Process::Chua { .. } => procspec(
-                "chua",
-                ProcessType::OpaqueProcessor,
-                vec![InputType::Audio, InputType::Factor, InputType::Factor],
-            ),
-
-            Process::Duffing { .. } => procspec(
-                "duffing",
-                ProcessType::OpaqueProcessor,
-                vec![
-                    InputType::Audio,
-                    InputType::Factor,
-                    InputType::Factor,
-                    InputType::Amplitude,
-                ],
-            ),
-
-            Process::Fold { .. } => procspec(
-                "fold",
-                ProcessType::OpaqueProcessor,
-                vec![
-                    InputType::Audio,
-                    InputType::Threshold,
-                    InputType::Amplitude,
-                    InputType::Offset,
-                ],
-            ),
-
-            Process::Sin { .. } => {
-                procspec("sin", ProcessType::OpaqueProcessor, vec![InputType::Phase])
-            }
-            Process::Env { .. } => procspec(
-                "env",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Audio],
-            ),
-            Process::SinOsc { .. } => procspec(
-                "sinosc",
-                ProcessType::OpaqueProcessor,
-                vec![InputType::Frequency, InputType::Factor],
-            ),
-            Process::PLL { .. } => procspec(
-                "pll",
-                ProcessType::OpaqueProcessor,
-                vec![InputType::Any, InputType::Factor],
-            ),
-
-            Process::Mul { .. } => {
-                procspec("mul", ProcessType::MultipleInputs, vec![InputType::Any])
-            }
-            Process::Ring { .. } => {
-                procspec("ring", ProcessType::MultipleInputs, vec![InputType::Audio])
-            }
-            Process::Add { .. } => {
-                procspec("add", ProcessType::MultipleInputs, vec![InputType::Any])
-            }
-            Process::Mem { .. } => procspec(
-                "mem",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any],
-            ),
-            Process::Constant { .. } => procspec("constant", ProcessType::NoInputGenerator, vec![]),
-            //        Process::Map { .. } => procspec("map", vec![InputType::Any]),
-            Process::Filter { .. } => procspec(
-                "filter",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Audio, InputType::Frequency, InputType::Q],
-            ),
-            Process::Resonator { .. } => procspec(
-                "resonator",
-                ProcessType::MultipleInputs,
-                vec![
-                    InputType::Audio,
-                    InputType::Any,
-                    InputType::Frequency,
-                    InputType::Factor,
-                    InputType::Seconds,
-                ],
-            ),
-
-            Process::Compressor { .. } => procspec(
-                "compressor",
-                ProcessType::TransparentProcessor,
-                vec![
-                    InputType::Audio,
-                    InputType::Threshold,
-                    InputType::Parameter,
-                    InputType::Amplitude,
-                ],
-            ),
-            Process::Ducking { .. } => procspec(
-                "ducking",
-                ProcessType::SidechainEnv,
-                vec![InputType::Any; 2],
-            ),
-            Process::EnvFollow { .. } => procspec(
-                "envfollow",
-                ProcessType::SidechainEnv,
-                vec![InputType::Any; 2],
-            ),
-
-            Process::GateDecision { .. } => procspec(
-                "gatedecision",
-                ProcessType::SidechainEnv,
-                vec![
-                    InputType::Any,
-                    InputType::Any,
-                    InputType::Seconds,
-                    InputType::Seconds,
-                ],
-            ),
-
-            Process::Wrap { .. } => procspec(
-                "wrap",
-                ProcessType::OpaqueProcessor,
-                vec![InputType::Any; 2],
-            ),
-            Process::Softclip { .. } => procspec(
-                "softclip",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any],
-            ),
-            Process::Perceptron { .. } => procspec(
-                "perceptron",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any, InputType::Factor],
-            ),
-            Process::Square { .. } => procspec(
-                "square",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any],
-            ),
-            Process::Sqrt { .. } => procspec(
-                "sqrt",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any],
-            ),
-            Process::Delay { .. } => procspec(
-                "delay",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any],
-            ),
-            Process::VarDelay { .. } => procspec(
-                "vardelay",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any, InputType::Seconds],
-            ),
-            Process::BitNeg { .. } => {
-                procspec("bitneg", ProcessType::OpaqueProcessor, vec![InputType::Any])
-            }
-            Process::BitOr { .. } => {
-                procspec("bitor", ProcessType::TwoInputs, vec![InputType::Any; 2])
-            }
-            Process::BitXOr { .. } => {
-                procspec("bitxor", ProcessType::TwoInputs, vec![InputType::Any; 2])
-            }
-            Process::Kaneko { .. } => procspec(
-                "kaneko",
-                ProcessType::TwoInputs,
-                vec![
-                    InputType::Any,
-                    InputType::Any,
-                    InputType::Factor,
-                    InputType::Factor,
-                ],
-            ),
-            Process::KanekoChain { .. } => procspec(
-                "kanekochain",
-                ProcessType::TwoInputs,
-                vec![
-                    InputType::Any,
-                    InputType::Any,
-                    InputType::Factor,
-                    InputType::Factor,
-                ],
-            ),
-
-            Process::BitAnd { .. } => {
-                procspec("bitand", ProcessType::TwoInputs, vec![InputType::Any; 2])
-            }
-            Process::GateIfGreater { .. } => procspec(
-                "gateifgreater",
-                ProcessType::TwoInputs,
-                vec![InputType::Any; 2],
-            ),
-            Process::CurveLin { .. } => procspec(
-                "curvelin",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Any; 6],
-            ),
-            Process::Gauss { .. } => procspec(
-                "gauss",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Audio],
-            ),
-            Process::RMS { .. } => {
-                procspec("rms", ProcessType::OpaqueProcessor, vec![InputType::Audio])
-            }
-            Process::LPF1 { .. } => procspec(
-                "lpf1",
-                ProcessType::TransparentProcessor,
-                vec![InputType::Audio, InputType::Frequency],
-            ),
-            Process::LinCon { .. } => procspec(
-                "lincon",
-                ProcessType::OpaqueProcessor,
-                vec![InputType::Any, InputType::Factor, InputType::Factor],
-            ),
-        }
+    pub fn name(&self) -> String {
+        self.get_str("Name").unwrap().to_string()
     }
 
-    pub fn name(&self) -> String {
-        self.spec().name
+
+    pub fn spec(&self) -> &ProcessSpec {
+        SPECS.get(&self.name()).unwrap()
     }
 
     pub fn is_input(&self) -> bool {
@@ -1855,6 +1665,7 @@ impl Process {
             | Process::Chua { ref mut input, .. }
 	    | Process::Fold { ref mut input, .. }
             | Process::NoseHoover { ref mut input, .. }
+            | Process::FitzHughNagumo { ref mut input, .. }
 	    | Process::BitNeg { ref mut input } => *input = 0.0,
             Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	    Process::Compressor { ref mut input, ref mut input_level, .. }
