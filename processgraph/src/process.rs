@@ -51,6 +51,7 @@ pub enum Process {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
+    #[strum(props(Name="Fold"))]
     Fold {
         #[serde(skip)]
         input: f64,
@@ -64,6 +65,7 @@ pub enum Process {
         #[serde(skip)]
         input2: f64,
     },
+    #[strum(props(Name="Kaneko"))]
     Kaneko {
         #[serde(skip)]
         input1: f64,
@@ -104,6 +106,7 @@ pub enum Process {
         #[serde(default = "out_gate_lag")]
         out_lag: lag::Lag,
     },
+    #[strum(props(Name="Ring"))]
     Ring {
         #[serde(skip)]
         inputs: Vec<Process>,
@@ -115,6 +118,7 @@ pub enum Process {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
+    #[strum(props(Name="Mem"))]
     Mem {
         #[serde(skip)]
         input: f64,
@@ -138,6 +142,7 @@ pub enum Process {
         //        #[serde(default = "comp_env_default")]
         comp_env: CompEnv,
     },
+    #[strum(props(Name="VanDerPol"))]
     VanDerPol {
         #[serde(skip)]
         input: f64,
@@ -148,6 +153,7 @@ pub enum Process {
         e: lag::Lag,
         a: lag::Lag,
     },
+    #[strum(props(Name="NoseHoover"))]
     NoseHoover {
         #[serde(skip)]
         input: f64,
@@ -158,6 +164,7 @@ pub enum Process {
         a: lag::Lag,
         coupling: lag::Lag,
     },
+    #[strum(props(Name="FitzHughNagumo"))]
     FitzHughNagumo {
         #[serde(skip)]
         input: f64,
@@ -170,6 +177,7 @@ pub enum Process {
         c: lag::Lag,
         coupling: lag::Lag,
     },
+    #[strum(props(Name="Chua"))]
     Chua {
         #[serde(skip)]
         input: f64,
@@ -246,6 +254,7 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
     },
+    #[strum(props(Name="SoundIn"))]
     SoundIn {
         #[serde(skip)]
         input: f64,
@@ -285,11 +294,13 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
     },
+    #[strum(props(Name="SoundIn"))]
     Perceptron {
         #[serde(skip)]
         input: f64,
         bias: lag::Lag,
     },
+    #[strum(props(Name="Delay"))]
     Delay {
         #[serde(serialize_with = "vector_serialize")]
         #[serde(deserialize_with = "vector_deserialize")]
@@ -354,6 +365,7 @@ pub enum Process {
         #[serde(default = "rms_chain")]
         chain: Vec<Process>,
     },
+    #[strum(props(Name="LinCon"))]
     LinCon {
         #[serde(skip)]
         input: f64,

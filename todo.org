@@ -135,6 +135,7 @@
   - [X] Fitz hugh nagumo
   - [ ] kuramoto
   - [ ] jerk sprott
+  - [ ] multiscroll
   - [ ] lotka volterra
   - [ ] hopf (with filters)
 - [ ] learning (some persistent trace)
