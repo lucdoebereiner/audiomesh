@@ -8,6 +8,7 @@ module Api exposing
     , getGraph
     , getGraphForDownload
     , getMatrixMode
+    , getSpecs
     , poll
     , postEdge
     , postGraph
@@ -39,6 +40,14 @@ baseUrl =
 
 type alias NodeIndex =
     Int
+
+
+getSpecs : (Result Http.Error (List ProcessSpec) -> msg) -> Cmd msg
+getSpecs msg =
+    Http.get
+        { url = baseUrl ++ "/specs"
+        , expect = Http.expectJson msg (Decode.list decodeProcessSpec)
+        }
 
 
 getGraph : (Result Http.Error BackendGraph -> msg) -> Cmd msg

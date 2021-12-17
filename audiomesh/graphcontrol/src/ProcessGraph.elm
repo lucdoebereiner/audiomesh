@@ -3,12 +3,18 @@ module ProcessGraph exposing
     , ClipType(..)
     , Connection
     , FilterType(..)
+    , InputRange
+    , InputScaling
+    , InputSpec
+    , InputType
     , Link
     , Process(..)
+    , ProcessSpec
     , ProcessType(..)
     , UGen
     , UGenGraph
     , decodeGraph
+    , decodeProcessSpec
     , defaultUGen
     , encodeProcess
     , getEdge
@@ -1779,3 +1785,151 @@ updateEdgeDelay edgeId d graph =
 --             { e | strength = e.strength * f }
 --         )
 --         graph
+
+
+type alias ProcessSpec =
+    { name : String
+    , processType : ProcessType
+    , inputs : List InputSpec
+    }
+
+
+decodeProcessSpec : Decoder ProcessSpec
+decodeProcessSpec =
+    Decode.succeed
+        (\name processType inputs ->
+            ProcessSpec name processType inputs
+        )
+        |> required "name" string
+        |> required "process_type" processTypeDecoder
+        |> required "inputs" (list decodeInputSpec)
+
+
+processTypeFromStringDec : String -> Decoder ProcessType
+processTypeFromStringDec s =
+    case s of
+        "NoInputGenerator" ->
+            Decode.succeed NoInputGenerator
+
+        "TransparentProcessor" ->
+            Decode.succeed TransparentProcessor
+
+        "OpaqueProcessor" ->
+            Decode.succeed OpaqueProcessor
+
+        "SidechainEnv" ->
+            Decode.succeed SidechainEnv
+
+        "TwoInputs" ->
+            Decode.succeed TwoInputs
+
+        "MultipleInputs" ->
+            Decode.succeed MultipleInputs
+
+        _ ->
+            Decode.fail ("Invalid process type: " ++ s)
+
+
+processTypeDecoder : Decoder ProcessType
+processTypeDecoder =
+    Decode.string |> Decode.andThen processTypeFromStringDec
+
+
+type alias InputSpec =
+    { index : Int
+    , name : String
+    , inputType : InputType
+    , controllable : Bool
+    }
+
+
+decodeInputSpec : Decoder InputSpec
+decodeInputSpec =
+    Decode.succeed
+        (\index name inputType controllable ->
+            InputSpec index name inputType controllable
+        )
+        |> required "index" int
+        |> required "name" string
+        |> required "input_type" inputTypeDecoder
+        |> required "controllable" bool
+
+
+type alias InputRange =
+    { min : Float
+    , max : Float
+    , default : Float
+    , scaling : InputScaling
+    }
+
+
+decodeInputRange : Decoder InputRange
+decodeInputRange =
+    Decode.succeed (\mn mx def scal -> InputRange mn mx def scal)
+        |> required "min" float
+        |> required "max" float
+        |> required "default" float
+        |> required "scaling" inputScalingDecoder
+
+
+type InputScaling
+    = InputLog
+    | InputExp
+    | InputCubic
+    | InputLin
+
+
+inputScalingDecoder : Decoder InputScaling
+inputScalingDecoder =
+    Decode.string |> Decode.andThen inputScalingFromString
+
+
+inputScalingFromString : String -> Decoder InputScaling
+inputScalingFromString string =
+    case string of
+        "Log" ->
+            Decode.succeed InputLog
+
+        "Exp" ->
+            Decode.succeed InputExp
+
+        "Cubic" ->
+            Decode.succeed InputCubic
+
+        "Lin" ->
+            Decode.succeed InputLin
+
+        _ ->
+            Decode.fail ("Invalid input scaling: " ++ string)
+
+
+type InputType
+    = Any Float
+    | Audio
+    | Frequency InputRange
+    | Q Float
+    | Phase Float
+    | Index Int
+    | Factor InputRange
+    | Threshold InputRange
+    | Amplitude Float
+    | Seconds Float
+    | Offset InputRange
+    | Samples Int
+
+
+inputTypeDecoder : Decoder InputType
+inputTypeDecoder =
+    oneOf
+        [ Decode.map Any <| field "Any" float
+        , Decode.map Q <| field "Q" float
+        , Decode.map Phase <| field "Phase" float
+        , Decode.map Index <| field "Index" int
+        , Decode.map Amplitude <| field "Amplitude" float
+        , Decode.map Seconds <| field "Seconds" float
+        , Decode.map Samples <| field "Samples" int
+        , Decode.map Frequency <| field "Frequency" decodeInputRange
+        , Decode.map Factor <| field "Factor" decodeInputRange
+        , Decode.map Threshold <| field "Threshold" decodeInputRange
+        , Decode.map Offset <| field "Offset" decodeInputRange
+        ]

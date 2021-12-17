@@ -115,7 +115,7 @@ init _ =
         EdgeControl.defaultControl
         EdgeControl.defaultControl
         False
-    , Cmd.batch [ Api.getGraph GotGraph, Api.getMatrixMode GotMatrixMode ]
+    , Cmd.batch [ Api.getGraph GotGraph, Api.getMatrixMode GotMatrixMode, Api.getSpecs GotSpecs ]
     )
 
 
@@ -139,6 +139,7 @@ main =
 
 type Msg
     = GotGraph (Result Http.Error BackendGraph)
+    | GotSpecs (Result Http.Error (List ProcessSpec))
     | GetGraph
     | GotMatrixMode (Result Http.Error Bool)
     | SetOutputs Int Float
@@ -549,6 +550,13 @@ update msg model =
             , Maybe.map (\n -> Api.poll GotPoll n) model.selectedNode
                 |> Maybe.withDefault Cmd.none
             )
+
+        GotSpecs r ->
+            let
+                _ =
+                    Debug.log "got specs" r
+            in
+            ( model, Cmd.none )
 
         GotPoll r ->
             case r of
