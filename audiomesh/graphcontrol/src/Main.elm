@@ -3,6 +3,7 @@ module Main exposing (Msg(..), main, update, view)
 import Api
 import Array exposing (Array)
 import Browser
+import CommonElements exposing (..)
 import Dict exposing (Dict)
 import DrawGraph
 import EdgeControl exposing (EdgeControl)
@@ -37,6 +38,7 @@ type alias Model =
     { graph : Maybe UGenGraph
     , backendGraph : Maybe BackendGraph
     , drawGraph : Maybe UGenGraph
+    , specStates : Dict Int ProcessState
     , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
@@ -80,6 +82,7 @@ init _ =
     ( Model Nothing
         Nothing
         Nothing
+        Dict.empty
         (Array.fromList [ 0.0, 0.0 ])
         Nothing
         Nothing
@@ -140,6 +143,7 @@ main =
 type Msg
     = GotGraph (Result Http.Error BackendGraph)
     | GotSpecs (Result Http.Error (List ProcessSpec))
+    | SetSpecState Int Int String
     | GetGraph
     | GotMatrixMode (Result Http.Error Bool)
     | SetOutputs Int Float
@@ -156,6 +160,7 @@ type Msg
     | NoOp (Result Http.Error ())
     | NoMsg
     | AddProcess Process
+    | AddProcessState ProcessState
     | SetDelayLength String
     | SetSinMul String
     | SetLinConA String
@@ -339,6 +344,13 @@ updateFromEdgeControl i getControl apiFun updateFun mapping model =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        SetSpecState stateIdx inputIdx val ->
+            let
+                newDict =
+                    Dict.update stateIdx (Maybe.map (updateInputState inputIdx val)) model.specStates
+            in
+            ( { model | specStates = newDict }, Cmd.none )
+
         SetEdgeControlFactors i s ->
             let
                 mapping =
@@ -552,11 +564,25 @@ update msg model =
             )
 
         GotSpecs r ->
-            let
-                _ =
-                    Debug.log "got specs" r
-            in
-            ( model, Cmd.none )
+            case r of
+                Ok specs ->
+                    let
+                        d =
+                            List.indexedMap
+                                (\i sp ->
+                                    ( i, processSpecToState sp )
+                                )
+                                specs
+                                |> Dict.fromList
+                    in
+                    ( { model | specStates = d }, Cmd.none )
+
+                err ->
+                    let
+                        _ =
+                            Debug.log "problem with specs" err
+                    in
+                    ( model, Cmd.none )
 
         GotPoll r ->
             case r of
@@ -792,6 +818,9 @@ update msg model =
         AddProcess proc ->
             ( model, Api.addNode UpdatedGraph proc )
 
+        AddProcessState proc ->
+            ( model, Api.addNodeState UpdatedGraph proc )
+
         SetProcessParameter nodeId parIdx val ->
             let
                 -- _ =
@@ -861,14 +890,6 @@ update msg model =
 
         SetEdgeFac f ->
             ( { model | edgesFac = f }, Api.setEdgeFac NoOp f )
-
-
-simpleButton : String -> msg -> Element msg
-simpleButton s msg =
-    Input.button [ Border.solid, Border.width 1, padding 10 ]
-        { onPress = Just msg
-        , label = text s
-        }
 
 
 simpleStateButton : String -> Bool -> msg -> Element msg
@@ -1374,6 +1395,14 @@ processRow m =
         ]
 
 
+processStateRow : Dict Int ProcessState -> Element Msg
+processStateRow d =
+    wrappedRow [ width fill, spacing 10 ] <|
+        List.map
+            (\( idx, state ) -> processStateDisplay state (SetSpecState idx) AddProcessState)
+            (Dict.toList d)
+
+
 downloadInput : String -> Element Msg
 downloadInput s =
     row [ spacing 10 ]
@@ -1473,7 +1502,7 @@ view model =
                  ]
                     ++ List.map (\( i, f ) -> outputSlider i f) (Array.toIndexedList model.outputIndices)
                 )
-            , processRow model
+            , processStateRow model.specStates
             , showSelectedEdge model
             , Maybe.withDefault
                 none

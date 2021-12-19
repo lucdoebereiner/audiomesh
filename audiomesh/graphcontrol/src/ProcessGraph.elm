@@ -10,6 +10,7 @@ module ProcessGraph exposing
     , Link
     , Process(..)
     , ProcessSpec
+    , ProcessState
     , ProcessType(..)
     , UGen
     , UGenGraph
@@ -17,6 +18,7 @@ module ProcessGraph exposing
     , decodeProcessSpec
     , defaultUGen
     , encodeProcess
+    , encodeProcessState
     , getEdge
     , getNodes
     , graphEdges
@@ -29,6 +31,8 @@ module ProcessGraph exposing
     , prevEdge
     , prevNode
     , processParameters
+    , processSpecToState
+    , processStateDisplay
     , setInput
     , ugenLabel
     , ugensWithIds
@@ -36,12 +40,17 @@ module ProcessGraph exposing
     , updateEdgeDelay
     , updateEdgeFactor
     , updateEdgeFreq
+    , updateInputState
     , updateOutputAmp
     , updateProcessParameter
     , upsertOutputSend
     )
 
 import Array exposing (Array)
+import CommonElements exposing (..)
+import Element exposing (..)
+import Element.Border as Border
+import Element.Input as Input
 import Graph
 import IntDict exposing (IntDict)
 import Json.Decode as Decode
@@ -62,6 +71,7 @@ import Json.Decode as Decode
 import Json.Decode.Pipeline exposing (custom, hardcoded, required)
 import Json.Encode as JE exposing (Value)
 import List.Extra as L
+import Maybe.Extra as M
 import Parameters exposing (Mapping(..), Parameter)
 import Utils exposing (..)
 
@@ -1310,7 +1320,8 @@ type alias UGen =
     , sum_inputs : Bool
     , clip : ClipType
     , output_sends : IntDict Float
-    , process_type : ProcessType
+
+    -- , process_type : ProcessType
     , output_amp : Float
     }
 
@@ -1331,7 +1342,11 @@ ugenLabel u =
 
 defaultUGen : UGen
 defaultUGen =
-    UGen Add True None IntDict.empty OpaqueProcessor 1.0
+    UGen Add True None IntDict.empty 1.0
+
+
+
+-- UGen Add True None IntDict.empty OpaqueProcessor 1.0
 
 
 decodeOutputTuple =
@@ -1343,12 +1358,12 @@ decodeOutputTuple =
 decodeUGen : Decoder UGen
 decodeUGen =
     Decode.succeed
-        (\p sum clip sends pt a ->
+        (\p sum clip sends a ->
             UGen p
                 sum
                 (clipTypeFromString clip)
                 (IntDict.fromList sends)
-                (processTypeFromString pt)
+                -- (processTypeFromString pt)
                 a
         )
         |> required "process"
@@ -1396,7 +1411,7 @@ decodeUGen =
         |> required "sum_inputs" bool
         |> required "clip" string
         |> required "output_sends" (list decodeOutputTuple)
-        |> required "process_type" string
+        -- |> required "process_type" string
         |> required "output_amp" float
 
 
@@ -1787,6 +1802,81 @@ updateEdgeDelay edgeId d graph =
 --         graph
 
 
+type alias ProcessState =
+    { name : String
+    , processType : ProcessType
+    , inputs : List InputState
+    }
+
+
+updateInputState : Int -> String -> ProcessState -> ProcessState
+updateInputState idx val state =
+    { name = state.name
+    , processType = state.processType
+    , inputs = L.updateIf (\i -> i.index == idx) (\i -> { i | state = val }) state.inputs
+    }
+
+
+inputStateField : (Int -> String -> msg) -> InputState -> Element msg
+inputStateField setMsg state =
+    Input.text [ width (px 80) ]
+        { onChange = setMsg state.index
+        , text = state.state
+        , placeholder = Nothing
+        , label = Input.labelLeft [] (text state.name)
+        }
+
+
+processStateDisplay : ProcessState -> (Int -> String -> msg) -> (ProcessState -> msg) -> Element msg
+processStateDisplay state setInputMsg addProcessMsg =
+    let
+        button =
+            encodeProcessState state
+                |> Maybe.map
+                    (\v ->
+                        simpleButton state.name (addProcessMsg state)
+                    )
+                |> Maybe.withDefault none
+    in
+    row [ spacing 5, Border.solid, Border.width 1 ]
+        (List.map (inputStateField setInputMsg) state.inputs ++ [ button ])
+
+
+
+-- sinOscInput : String -> String -> Element Msg
+-- sinOscInput fr frm =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetSinOscFreq
+--             , text = fr
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Freq")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetSinOscFreqMul
+--             , text = frm
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Freq Mul")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map2 (\ff fmf -> addProcess "SinOsc" (SinOsc { freq = ff, freq_mul = fmf })) (String.toFloat fr) (String.toFloat frm)
+--         ]
+
+
+encodeProcessState : ProcessState -> Maybe Value
+encodeProcessState state =
+    List.map encodeInputState state.inputs
+        |> M.combine
+        |> Maybe.map
+            (\is ->
+                JE.object
+                    [ ( state.name
+                      , JE.object is
+                      )
+                    ]
+            )
+
+
 type alias ProcessSpec =
     { name : String
     , processType : ProcessType
@@ -1840,6 +1930,77 @@ type alias InputSpec =
     , name : String
     , inputType : InputType
     , controllable : Bool
+    }
+
+
+type alias InputState =
+    { index : Int
+    , name : String
+    , inputType : InputType
+    , controllable : Bool
+    , state : String
+    }
+
+
+encodeInputState : InputState -> Maybe ( String, Value )
+encodeInputState is =
+    let
+        val =
+            case is.inputType of
+                Audio ->
+                    Just JE.null
+
+                Any _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Phase _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Q _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Amplitude _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Seconds _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Index _ ->
+                    Maybe.map JE.int (String.toInt is.state)
+
+                Samples _ ->
+                    Maybe.map JE.int (String.toInt is.state)
+
+                Frequency _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Factor _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Threshold _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+
+                Offset _ ->
+                    Maybe.map JE.float (String.toFloat is.state)
+    in
+    Maybe.map (\v -> ( is.name, v )) val
+
+
+processSpecToState : ProcessSpec -> ProcessState
+processSpecToState spec =
+    { name = spec.name
+    , processType = spec.processType
+    , inputs = List.map stateFromSpec spec.inputs
+    }
+
+
+stateFromSpec : InputSpec -> InputState
+stateFromSpec spec =
+    { index = spec.index
+    , name = spec.name
+    , inputType = spec.inputType
+    , controllable = spec.controllable
+    , state = inputTypeDefaultString spec.inputType
     }
 
 
@@ -1916,6 +2077,46 @@ type InputType
     | Seconds Float
     | Offset InputRange
     | Samples Int
+
+
+inputTypeDefaultString : InputType -> String
+inputTypeDefaultString t =
+    case t of
+        Any f ->
+            String.fromFloat f
+
+        Audio ->
+            ""
+
+        Frequency r ->
+            String.fromFloat r.default
+
+        Q f ->
+            String.fromFloat f
+
+        Phase f ->
+            String.fromFloat f
+
+        Index i ->
+            String.fromInt i
+
+        Factor r ->
+            String.fromFloat r.default
+
+        Threshold r ->
+            String.fromFloat r.default
+
+        Amplitude f ->
+            String.fromFloat f
+
+        Seconds f ->
+            String.fromFloat f
+
+        Offset r ->
+            String.fromFloat r.default
+
+        Samples i ->
+            String.fromInt i
 
 
 inputTypeDecoder : Decoder InputType

@@ -1,6 +1,7 @@
 module Api exposing
     ( NodeIndex
     , addNode
+    , addNodeState
     , connectLeastConnected
     , deleteEdge
     , deleteNode
@@ -226,6 +227,15 @@ addNode msg proc =
     Http.post
         { url = baseUrl ++ "/node"
         , body = Http.jsonBody (encodeProcess proc)
+        , expect = Http.expectWhatever msg
+        }
+
+
+addNodeState : (Result Http.Error () -> msg) -> ProcessState -> Cmd msg
+addNodeState msg proc =
+    Http.post
+        { url = baseUrl ++ "/node"
+        , body = Http.jsonBody (Maybe.withDefault JE.null (encodeProcessState proc))
         , expect = Http.expectWhatever msg
         }
 

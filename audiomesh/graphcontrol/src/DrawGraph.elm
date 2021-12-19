@@ -244,31 +244,29 @@ nodeElement selectedId msg connectToMsg node =
                     if selected /= node.id then
                         case connectToMsg of
                             Just m ->
-                                case node.label.value.process_type of
-                                    NoInputGenerator ->
-                                        []
+                                -- TODO FIXME
+                                [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
 
-                                    TransparentProcessor ->
-                                        [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
-
-                                    OpaqueProcessor ->
-                                        [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
-
-                                    TwoInputs ->
-                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
-                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
-                                        ]
-
-                                    SidechainEnv ->
-                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
-                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
-                                        ]
-
-                                    MultipleInputs ->
-                                        [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
-                                        , inputButton (m node.id) ( node.label.x, node.label.y ) 1
-                                        ]
-
+                            -- case node.label.value.process_type of
+                            --     -- TODO FIXME
+                            --     NoInputGenerator ->
+                            --         []
+                            --     TransparentProcessor ->
+                            --         [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
+                            --     OpaqueProcessor ->
+                            --         [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
+                            --     TwoInputs ->
+                            --         [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                            --         , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                            --         ]
+                            --     SidechainEnv ->
+                            --         [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                            --         , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                            --         ]
+                            --     MultipleInputs ->
+                            --         [ inputButton (m node.id) ( node.label.x - 35, node.label.y ) 0
+                            --         , inputButton (m node.id) ( node.label.x, node.label.y ) 1
+                            --         ]
                             Nothing ->
                                 []
 
