@@ -1838,7 +1838,17 @@ processStateDisplay state setInputMsg addProcessMsg =
                     )
                 |> Maybe.withDefault none
     in
-    row [ spacing 5, Border.solid, Border.width 1 ]
+    row
+        [ spacing 5
+        , Border.solid
+        , Border.width
+            (if List.isEmpty state.inputs then
+                0
+
+             else
+                1
+            )
+        ]
         (List.map (inputStateField setInputMsg) state.inputs ++ [ button ])
 
 

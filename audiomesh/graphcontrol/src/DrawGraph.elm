@@ -247,7 +247,7 @@ nodeElement selectedId msg connectToMsg node =
                                 -- TODO FIXME
                                 [ inputButton (m node.id) ( node.label.x - 17.5, node.label.y ) 0 ]
 
-                            -- case node.label.value.process_type of
+                            -- case node.label.value.process_type ofb
                             --     -- TODO FIXME
                             --     NoInputGenerator ->
                             --         []
