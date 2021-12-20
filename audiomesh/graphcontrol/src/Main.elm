@@ -118,7 +118,7 @@ init _ =
         EdgeControl.defaultControl
         EdgeControl.defaultControl
         False
-    , Cmd.batch [ Api.getGraph GotGraph, Api.getMatrixMode GotMatrixMode, Api.getSpecs GotSpecs ]
+    , Cmd.batch [ Api.getMatrixMode GotMatrixMode, Api.getSpecs GotSpecs ]
     )
 
 
@@ -575,7 +575,7 @@ update msg model =
                                 specs
                                 |> Dict.fromList
                     in
-                    ( { model | specStates = d }, Cmd.none )
+                    ( { model | specStates = d }, Api.getGraph GotGraph )
 
                 err ->
                     let
@@ -669,6 +669,7 @@ update msg model =
                                 model.edgeFreqControl
                       }
                     , Cmd.none
+                      --, Api.getSpecs GotSpecs
                       -- , sendEdgesCmd
                     )
 
