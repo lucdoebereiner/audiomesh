@@ -39,6 +39,7 @@ type alias Model =
     , backendGraph : Maybe BackendGraph
     , drawGraph : Maybe UGenGraph
     , specStates : Dict Int ProcessState
+    , specs : List ProcessSpec
     , outputIndices : Array Float
     , selectedNode : Maybe Graph.NodeId -- Maybe (Graph.Node UGen)
     , selectedEdge : Maybe Int --(Graph.Edge Link)
@@ -83,6 +84,7 @@ init _ =
         Nothing
         Nothing
         Dict.empty
+        []
         (Array.fromList [ 0.0, 0.0 ])
         Nothing
         Nothing
@@ -159,7 +161,7 @@ type Msg
     | SetInputGain Float
     | NoOp (Result Http.Error ())
     | NoMsg
-    | AddProcess Process
+      -- | AddProcess Process
     | AddProcessState ProcessState
     | SetDelayLength String
     | SetSinMul String
@@ -575,7 +577,7 @@ update msg model =
                                 specs
                                 |> Dict.fromList
                     in
-                    ( { model | specStates = d }, Api.getGraph GotGraph )
+                    ( { model | specStates = d, specs = specs }, Api.getGraph specs GotGraph )
 
                 err ->
                     let
@@ -693,7 +695,7 @@ update msg model =
                     ( model, Cmd.none )
 
         GetGraph ->
-            ( model, Api.getGraph GotGraph )
+            ( model, Api.getGraph model.specs GotGraph )
 
         DownloadGraph ->
             ( model, Api.getGraphForDownload GotDownloadGraph )
@@ -705,7 +707,7 @@ update msg model =
             ( model, Api.randomCircle Randomized )
 
         Randomized _ ->
-            ( model, Api.getGraph GotGraph )
+            ( model, Api.getGraph model.specs GotGraph )
 
         SelectNode id ->
             case model.waitingToConnect of
@@ -729,7 +731,7 @@ update msg model =
             ( model, Api.deleteNode UpdatedGraph id )
 
         UpdatedGraph _ ->
-            ( model, Api.getGraph GotGraph )
+            ( model, Api.getGraph model.specs GotGraph )
 
         SetVolume v ->
             ( { model | volume = v }, Api.setVolume NoOp v )
@@ -816,9 +818,8 @@ update msg model =
             in
             ( { model | matrixMode = newMode }, Api.setMatrixMode NoOp newMode )
 
-        AddProcess proc ->
-            ( model, Api.addNode UpdatedGraph proc )
-
+        -- AddProcess proc ->
+        --     ( model, Api.addNode UpdatedGraph proc )
         AddProcessState proc ->
             ( model, Api.addNodeState UpdatedGraph proc )
 
@@ -1038,362 +1039,337 @@ edgesSlider e =
     slider SetEdgeFac (Parameter -1 e Exp "Edge fac" 0.03 5.0)
 
 
-addProcess : String -> Process -> Element Msg
-addProcess name proc =
-    simpleButton name (AddProcess proc)
 
-
-delayInput : String -> Element Msg
-delayInput v =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetDelayLength
-            , text = v
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Delay")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map (\i -> addProcess "Delay" (Delay { length = i })) (String.toInt v)
-        ]
-
-
-pllInput : String -> Element Msg
-pllInput v =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetPLLFac
-            , text = v
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Fac")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map (\f -> addProcess "PLL" (PLL { factor = f })) (String.toFloat v)
-        ]
-
-
-kanekoChainInput : String -> Element Msg
-kanekoChainInput v =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetKanekoChainN
-            , text = v
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "N")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map (\n -> addProcess "KanekoChain" (KanekoChain { n = n, a = 1.5, e = 0.3 })) (String.toInt v)
-        ]
-
-
-sinOscInput : String -> String -> Element Msg
-sinOscInput fr frm =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetSinOscFreq
-            , text = fr
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Freq")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetSinOscFreqMul
-            , text = frm
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Freq Mul")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map2 (\ff fmf -> addProcess "SinOsc" (SinOsc { freq = ff, freq_mul = fmf })) (String.toFloat fr) (String.toFloat frm)
-        ]
-
-
-sinInput : String -> Element Msg
-sinInput v =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetSinMul
-            , text = v
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "SinPhMul")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map (\i -> addProcess "Sin" (Sin { mul = i })) (String.toFloat v)
-        ]
-
-
-soundInInput : String -> Element Msg
-soundInInput v =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetSoundInIndex
-            , text = v
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "SoundInIndex")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map (\i -> addProcess "SoundIn" (SoundIn { index = i, factor = 1 })) (String.toInt v)
-        ]
-
-
-linconInput : String -> String -> Element Msg
-linconInput a b =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetLinConA
-            , text = a
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "A")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetLinConB
-            , text = b
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "B")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map2 (\af bf -> addProcess "LinCon" (LinCon { linconA = af, linconB = bf }))
-                (String.toFloat a)
-                (String.toFloat b)
-        ]
-
-
-resonatorInput : String -> String -> String -> Element Msg
-resonatorInput c f d =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetResonatorFreqCenter
-            , text = c
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Center")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetResonatorFreqFactor
-            , text = f
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Fac")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetResonatorDecay
-            , text = d
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Decay")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map3
-                (\cf ff df ->
-                    addProcess "Resonator"
-                        (Resonator
-                            { freqCenter = cf
-                            , freqFactor = ff
-                            , decay = df
-                            }
-                        )
-                )
-                (String.toFloat c)
-                (String.toFloat f)
-                (String.toFloat d)
-        ]
-
-
-compressorInput : String -> String -> String -> Element Msg
-compressorInput t r m =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetCompressorThreshold
-            , text = t
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Threshold")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetCompressorRatio
-            , text = r
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Ratio")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetCompressorMakeup
-            , text = m
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Makeup")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map3
-                (\tf rf mf ->
-                    addProcess "Compressor"
-                        (Compressor { threshold = tf, ratio = rf, makeup = mf })
-                )
-                (String.toFloat t)
-                (String.toFloat r)
-                (String.toFloat m)
-        ]
-
-
-spikeInput : String -> String -> String -> String -> Element Msg
-spikeInput t c r rest =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.text [ width (px 80) ]
-            { onChange = SetSpikeThreshold
-            , text = t
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Threshold")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetSpikeTConst
-            , text = c
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "TConst")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetSpikeTConst
-            , text = r
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "TConst")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetSpikeTRest
-            , text = rest
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "TRest")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map4
-                (\tf cf rf ri ->
-                    addProcess "Spike"
-                        (Spike { threshold = tf, tConst = cf, r = rf, tRest = ri })
-                )
-                (String.toFloat t)
-                (String.toFloat c)
-                (String.toFloat r)
-                (String.toInt rest)
-        ]
-
-
-filterInput : FilterType -> String -> String -> Element Msg
-filterInput ft fr q =
-    row [ spacing 5, Border.solid, Border.width 1 ]
-        [ Input.radio
-            [ padding 10
-            , spacing 10
-            ]
-            { onChange = SetFilterType
-            , selected = Just ft
-            , label = Input.labelAbove [] (text "Type")
-            , options =
-                [ Input.option BLPF (text "LP")
-                , Input.option BHPF (text "HP")
-                , Input.option BBPF (text "BP")
-                ]
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetFilterFreq
-            , text = fr
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Freq")
-            }
-        , Input.text [ width (px 80) ]
-            { onChange = SetFilterQ
-            , text = q
-            , placeholder = Nothing
-            , label = Input.labelLeft [] (text "Q")
-            }
-        , Maybe.withDefault none <|
-            Maybe.map2
-                (\frF qF ->
-                    addProcess "Filter"
-                        (Filter { filterType = ft, freq = frF, q = qF })
-                )
-                (String.toFloat fr)
-                (String.toFloat q)
-        ]
-
-
-processRow : Model -> Element Msg
-processRow m =
-    wrappedRow [ width fill, spacing 10 ]
-        [ addProcess "Add" Add
-        , addProcess "Mul" Mul
-        , addProcess "Softclip" Softclip
-        , addProcess "Ring" Ring
-        , addProcess "Gauss" Gauss
-        , addProcess "RMS" RMS
-        , addProcess "Ducking" Ducking
-        , addProcess "EnvFollow" EnvFollow
-        , addProcess "Env"
-            (Env
-                { min_target = 0.001
-                , max_target = 0.6
-                , max_n = 4.0
-                , sustain_fac = 1.0
-                , rest_fac = 0.1
-                }
-            )
-        , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
-        , addProcess "GateIfGreater" GateIfGreater
-        , addProcess "GateDecision"
-            (GateDecision
-                { min_dur_on = 1.0
-                , max_dur_on = 3.0
-                , min_dur_off = 3.0
-                , max_dur_off = 6.0
-                }
-            )
-        , addProcess "Fold"
-            (Fold
-                { threshold = 1.0
-                , mul = 1.0
-                , add = 0.0
-                }
-            )
-        , addProcess "BitNeg" BitNeg
-        , addProcess "BitOr" BitOr
-
-        --        , addProcess "BitXOr" BitXOr
-        , addProcess "BitAnd" BitAnd
-
-        -- , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
-        -- , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
-        , addProcess "VanDerPol" (VanDerPol { e = 0.5, frac = 60.0, a = 0.5 })
-        , addProcess "Chua"
-            (Chua
-                { a = 15.74
-                , b = 28.49
-                , c = 0.029
-                , frac = 100.0
-                , coupling = 0.0
-                , bp = 1.0
-                , m0 = -1.143
-                , m1 = -0.714
-                }
-            )
-        , addProcess "NoseHoover"
-            (NoseHoover
-                { a = 1.0
-                , frac = 100.0
-                , coupling = 0.0
-                }
-            )
-        , addProcess "FitzHughNagumo"
-            (FitzHughNagumo
-                { a = 0.2
-                , b = 0.3
-                , c = 0.5
-                , frac = 100.0
-                , coupling = 0.0
-                }
-            )
-        , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
-        , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
-        , addProcess "Perceptron" (Perceptron { bias = 0.0 })
-        , soundInInput m.soundInIndex
-        , kanekoChainInput m.kanekoChainN
-        , delayInput m.delayLength
-        , pllInput m.pllFac
-        , sinInput m.sinMul
-        , sinOscInput m.sinOscFreq m.sinOscFreqMul
-        , linconInput m.linConA m.linConB
-        , filterInput m.filterType m.filterFreq m.filterQ
-        , resonatorInput m.resonatorFreqCenter m.resonatorFreqFactor m.resonatorDecay
-        , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
-        , spikeInput m.spikeThreshold m.spikeTConst m.spikeR m.spikeTRest
-        ]
+-- addProcess : String -> Process -> Element Msg
+-- addProcess name proc =
+--     simpleButton name (AddProcess proc)
+-- delayInput : String -> Element Msg
+-- delayInput v =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetDelayLength
+--             , text = v
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Delay")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map (\i -> addProcess "Delay" (Delay { length = i })) (String.toInt v)
+--         ]
+-- pllInput : String -> Element Msg
+-- pllInput v =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetPLLFac
+--             , text = v
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Fac")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map (\f -> addProcess "PLL" (PLL { factor = f })) (String.toFloat v)
+--         ]
+-- kanekoChainInput : String -> Element Msg
+-- kanekoChainInput v =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetKanekoChainN
+--             , text = v
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "N")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map (\n -> addProcess "KanekoChain" (KanekoChain { n = n, a = 1.5, e = 0.3 })) (String.toInt v)
+--         ]
+-- sinOscInput : String -> String -> Element Msg
+-- sinOscInput fr frm =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetSinOscFreq
+--             , text = fr
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Freq")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetSinOscFreqMul
+--             , text = frm
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Freq Mul")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map2 (\ff fmf -> addProcess "SinOsc" (SinOsc { freq = ff, freq_mul = fmf })) (String.toFloat fr) (String.toFloat frm)
+--         ]
+-- sinInput : String -> Element Msg
+-- sinInput v =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetSinMul
+--             , text = v
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "SinPhMul")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map (\i -> addProcess "Sin" (Sin { mul = i })) (String.toFloat v)
+--         ]
+-- soundInInput : String -> Element Msg
+-- soundInInput v =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetSoundInIndex
+--             , text = v
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "SoundInIndex")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map (\i -> addProcess "SoundIn" (SoundIn { index = i, factor = 1 })) (String.toInt v)
+--         ]
+-- linconInput : String -> String -> Element Msg
+-- linconInput a b =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetLinConA
+--             , text = a
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "A")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetLinConB
+--             , text = b
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "B")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map2 (\af bf -> addProcess "LinCon" (LinCon { linconA = af, linconB = bf }))
+--                 (String.toFloat a)
+--                 (String.toFloat b)
+--         ]
+-- resonatorInput : String -> String -> String -> Element Msg
+-- resonatorInput c f d =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetResonatorFreqCenter
+--             , text = c
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Center")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetResonatorFreqFactor
+--             , text = f
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Fac")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetResonatorDecay
+--             , text = d
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Decay")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map3
+--                 (\cf ff df ->
+--                     addProcess "Resonator"
+--                         (Resonator
+--                             { freqCenter = cf
+--                             , freqFactor = ff
+--                             , decay = df
+--                             }
+--                         )
+--                 )
+--                 (String.toFloat c)
+--                 (String.toFloat f)
+--                 (String.toFloat d)
+--         ]
+-- compressorInput : String -> String -> String -> Element Msg
+-- compressorInput t r m =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetCompressorThreshold
+--             , text = t
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Threshold")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetCompressorRatio
+--             , text = r
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Ratio")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetCompressorMakeup
+--             , text = m
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Makeup")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map3
+--                 (\tf rf mf ->
+--                     addProcess "Compressor"
+--                         (Compressor { threshold = tf, ratio = rf, makeup = mf })
+--                 )
+--                 (String.toFloat t)
+--                 (String.toFloat r)
+--                 (String.toFloat m)
+--         ]
+-- spikeInput : String -> String -> String -> String -> Element Msg
+-- spikeInput t c r rest =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.text [ width (px 80) ]
+--             { onChange = SetSpikeThreshold
+--             , text = t
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Threshold")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetSpikeTConst
+--             , text = c
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "TConst")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetSpikeTConst
+--             , text = r
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "TConst")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetSpikeTRest
+--             , text = rest
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "TRest")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map4
+--                 (\tf cf rf ri ->
+--                     addProcess "Spike"
+--                         (Spike { threshold = tf, tConst = cf, r = rf, tRest = ri })
+--                 )
+--                 (String.toFloat t)
+--                 (String.toFloat c)
+--                 (String.toFloat r)
+--                 (String.toInt rest)
+--         ]
+-- filterInput : FilterType -> String -> String -> Element Msg
+-- filterInput ft fr q =
+--     row [ spacing 5, Border.solid, Border.width 1 ]
+--         [ Input.radio
+--             [ padding 10
+--             , spacing 10
+--             ]
+--             { onChange = SetFilterType
+--             , selected = Just ft
+--             , label = Input.labelAbove [] (text "Type")
+--             , options =
+--                 [ Input.option BLPF (text "LP")
+--                 , Input.option BHPF (text "HP")
+--                 , Input.option BBPF (text "BP")
+--                 ]
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetFilterFreq
+--             , text = fr
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Freq")
+--             }
+--         , Input.text [ width (px 80) ]
+--             { onChange = SetFilterQ
+--             , text = q
+--             , placeholder = Nothing
+--             , label = Input.labelLeft [] (text "Q")
+--             }
+--         , Maybe.withDefault none <|
+--             Maybe.map2
+--                 (\frF qF ->
+--                     addProcess "Filter"
+--                         (Filter { filterType = ft, freq = frF, q = qF })
+--                 )
+--                 (String.toFloat fr)
+--                 (String.toFloat q)
+--         ]
+-- processRow : Model -> Element Msg
+-- processRow m =
+--     wrappedRow [ width fill, spacing 10 ]
+--         [ addProcess "Add" Add
+--         , addProcess "Mul" Mul
+--         , addProcess "Softclip" Softclip
+--         , addProcess "Ring" Ring
+--         , addProcess "Gauss" Gauss
+--         , addProcess "RMS" RMS
+--         , addProcess "Ducking" Ducking
+--         , addProcess "EnvFollow" EnvFollow
+--         , addProcess "Env"
+--             (Env
+--                 { min_target = 0.001
+--                 , max_target = 0.6
+--                 , max_n = 4.0
+--                 , sustain_fac = 1.0
+--                 , rest_fac = 0.1
+--                 }
+--             )
+--         , addProcess "VarDelay" (VarDelay { delay = 0.0, maxdelay = 10.0 })
+--         , addProcess "GateIfGreater" GateIfGreater
+--         , addProcess "GateDecision"
+--             (GateDecision
+--                 { min_dur_on = 1.0
+--                 , max_dur_on = 3.0
+--                 , min_dur_off = 3.0
+--                 , max_dur_off = 6.0
+--                 }
+--             )
+--         , addProcess "Fold"
+--             (Fold
+--                 { threshold = 1.0
+--                 , mul = 1.0
+--                 , add = 0.0
+--                 }
+--             )
+--         , addProcess "BitNeg" BitNeg
+--         , addProcess "BitOr" BitOr
+--         --        , addProcess "BitXOr" BitXOr
+--         , addProcess "BitAnd" BitAnd
+--         -- , addProcess "SoundIn0" (SoundIn { index = 0, factor = 1.0 })
+--         -- , addProcess "SoundIn1" (SoundIn { index = 1, factor = 1.0 })
+--         , addProcess "VanDerPol" (VanDerPol { e = 0.5, frac = 60.0, a = 0.5 })
+--         , addProcess "Chua"
+--             (Chua
+--                 { a = 15.74
+--                 , b = 28.49
+--                 , c = 0.029
+--                 , frac = 100.0
+--                 , coupling = 0.0
+--                 , bp = 1.0
+--                 , m0 = -1.143
+--                 , m1 = -0.714
+--                 }
+--             )
+--         , addProcess "NoseHoover"
+--             (NoseHoover
+--                 { a = 1.0
+--                 , frac = 100.0
+--                 , coupling = 0.0
+--                 }
+--             )
+--         , addProcess "FitzHughNagumo"
+--             (FitzHughNagumo
+--                 { a = 0.2
+--                 , b = 0.3
+--                 , c = 0.5
+--                 , frac = 100.0
+--                 , coupling = 0.0
+--                 }
+--             )
+--         , addProcess "Duffing" (Duffing { e = 0.2, frac = 0.03, a = 0.5, b = 1.0 })
+--         , addProcess "Kaneko" (Kaneko { e = 0.4, a = 1.5 })
+--         , addProcess "Perceptron" (Perceptron { bias = 0.0 })
+--         , soundInInput m.soundInIndex
+--         , kanekoChainInput m.kanekoChainN
+--         , delayInput m.delayLength
+--         , pllInput m.pllFac
+--         , sinInput m.sinMul
+--         , sinOscInput m.sinOscFreq m.sinOscFreqMul
+--         , linconInput m.linConA m.linConB
+--         , filterInput m.filterType m.filterFreq m.filterQ
+--         , resonatorInput m.resonatorFreqCenter m.resonatorFreqFactor m.resonatorDecay
+--         , compressorInput m.compressorThreshold m.compressorRatio m.compressorMakeup
+--         , spikeInput m.spikeThreshold m.spikeTConst m.spikeR m.spikeTRest
+--         ]
 
 
 processStateRow : Dict Int ProcessState -> Element Msg

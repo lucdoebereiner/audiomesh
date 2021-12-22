@@ -1,6 +1,7 @@
 module Api exposing
-    ( NodeIndex
-    , addNode
+    (  NodeIndex
+       -- , addNode
+
     , addNodeState
     , connectLeastConnected
     , deleteEdge
@@ -51,11 +52,11 @@ getSpecs msg =
         }
 
 
-getGraph : (Result Http.Error BackendGraph -> msg) -> Cmd msg
-getGraph msg =
+getGraph : List ProcessSpec -> (Result Http.Error BackendGraph -> msg) -> Cmd msg
+getGraph specs msg =
     Http.get
         { url = baseUrl ++ "/graph"
-        , expect = Http.expectJson msg decodeGraph
+        , expect = Http.expectJson msg (decodeGraph specs)
         }
 
 
@@ -222,13 +223,14 @@ setEdgeFac msg amp =
         }
 
 
-addNode : (Result Http.Error () -> msg) -> Process -> Cmd msg
-addNode msg proc =
-    Http.post
-        { url = baseUrl ++ "/node"
-        , body = Http.jsonBody (encodeProcess proc)
-        , expect = Http.expectWhatever msg
-        }
+
+-- addNode : (Result Http.Error () -> msg) -> Process -> Cmd msg
+-- addNode msg proc =
+--     Http.post
+--         { url = baseUrl ++ "/node"
+--         , body = Http.jsonBody (encodeProcess proc)
+--         , expect = Http.expectWhatever msg
+--         }
 
 
 addNodeState : (Result Http.Error () -> msg) -> ProcessState -> Cmd msg

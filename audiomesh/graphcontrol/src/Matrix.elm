@@ -14,7 +14,7 @@ import ProcessGraph
     exposing
         ( BackendGraph
         , Connection
-        , Process
+        , ProcessState
         , UGen
         , UGenGraph
         , graphEdges
