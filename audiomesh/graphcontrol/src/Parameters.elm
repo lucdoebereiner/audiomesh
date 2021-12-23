@@ -1,4 +1,4 @@
-module Parameters exposing (..)
+module Parameters exposing (Mapping(..), Parameter, calcEdgeStrength, explin, lincubic, linexp, linlin, logE, mapped, softclip, tanh, uncubic, unmapped)
 
 
 type Mapping
@@ -24,7 +24,11 @@ mapped p =
             linlin p.value 0.0 1.0 p.min p.max
 
         Exp ->
-            linexp p.value 0.0 1.0 p.min p.max
+            if p.min == 0.0 then
+                linexp p.value 0.0 1.0 (p.min + 0.001) p.max - 0.001
+
+            else
+                linexp p.value 0.0 1.0 p.min p.max
 
         Cubic ->
             lincubic p.value p.min p.max
@@ -41,7 +45,11 @@ unmapped p v =
             linlin v p.min p.max 0.0 1.0
 
         Exp ->
-            explin v p.min p.max 0.0 1.0
+            if p.min == 0.0 then
+                explin v (p.min + 0.001) p.max 0.0 1.0
+
+            else
+                explin v p.min p.max 0.0 1.0
 
         Cubic ->
             uncubic (linlin v p.min p.max -1.0 1.0)

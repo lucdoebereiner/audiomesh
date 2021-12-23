@@ -1761,7 +1761,7 @@ inputStateToParameter st =
 
 processParameters : ProcessState -> List Parameter
 processParameters process =
-    List.map inputStateToParameter process.inputs
+    List.map inputStateToParameter (List.filter .controllable process.inputs)
 
 
 encodeInputState : InputState -> Maybe ( String, Value )
@@ -1921,7 +1921,7 @@ inputTypeMapping t =
             r.scaling
 
         Amplitude f ->
-            Exp
+            Cubic
 
         Seconds f ->
             Exp
@@ -1961,7 +1961,7 @@ inputTypeMin t =
             r.min
 
         Amplitude f ->
-            -10000.0
+            -10.0
 
         Seconds f ->
             0.0
@@ -2001,7 +2001,7 @@ inputTypeMax t =
             r.max
 
         Amplitude f ->
-            10000.0
+            10.0
 
         Seconds f ->
             10.0

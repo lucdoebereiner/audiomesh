@@ -927,7 +927,7 @@ displayNode polled waiting n =
                     (WaitingToConnect n.id)
                  , simpleButton "Delete" (DeleteNode n.id)
                  , el
-                    [ width (px 60)
+                    [ width (px 80)
                     , padding 5
                     , Border.solid
                     , Border.width 1
