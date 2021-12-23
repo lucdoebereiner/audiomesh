@@ -46,9 +46,16 @@ init contentGraph dist ( w, h ) =
                 |> List.filter (\{ from, to, label } -> from /= to)
                 |> List.map
                     (\{ from, to, label } ->
+                        let
+                            str =
+                                abs label.strength.bias * abs label.strength.factor
+
+                            strDist =
+                                (1 / (max 0.1 str ^ 1.6)) * 10
+                        in
                         { source = from
                         , target = to
-                        , distance = (dist / 2) + ((1 / max 0.2 (abs label.strength.bias * abs label.strength.factor) * 10) ^ 1.5)
+                        , distance = max 80 strDist
                         , strength = Nothing --Just label.strength
                         }
                     )
@@ -57,7 +64,7 @@ init contentGraph dist ( w, h ) =
             [ Force.customLinks 1 links
 
             --              Force.links <| List.map link <| Graph.edges graph
-            , Force.manyBodyStrength -2600 <| List.map .id <| Graph.nodes graph
+            , Force.manyBodyStrength -2400 <| List.map .id <| Graph.nodes graph
             , Force.center (w / 2) (h / 2)
             ]
     in
