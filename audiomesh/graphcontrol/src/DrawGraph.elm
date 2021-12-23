@@ -48,7 +48,7 @@ init contentGraph dist ( w, h ) =
                     (\{ from, to, label } ->
                         { source = from
                         , target = to
-                        , distance = dist
+                        , distance = (dist / 2) + ((1 / max 0.2 (abs label.strength.bias * abs label.strength.factor) * 10) ^ 1.5)
                         , strength = Nothing --Just label.strength
                         }
                     )
