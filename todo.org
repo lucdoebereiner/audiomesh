@@ -97,6 +97,8 @@
   - [X] refactor elm parameters for central spec
   - [ ] types of output and conversion when linking
 - [ ] a generalized compressor/gate in every edge
+- [ ] slow compression
+- [ ] move flow into ugengraph struct
 - [ ] trait obj instead of enum?
 - [ ] sync
   - [ ] hard sync osc (with nth zero crossing)
@@ -108,8 +110,6 @@
   - [ ] steto in sc
   - [ ] sanitize output
   - [ ] output compressor
-- [ ] move flow into ugengraph struct
-- [ ] slow compression
 - [ ] lang for expressing networks
 - [ ] delay feedbacks with compression and leakage
 - [ ] control

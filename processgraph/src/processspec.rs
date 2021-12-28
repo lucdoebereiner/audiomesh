@@ -83,178 +83,6 @@ pub enum ProcessType {
     MultipleInputs,
 }
 
-// pub fn spec(&self) -> ProcessSpec {
-//     match self {
-//         Process::Spike { .. } => procspec(
-//             "spike",
-//             ProcessType::OpaqueProcessor,
-//             vec![
-//                 InputType::Any,
-//                 InputType::Threshold,
-//                 InputType::Parameter,
-//                 InputType::Parameter,
-//             ],
-//         ),
-//         Process::Duffing { .. } => procspec(
-//             "duffing",
-//             ProcessType::OpaqueProcessor,
-//             vec![
-//                 InputType::Audio,
-//                 InputType::Factor,
-//                 InputType::Factor,
-//                 InputType::Amplitude,
-//             ],
-//         ),
-
-//         Process::Env { .. } => procspec(
-//             "env",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Audio],
-//         ),
-//         Process::PLL { .. } => procspec(
-//             "pll",
-//             ProcessType::OpaqueProcessor,
-//             vec![InputType::Any, InputType::Factor],
-//         ),
-
-//         Process::Add { .. } => {
-//             procspec("add", ProcessType::MultipleInputs, vec![InputType::Any])
-//         }
-//         Process::Constant { .. } => procspec("constant", ProcessType::NoInputGenerator, vec![]),
-//         //        Process::Map { .. } => procspec("map", vec![InputType::Any]),
-//         Process::Filter { .. } => procspec(
-//             "filter",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Audio, InputType::Frequency, InputType::Q],
-//         ),
-//         Process::Resonator { .. } => procspec(
-//             "resonator",
-//             ProcessType::MultipleInputs,
-//             vec![
-//                 InputType::Audio,
-//                 InputType::Any,
-//                 InputType::Frequency,
-//                 InputType::Factor,
-//                 InputType::Seconds,
-//             ],
-//         ),
-
-//         Process::Compressor { .. } => procspec(
-//             "compressor",
-//             ProcessType::TransparentProcessor,
-//             vec![
-//                 InputType::Audio,
-//                 InputType::Threshold,
-//                 InputType::Parameter,
-//                 InputType::Amplitude,
-//             ],
-//         ),
-//         Process::Ducking { .. } => procspec(
-//             "ducking",
-//             ProcessType::SidechainEnv,
-//             vec![InputType::Any; 2],
-//         ),
-//         Process::EnvFollow { .. } => procspec(
-//             "envfollow",
-//             ProcessType::SidechainEnv,
-//             vec![InputType::Any; 2],
-//         ),
-
-//         Process::GateDecision { .. } => procspec(
-//             "gatedecision",
-//             ProcessType::SidechainEnv,
-//             vec![
-//                 InputType::Any,
-//                 InputType::Any,
-//                 InputType::Seconds,
-//                 InputType::Seconds,
-//             ],
-//         ),
-
-//         Process::Wrap { .. } => procspec(
-//             "wrap",
-//             ProcessType::OpaqueProcessor,
-//             vec![InputType::Any; 2],
-//         ),
-//         Process::Softclip { .. } => procspec(
-//             "softclip",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any],
-//         ),
-//         Process::Perceptron { .. } => procspec(
-//             "perceptron",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any, InputType::Factor],
-//         ),
-//         Process::Square { .. } => procspec(
-//             "square",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any],
-//         ),
-//         Process::Sqrt { .. } => procspec(
-//             "sqrt",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any],
-//         ),
-//         Process::VarDelay { .. } => procspec(
-//             "vardelay",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any, InputType::Seconds],
-//         ),
-//         Process::BitNeg { .. } => {
-//             procspec("bitneg", ProcessType::OpaqueProcessor, vec![InputType::Any])
-//         }
-//         Process::BitOr { .. } => {
-//             procspec("bitor", ProcessType::TwoInputs, vec![InputType::Any; 2])
-//         }
-//         Process::BitXOr { .. } => {
-//             procspec("bitxor", ProcessType::TwoInputs, vec![InputType::Any; 2])
-//         }
-//         Process::KanekoChain { .. } => procspec(
-//             "kanekochain",
-//             ProcessType::TwoInputs,
-//             vec![
-//                 InputType::Any,
-//                 InputType::Any,
-//                 InputType::Factor,
-//                 InputType::Factor,
-//             ],
-//         ),
-
-//         Process::BitAnd { .. } => {
-//             procspec("bitand", ProcessType::TwoInputs, vec![InputType::Any; 2])
-//         }
-//         Process::GateIfGreater { .. } => procspec(
-//             "gateifgreater",
-//             ProcessType::TwoInputs,
-//             vec![InputType::Any; 2],
-//         ),
-//         Process::CurveLin { .. } => procspec(
-//             "curvelin",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Any; 6],
-//         ),
-//         Process::Gauss { .. } => procspec(
-//             "gauss",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Audio],
-//         ),
-//         Process::RMS { .. } => {
-//             procspec("rms", ProcessType::OpaqueProcessor, vec![InputType::Audio])
-//         }
-//         Process::LPF1 { .. } => procspec(
-//             "lpf1",
-//             ProcessType::TransparentProcessor,
-//             vec![InputType::Audio, InputType::Frequency],
-//         ),
-//         Process::LinCon { .. } => procspec(
-//             "lincon",
-//             ProcessType::OpaqueProcessor,
-//             vec![InputType::Any, InputType::Factor, InputType::Factor],
-//         ),
-//     }
-// }
-
 fn spec(name: &str, process_type: ProcessType, inputs: Vec<InputSpec>) -> (String, ProcessSpec) {
     (
         name.to_string(),
@@ -301,6 +129,32 @@ lazy_static! {
                         max: 5000.0,
                         scaling: InputScaling::Exp,
                         default: 1.0,
+                    })
+                )
+            ]
+        ),
+        spec(
+            "Kuramoto",
+            ProcessType::OpaqueProcessor,
+            vec![
+                input_spec(
+                    1,
+                    "freq",
+                    InputType::Frequency(InputRange {
+                        min: 0.1,
+                        max: 10000.0,
+                        scaling: InputScaling::Exp,
+                        default: 100.0,
+                    })
+                ),
+                input_spec(
+                    2,
+                    "coupling",
+                    InputType::Factor(InputRange {
+                        min: 0.0001,
+                        max: 2.0,
+                        scaling: InputScaling::Exp,
+                        default: 0.01,
                     })
                 )
             ]
@@ -548,8 +402,6 @@ lazy_static! {
         )
     ]);
 }
-
-// TODO delay has init only input!!
 
 pub fn specs_vec() -> Vec<ProcessSpec> {
     SPECS.values().cloned().collect()

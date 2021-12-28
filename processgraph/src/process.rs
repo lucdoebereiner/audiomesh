@@ -2,14 +2,14 @@ use crate::compenv::*;
 use crate::filters;
 use crate::integrator::{runge_kutta_4, runge_kutta_5};
 use crate::lag;
-use crate::processspec::*;
 use crate::numerical;
+use crate::processspec::*;
 use crate::tapdelay;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
 use std::f64;
-use strum_macros;
 use strum::EnumProperty;
+use strum_macros;
 const PI: f64 = f64::consts::PI;
 
 use crate::numerical::TWOPI;
@@ -31,13 +31,13 @@ pub fn get_sr() -> f64 {
 #[derive(Serialize, Deserialize, Debug, strum_macros::EnumProperty)]
 #[allow(dead_code)]
 pub enum Process {
-    #[strum(props(Name="Sin"))]
+    #[strum(props(Name = "Sin"))]
     Sin {
         #[serde(skip)]
         input: f64,
         mul: lag::Lag,
     },
-    #[strum(props(Name="SinOsc"))]
+    #[strum(props(Name = "SinOsc"))]
     SinOsc {
         #[serde(skip)]
         input: f64,
@@ -46,12 +46,21 @@ pub enum Process {
         #[serde(skip)]
         phase: f64,
     },
-    #[strum(props(Name="Mul"))]
+    #[strum(props(Name = "Kuramoto"))]
+    Kuramoto {
+        #[serde(skip)]
+        inputs: Vec<f64>,
+        freq: lag::Lag,
+        coupling: lag::Lag,
+        #[serde(skip)]
+        phase: f64,
+    },
+    #[strum(props(Name = "Mul"))]
     Mul {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
-    #[strum(props(Name="Fold"))]
+    #[strum(props(Name = "Fold"))]
     Fold {
         #[serde(skip)]
         input: f64,
@@ -65,7 +74,7 @@ pub enum Process {
         #[serde(skip)]
         input2: f64,
     },
-    #[strum(props(Name="Kaneko"))]
+    #[strum(props(Name = "Kaneko"))]
     Kaneko {
         #[serde(skip)]
         input1: f64,
@@ -106,7 +115,7 @@ pub enum Process {
         #[serde(default = "out_gate_lag")]
         out_lag: lag::Lag,
     },
-    #[strum(props(Name="Ring"))]
+    #[strum(props(Name = "Ring"))]
     Ring {
         #[serde(skip)]
         inputs: Vec<Process>,
@@ -118,7 +127,7 @@ pub enum Process {
         #[serde(skip)]
         inputs: Vec<f64>,
     },
-    #[strum(props(Name="Mem"))]
+    #[strum(props(Name = "Mem"))]
     Mem {
         #[serde(skip)]
         input: f64,
@@ -142,7 +151,7 @@ pub enum Process {
         //        #[serde(default = "comp_env_default")]
         comp_env: CompEnv,
     },
-    #[strum(props(Name="VanDerPol"))]
+    #[strum(props(Name = "VanDerPol"))]
     VanDerPol {
         #[serde(skip)]
         input: f64,
@@ -153,7 +162,7 @@ pub enum Process {
         e: lag::Lag,
         a: lag::Lag,
     },
-    #[strum(props(Name="NoseHoover"))]
+    #[strum(props(Name = "NoseHoover"))]
     NoseHoover {
         #[serde(skip)]
         input: f64,
@@ -164,7 +173,7 @@ pub enum Process {
         a: lag::Lag,
         coupling: lag::Lag,
     },
-    #[strum(props(Name="FitzHughNagumo"))]
+    #[strum(props(Name = "FitzHughNagumo"))]
     FitzHughNagumo {
         #[serde(skip)]
         input: f64,
@@ -177,7 +186,7 @@ pub enum Process {
         c: lag::Lag,
         coupling: lag::Lag,
     },
-    #[strum(props(Name="Chua"))]
+    #[strum(props(Name = "Chua"))]
     Chua {
         #[serde(skip)]
         input: f64,
@@ -254,7 +263,7 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
     },
-    #[strum(props(Name="SoundIn"))]
+    #[strum(props(Name = "SoundIn"))]
     SoundIn {
         #[serde(skip)]
         input: f64,
@@ -294,13 +303,13 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
     },
-    #[strum(props(Name="SoundIn"))]
+    #[strum(props(Name = "SoundIn"))]
     Perceptron {
         #[serde(skip)]
         input: f64,
         bias: lag::Lag,
     },
-    #[strum(props(Name="Delay"))]
+    #[strum(props(Name = "Delay"))]
     Delay {
         #[serde(serialize_with = "vector_serialize")]
         #[serde(deserialize_with = "vector_deserialize")]
@@ -365,7 +374,7 @@ pub enum Process {
         #[serde(default = "rms_chain")]
         chain: Vec<Process>,
     },
-    #[strum(props(Name="LinCon"))]
+    #[strum(props(Name = "LinCon"))]
     LinCon {
         #[serde(skip)]
         input: f64,
@@ -432,8 +441,6 @@ fn rms_proc() -> Process {
 //     CompEnv::new(0.6, 0.001, get_sr() as usize * 4)
 // }
 
-
-
 fn rms_chain() -> Vec<Process> {
     vec![
         Process::Square { input: 0.0 },
@@ -480,7 +487,6 @@ fn chua_state() -> Vec<f64> {
 fn fitz_state() -> Vec<f64> {
     vec![0.01, 0.01]
 }
-
 
 fn ducking_lag() -> lag::Lag {
     let mut dlag = lag::lag(0.0);
@@ -550,7 +556,6 @@ struct NoseHooverAdditionalVars {
     f: f64,
 }
 
-
 struct ChuaAdditionalVars {
     a: f64,
     b: f64,
@@ -602,27 +607,28 @@ fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64
     let m0 = additional_vars.m0;
     let m1 = additional_vars.m1;
     // cubic
-//    let mut d_x =
-  //      a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
+    //    let mut d_x =
+    //      a * (y - x.powi(3) - (c * x)) + (additional_vars.coupling * additional_vars.input);
 
-    let d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
+    let d_x = a * (y - x - chua_diode(x, bp, m0, m1))
+        + (additional_vars.coupling * additional_vars.input);
     let d_y = x - y + z;
-    let d_z = -b * y - (c * z); 
+    let d_z = -b * y - (c * z);
 
     // d_x = (d_x / 2.0).tanh() * 2.0;
     // d_y = (d_y / 2.0).tanh() * 2.0;
     // d_z = (d_z / 2.0).tanh() * 2.0;
-    
+
     // let mut d_x = a * (y - x - chua_diode(x, bp, m0, m1)) + (additional_vars.coupling * additional_vars.input);
     // let mut d_y = x - y + z;
     // let mut d_z = -b * y - (c * z);
-    
+
     // let mut d_x = additional_vars.a * (y - x - chua_h(x))
     //     + (additional_vars.coupling * additional_vars.input);
     // let mut d_x = additional_vars.a * y - x + (x + 1.0).abs() - (x - 1.0).abs()
     //     + (additional_vars.coupling * additional_vars.input);
     //  d_x = ((d_x / tan_fac).tanh() * tan_fac); // - attrition(x);
-    
+
     //    d_y = ((d_y / tan_fac).tanh() * tan_fac); // - attrition(y);
 
     //  d_z = ((d_z / tan_fac).tanh() * tan_fac); // - attrition(z);
@@ -634,20 +640,22 @@ fn chua_calc_vec(state: &[f64], additional_vars: &ChuaAdditionalVars) -> Vec<f64
     ]
 }
 
-
 #[inline]
 fn nose_hoover_calc_vec(state: &[f64], additional_vars: &NoseHooverAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
     let z = state[2];
 
-    let d_x = additional_vars.a * y  + (additional_vars.input * additional_vars.coupling);
+    let d_x = additional_vars.a * y + (additional_vars.input * additional_vars.coupling);
     let d_y = -x + (y * z);
     let d_z = 1.0 - y.powi(2);
 
-    vec![d_x * additional_vars.f, d_y * additional_vars.f, d_z * additional_vars.f]
+    vec![
+        d_x * additional_vars.f,
+        d_y * additional_vars.f,
+        d_z * additional_vars.f,
+    ]
 }
-
 
 #[inline]
 fn vdp_calc_vec(state: &[f64], additional_vars: &VDPAdditionalVars) -> Vec<f64> {
@@ -686,7 +694,6 @@ struct FitzAdditionalVars {
     coupling: f64,
 }
 
-
 #[inline]
 fn fitz_calc_vec(state: &[f64], additional_vars: &FitzAdditionalVars) -> Vec<f64> {
     let x = state[0];
@@ -694,16 +701,15 @@ fn fitz_calc_vec(state: &[f64], additional_vars: &FitzAdditionalVars) -> Vec<f64
 
     let d_x = x - x.powi(3) - y + (additional_vars.input * additional_vars.coupling);
     let d_y = additional_vars.a + (additional_vars.b * x) - (additional_vars.c * y);
-        
+
     vec![d_x * additional_vars.f, d_y * additional_vars.f]
 }
-
 
 #[inline]
 fn duffing_calc_vec(state: &[f64], additional_vars: &DuffingAdditionalVars) -> Vec<f64> {
     let x = state[0];
     let y = state[1];
-//    let tan_fac = 10.0;
+    //    let tan_fac = 10.0;
     let mut d_x = y;
     d_x = d_x - attrition(x);
     //    d_x = ((d_x / tan_fac).tanh() * tan_fac) - attrition(x);
@@ -817,7 +823,7 @@ impl Process {
                 // state[0] = new_state[0];
                 // state[1] = new_state[1];
                 // state[2] = new_state[2];
-                
+
                 state[0] = (new_state[0] / 100.0).tanh() * 100.0;
                 state[1] = (new_state[1] / 100.0).tanh() * 100.0;
                 state[2] = (new_state[2] / 100.0).tanh() * 100.0;
@@ -845,14 +851,18 @@ impl Process {
                     f: f,
                     coupling: this_coupling,
                 };
-                let new_state =
-                    runge_kutta_5(&nose_hoover_calc_vec, &state, &additional_vars, 6.0 / get_sr());
+                let new_state = runge_kutta_5(
+                    &nose_hoover_calc_vec,
+                    &state,
+                    &additional_vars,
+                    6.0 / get_sr(),
+                );
 
                 state[0] = (new_state[0] / 100.0).tanh() * 100.0;
                 state[1] = (new_state[1] / 100.0).tanh() * 100.0;
                 state[2] = (new_state[2] / 100.0).tanh() * 100.0;
-                
-                state[0] 
+
+                state[0]
             }
             Process::FitzHughNagumo {
                 input,
@@ -882,9 +892,9 @@ impl Process {
 
                 state[0] = (new_state[0] / 100.0).tanh() * 100.0;
                 state[1] = (new_state[1] / 100.0).tanh() * 100.0;
-                
-                state[0] 
-            }                     
+
+                state[0]
+            }
             Process::Duffing {
                 input,
                 ref mut state,
@@ -1042,6 +1052,23 @@ impl Process {
                 *input * comp_env.fac
             }
             Process::Mul { inputs, .. } => inputs.iter().product(),
+
+            Process::Kuramoto {
+                inputs,
+                ref mut phase,
+                ref mut freq,
+                ref mut coupling,
+            } => {
+                let this_coupling = coupling.tick();
+
+                let sum_diffs: f64 = inputs.iter().map(|inp| (inp - *phase).sin()).sum();
+
+                *phase =
+                    (*phase + (freq.tick() * unsafe { FREQ_FAC }) + (this_coupling * sum_diffs))
+                        % (2.0 * std::f64::consts::PI);
+
+                phase.sin()
+            }
             Process::Add { inputs } => inputs.iter().sum(),
             Process::Square { input } => input.powf(2.0),
             Process::Sqrt { input } => input.sqrt(),
@@ -1158,7 +1185,7 @@ impl Process {
             Process::Perceptron { input, bias } => {
                 bias.tick();
                 (*input + bias.current).tanh()
-            },
+            }
             Process::Delay {
                 input,
                 ref mut rec_idx,
@@ -1375,6 +1402,17 @@ impl Process {
             Process::Add { ref mut inputs } | Process::Mul { ref mut inputs } => {
                 inputs.push(input_value)
             }
+            Process::Kuramoto {
+                ref mut inputs,
+                ref mut freq,
+                ref mut coupling,
+                ..
+            } => match idx {
+                0 => inputs.push(input_value),
+                1 => freq.set_target(input_value),
+                2 => coupling.set_target(input_value),
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
             Process::Ring {
                 ref mut inputs,
                 ref mut input_counter,
@@ -1644,7 +1682,6 @@ impl Process {
         self.get_str("Name").unwrap().to_string()
     }
 
-
     pub fn spec(&self) -> &ProcessSpec {
         SPECS.get(&self.name()).unwrap()
     }
@@ -1702,7 +1739,7 @@ impl Process {
 		*freq_mod = 0.0;
 	    },
 	    Process::PLL { ref mut input, .. } => input.input = 0.0,
-	    Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
+	    Process::Kuramoto { ref mut inputs, .. } | Process::Mul { ref mut inputs } | Process::Add { ref mut inputs } => inputs.clear(),
 	    | Process::Ring { ref mut inputs, ref mut input_counter } => {
 	        *input_counter = 0;
 	        for i in inputs.iter_mut() {
