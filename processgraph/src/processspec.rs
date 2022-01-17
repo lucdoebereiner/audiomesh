@@ -133,6 +133,19 @@ lazy_static! {
                 )
             ]
         ),
+
+        spec(
+            "SyncOsc",
+            ProcessType::OpaqueProcessor,
+            vec![
+                input_spec(
+                    1,
+                    "n",
+                    InputType::Index(1)
+                ),
+            ]
+        ),
+
         spec(
             "Kuramoto",
             ProcessType::OpaqueProcessor,

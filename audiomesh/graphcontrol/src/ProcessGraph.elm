@@ -1071,7 +1071,7 @@ inputTypeMax t =
             1000.0
 
         Index _ ->
-            100.0
+            500.0
 
         Factor r ->
             r.max

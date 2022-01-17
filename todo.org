@@ -1,4 +1,4 @@
-* TODO graph synth rust [67/96]
+* TODO graph synth rust [68/97]
 - [X] audio input
 - [X] volume output
 - [X] strategy for adding nodes
@@ -92,9 +92,11 @@
 - [X] general input fader
 - [X] list/matrix of processes for easier selection
 - [X] more chua tests for parameters and centering
-- [-] process spec api
+- [X] process spec api
   - [X] simpler addition of ugens, auto elm decoder/types
   - [X] refactor elm parameters for central spec
+- [ ] output refactoring
+  - [ ] multiple outputs
   - [ ] types of output and conversion when linking
 - [ ] a generalized compressor/gate in every edge
 - [ ] slow compression
@@ -133,7 +135,7 @@
 - [-] systems
   - [X] Nosé hoover
   - [X] Fitz hugh nagumo
-  - [ ] kuramoto
+  - [X] kuramoto
   - [ ] jerk sprott
   - [ ] multiscroll
   - [ ] lotka volterra

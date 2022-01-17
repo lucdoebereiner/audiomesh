@@ -7,6 +7,7 @@ use crate::processspec::*;
 use crate::tapdelay;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
+use std::cmp;
 use std::f64;
 use strum::EnumProperty;
 use strum_macros;
@@ -45,6 +46,22 @@ pub enum Process {
         freq_mul: lag::Lag,
         #[serde(skip)]
         phase: f64,
+    },
+    #[strum(props(Name = "SyncOsc"))]
+    SyncOsc {
+        #[serde(skip)]
+        input: f64,
+        n: u32,
+        #[serde(skip)]
+        last: f64,
+        #[serde(skip)]
+        counter: u32,
+        #[serde(skip)]
+        x_counter: u32,
+        #[serde(skip)]
+        phase: f64,
+        #[serde(skip)]
+        phase_inc: f64,
     },
     #[strum(props(Name = "Kuramoto"))]
     Kuramoto {
@@ -756,6 +773,35 @@ impl Process {
                 *phase += (freq.tick() + (*input * freq_mul.tick())) * unsafe { FREQ_FAC };
                 output
             }
+            Process::SyncOsc {
+                input,
+                n,
+                ref mut last,
+                ref mut counter,
+                ref mut x_counter,
+                ref mut phase,
+                ref mut phase_inc,
+            } => {
+                if (*last <= 0.0) && (*input > 0.0) {
+                    *x_counter += 1;
+                    if *x_counter >= *n {
+                        *phase_inc = 1 as f64 / cmp::max(1, *counter) as f64;
+                        *counter = 0;
+                        *x_counter = 0;
+                    } else {
+                        *counter += 1;
+                        *x_counter += 1;
+                    }
+                } else {
+                    *counter += 1;
+                    *last = *input;
+                }
+
+                let output = phase.sin();
+                *phase += *phase_inc;
+                output
+            }
+
             Process::VanDerPol {
                 input,
                 ref mut state,
@@ -1399,6 +1445,16 @@ impl Process {
                 2 => freq_mul.set_target(input_value),
                 _ => panic!("wrong index into {}: {}", self.name(), idx),
             },
+            Process::SyncOsc {
+                ref mut input,
+                ref mut n,
+                ..
+            } => match idx {
+                0 => set_or_add(input, input_value, add),
+                1 => *n = input_value as u32,
+                _ => panic!("wrong index into {}: {}", self.name(), idx),
+            },
+
             Process::Add { ref mut inputs } | Process::Mul { ref mut inputs } => {
                 inputs.push(input_value)
             }
@@ -1715,6 +1771,7 @@ impl Process {
 	    | Process::Fold { ref mut input, .. }
             | Process::NoseHoover { ref mut input, .. }
             | Process::FitzHughNagumo { ref mut input, .. }
+            | Process::SyncOsc { ref mut input, .. }
 	    | Process::BitNeg { ref mut input } => *input = 0.0,
             Process::SinOsc { ref mut input, .. } => *input = 0.0,
 	    Process::Compressor { ref mut input, ref mut input_level, .. }
