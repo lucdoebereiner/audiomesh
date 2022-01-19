@@ -356,7 +356,7 @@ update msg model =
         SetEdgeControlFactors i s ->
             let
                 mapping =
-                    \v -> Parameters.linlin v 0.0 1.0 0.0 6.0
+                    \v -> Parameters.linlin v 0.0 1.0 0.0 10.0
 
                 newModel =
                     { model
@@ -1429,7 +1429,7 @@ showSelectedEdge model =
                     , slider (SetEdgeBias l.label.id)
                         (Parameter -1 l.label.strength.bias Cubic "bias" -2.0 2.0)
                     , slider (SetEdgeFactor l.label.id)
-                        (Parameter -1 l.label.strength.factor Lin "factor" 0.0 6.0)
+                        (Parameter -1 l.label.strength.factor Lin "factor" 0.0 10.0)
                     , simpleButton "Delete" (DeleteEdge l.label.id)
                     ]
         )

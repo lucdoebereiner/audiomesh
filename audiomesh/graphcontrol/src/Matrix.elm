@@ -101,10 +101,10 @@ ugenRow selectedNode selectedEdge selectNodeMsg selectEdgeMsg indices ugen =
                 (\idx ->
                     case L.find (\c -> c.to == idx) ugen.outgoing of
                         Nothing ->
-                            column [ height (px 30), paddingXY 5 10, bottomBorder, centerX, centerY, width fill ] [ none ]
+                            column [ height (px 30), width (px 200), paddingXY 5 10, bottomBorder, centerX, centerY ] [ none ]
 
                         Just c ->
-                            column [ height (px 30), paddingXY 5 10, bottomBorder, centerX, centerY, width fill ]
+                            column [ height (px 30), width (px 200), paddingXY 5 10, bottomBorder, centerX, centerY ]
                                 [ paragraph
                                     ([ Events.onClick (selectEdgeMsg c.link.id)
                                      , pointer
@@ -118,7 +118,7 @@ ugenRow selectedNode selectedEdge selectNodeMsg selectEdgeMsg indices ugen =
                 )
                 indices
     in
-    row [ Border.widthEach { left = 0, right = 0, bottom = 0, top = 0 }, width fill ]
+    row [ Border.widthEach { left = 0, right = 0, bottom = 0, top = 0 }, width (px 300) ]
         ([ column [ height (px 30), width (px 300), paddingXY 5 10, bottomBorder ]
             [ paragraph
                 ([ Events.onClick (selectNodeMsg ugen.id), pointer, width fill ]
@@ -153,7 +153,7 @@ horizontalLabels selectedNode selectNodeMsg ugens =
         labels =
             List.map
                 (\ugen ->
-                    column [ height (px 50), paddingXY 5 10, bottomBorder, width fill ]
+                    column [ height (px 50), paddingXY 5 10, bottomBorder, width (px 200) ]
                         [ paragraph ([ Events.onClick (selectNodeMsg ugen.id), pointer, width fill ] ++ boldIfSelected selectedNode ugen)
                             [ text (ugenLabel ugen.ugen) ]
                         ]

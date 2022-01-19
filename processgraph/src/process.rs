@@ -320,7 +320,7 @@ pub enum Process {
         #[serde(skip)]
         input: f64,
     },
-    #[strum(props(Name = "SoundIn"))]
+    #[strum(props(Name = "Perceptron"))]
     Perceptron {
         #[serde(skip)]
         input: f64,

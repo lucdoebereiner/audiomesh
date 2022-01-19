@@ -51,11 +51,11 @@ init contentGraph dist ( w, h ) =
                                 abs label.strength.bias * abs label.strength.factor
 
                             strDist =
-                                (1 / (max 0.1 str ^ 1.6)) * 10
+                                min 1000.0 ((1 / (max 0.1 str ^ 1.6)) * 30)
                         in
                         { source = from
                         , target = to
-                        , distance = max 80 strDist
+                        , distance = max 250 strDist
                         , strength = Nothing --Just label.strength
                         }
                     )

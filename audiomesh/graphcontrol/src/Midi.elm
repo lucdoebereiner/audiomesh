@@ -168,7 +168,7 @@ dict messages edgeIndices ( node, edge ) =
                 Maybe.map
                     (\e ->
                         messages.setEdgeFactor e.label.id
-                            (Parameters.linlin v 0.0 1.0 0.0 6.0)
+                            (Parameters.linlin v 0.0 1.0 0.0 10.0)
                     )
                     edge
                     |> Maybe.withDefault messages.noMsg
